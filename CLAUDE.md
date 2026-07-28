@@ -81,14 +81,15 @@ dotnet test
 dotnet format            # 整形。CI では --verify-no-changes で検査される
 ```
 
-**.NET 10 SDK が必要。** ソリューションが `.slnx`（新形式）で、SDK 9.0.200 より前は読めない。
-`global.json` で固定してあるので、古い SDK しか無い環境では `dotnet` 実行時に気づける。
-プロジェクトのターゲットは `net8.0` のままなので、実行に必要なランタイムは .NET 8。
+**.NET 10 SDK が必要。** `global.json` で固定してあるので、
+古い SDK しか無い環境では `dotnet` 実行時に気づける。
+
+ターゲットは `net10.0`、言語バージョンは C# 14。実行にも .NET 10 ランタイムが要る。
 
 ## 構成
 
 ```
-Netsoft.Jobs.slnx                ソリューション（新形式。SDK 9.0.200 以降が必要）
+Netsoft.Jobs.slnx                ソリューション（新形式）
 global.json                      使用する SDK を固定する
 Directory.Build.props            全プロジェクト共通のビルド設定
 src/Directory.Build.props        src 配下に Netsoft.Jobs. の prefix を付ける
