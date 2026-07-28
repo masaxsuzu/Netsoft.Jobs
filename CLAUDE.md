@@ -11,9 +11,9 @@ Windows ワークステーション上で動作する、長時間実行 Job の�
 1. 依頼        利用者が「追加したいこと」を言葉で伝える
 2. タスク化    Claude が実装単位に分解し、内容を利用者に確認する
 3. 実装        サブエージェントが 1 タスクを実装する
-4. PR 作成     1 タスク = 1 PR。auto-merge ラベルを付けるかを判断する
+4. PR 作成     1 タスク = 1 PR。auto-merge を有効にするかを判断する
 5. CI と修正   CI の結果を見て、失敗なら修正。必要ならレビュー
-6. マージ      CI 通過 + auto-merge ラベルで自動マージ
+6. マージ      CI 通過後、ルールセット + auto-merge で自動マージ
 ```
 
 ### 1. 依頼
@@ -45,13 +45,14 @@ Claude が実装単位へ分解する。**分解した時点で一度利用者�
 
 1 タスク = 1 PR。`.github/pull_request_template.md` の項目を埋める。
 
-`auto-merge` ラベルを付けてよいのは、次をすべて満たす場合。
+PR を作ったら **auto-merge を有効にするかを判断する**。有効にしてよいのは次をすべて満たす場合。
 
 - 受け入れ条件を満たしている
 - ローカルで `dotnet build` と `dotnet test` が通っている
-- 設計上の判断が含まれない（含むなら `needs-review` を付けて人に見せる）
+- 設計上の判断が含まれない（含むなら有効にせず `needs-review` を付けて人に見せる）
 
-迷ったら付けない。ラベルの詳細は `.github/labels.md`。
+迷ったら有効にしない。人が見て問題なければ後から有効にできるが、
+一度マージされたものは戻せない。非対称なので有効にしない側に倒す。
 
 ### 5. CI と修正
 
@@ -63,8 +64,14 @@ CI が落ちた原因が自分の変更でない（main が壊れている）場
 
 ### 6. マージ
 
-`.github/workflows/auto-merge.yml` が CI 成功を確認してから squash merge する。
-GitHub ネイティブの auto-merge は使わない（理由はワークフローのコメント参照）。
+リポジトリのルールセットが必須チェックとして CI を要求しており、
+auto-merge を有効にした PR は CI 通過後に GitHub が squash merge する。
+
+Claude 側の操作は `enable_pr_auto_merge`（MCP）または `gh pr merge --auto --squash`。
+CI の完了を待ってから何かをする必要はない。有効にした時点で GitHub に委ねる。
+
+以前は自前のワークフローでマージしていたが、ルールセットで必須チェックを設定した時点で
+ネイティブ auto-merge が CI を待つようになり、二重の仕組みになるため廃止した。
 
 ## ビルド
 
@@ -84,7 +91,6 @@ Directory.Build.props            全プロジェクト共通のビルド設定
 src/Netsoft.Jobs.Core/           実装（現在は空）
 tests/Netsoft.Jobs.Core.Tests/   テスト
 .github/workflows/ci.yml         build / test / format
-.github/workflows/auto-merge.yml CI 成功後の自動マージ
 ```
 
 ## 規約
@@ -97,4 +103,5 @@ tests/Netsoft.Jobs.Core.Tests/   テスト
 ## やらないこと
 
 - デプロイ（未定。CI はビルドとテストのみ）
-- `main` への直接 push。変更は必ず PR を通す
+- `main` への直接 push。変更は必ず PR を通す（ルールセットで禁止されている）
+- 自前のマージ処理。マージの判断は auto-merge を有効にするかどうかだけ
