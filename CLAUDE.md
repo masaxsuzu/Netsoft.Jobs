@@ -93,15 +93,15 @@ Netsoft.Jobs.slnx                ソリューション（新形式）
 global.json                      使用する SDK を固定する
 Directory.Build.props            全プロジェクト共通のビルド設定
 src/Directory.Build.props        src 配下に Netsoft.Jobs. の prefix を付ける
-src/Core/                        実装（現在は空）→ Netsoft.Jobs.Core
+src/Domain/                      エンティティ・状態遷移 → Netsoft.Jobs.Domain
 tests/Directory.Build.props      tests 配下に Netsoft.Jobs. と .Tests を付ける
-tests/Core/                      テスト → Netsoft.Jobs.Core.Tests
+tests/Domain/                    テスト → Netsoft.Jobs.Domain.Tests
 .github/workflows/ci.yml         build / test / format
 ```
 
-プロジェクト名は `Core` のように短く保ち、`Netsoft.Jobs.` の prefix は
+プロジェクト名は `Domain` のように短く保ち、`Netsoft.Jobs.` の prefix は
 `src` / `tests` 直下の `Directory.Build.props` が付ける。
-prefix を各 csproj に書くと、同名の `Core.csproj` が 2 つあるため必ず片方がずれる。
+prefix を各 csproj に書くと、同名の `Domain.csproj` が 2 つあるため必ず片方がずれる。
 ディレクトリを増やすときも prefix を書かなくてよい。
 
 ## 規約
