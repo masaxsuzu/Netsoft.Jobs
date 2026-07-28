@@ -1,0 +1,81 @@
+name: Auto merge
+
+# CI の完了を待ってからマージする。
+#
+# GitHub ネイティブの auto-merge ではなくこのワークフローを使う理由:
+#   ネイティブ auto-merge はブランチ保護で「必須チェック」を設定して初めて
+#   CI を待つ。保護設定が無い状態で有効にすると即座にマージされてしまい、
+#   「CI の結果を見てからマージ」という前提が静かに壊れる。
+#   このワークフローなら管理者権限の設定に依存せず、CI 成功が常に前提になる。
+#
+# workflow_run を使うのは、fork からの PR でも書き込み権限のある文脈で動かすため。
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge:
+    name: merge if CI passed
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - name: Resolve pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          number=$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" \
+            --jq '[.[] | select(.state == "open")] | first | .number // empty')
+          if [ -z "$number" ]; then
+            echo "対応する open な PR が無いのでスキップします。"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: Check auto-merge label
+        id: gate
+        if: steps.pr.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+          # ラベルを明示的な合図にする。付いていない PR は人が見るまで待つ。
+          labels=$(gh pr view "$PR" --repo "$REPO" --json labels --jq '[.labels[].name] | join(",")')
+          draft=$(gh pr view "$PR" --repo "$REPO" --json isDraft --jq '.isDraft')
+          echo "labels=$labels draft=$draft"
+          if [ "$draft" = "true" ]; then
+            echo "draft なのでマージしません。"
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          elif echo "$labels" | tr ',' '\n' | grep -qx 'auto-merge'; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "auto-merge ラベルが無いのでマージしません。"
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Merge
+        if: steps.pr.outputs.found == 'true' && steps.gate.outputs.proceed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+          gh pr merge "$PR" --repo "$REPO" --squash --delete-branch
