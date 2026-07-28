@@ -18,10 +18,11 @@ dotnet test
 依頼 → タスク化 → 実装 → PR → CI → 自動マージ。
 詳細は [CLAUDE.md](./CLAUDE.md) を参照。
 
-| ワークフロー | 内容 |
+| 仕組み | 内容 |
 |---|---|
 | [`ci.yml`](.github/workflows/ci.yml) | build / test / format 検査 |
-| [`auto-merge.yml`](.github/workflows/auto-merge.yml) | CI 成功 + `auto-merge` ラベルで squash merge |
+| ルールセット | `main` への直接 push を禁止し、CI を必須チェックにする |
+| auto-merge | 有効にした PR を、CI 通過後に GitHub が squash merge する |
 
-`auto-merge` ラベルが付いていない PR は自動マージされない。
+auto-merge を有効にしていない PR は自動マージされない。
 ラベルの意味は [.github/labels.md](.github/labels.md)。
