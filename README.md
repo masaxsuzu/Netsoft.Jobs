@@ -25,4 +25,3 @@ dotnet test
 | auto-merge | 有効にした PR を、CI 通過後に GitHub が squash merge する |
 
 auto-merge を有効にしていない PR は自動マージされない。
-ラベルの意味は [.github/labels.md](.github/labels.md)。
