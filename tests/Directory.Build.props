@@ -1,0 +1,15 @@
+<Project>
+
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!--
+    テストは src と同じプロジェクト名 (Core) を使うため、.Tests を付けて衝突を避ける。
+    src/Core と tests/Core が対応していることが、名前から読み取れる。
+  -->
+  <PropertyGroup>
+    <AssemblyName>Netsoft.Jobs.$(MSBuildProjectName).Tests</AssemblyName>
+    <RootNamespace>Netsoft.Jobs.$(MSBuildProjectName).Tests</RootNamespace>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+</Project>

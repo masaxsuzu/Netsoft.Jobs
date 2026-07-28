@@ -11,7 +11,7 @@ dotnet build
 dotnet test
 ```
 
-.NET 8 SDK が必要。
+**.NET 10 SDK が必要。** ターゲットは `net10.0`、言語バージョンは C# 14。
 
 ## 開発サイクル
 
