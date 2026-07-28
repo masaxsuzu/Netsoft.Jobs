@@ -1,0 +1,14 @@
+<Project>
+
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!--
+    src 配下のプロジェクト名は短く保ち、Netsoft.Jobs の prefix はここで付ける。
+    ディレクトリ名を変えれば名前空間も追随するので、二重管理が起きない。
+  -->
+  <PropertyGroup>
+    <AssemblyName>Netsoft.Jobs.$(MSBuildProjectName)</AssemblyName>
+    <RootNamespace>Netsoft.Jobs.$(MSBuildProjectName)</RootNamespace>
+  </PropertyGroup>
+
+</Project>
