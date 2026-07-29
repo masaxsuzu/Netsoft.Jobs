@@ -185,7 +185,9 @@ public sealed class SqliteJobStoreTests
 
         job.Apply(JobTrigger.Start, BaseTime.AddMinutes(1));
         job.Apply(JobTrigger.Complete, BaseTime.AddMinutes(2));
-        await store.UpdateAsync(job, None);
+
+        // 読み出したときの状態は Queued。DB もまだ Queued なので書き戻せる。
+        Assert.True(await store.UpdateAsync(job, JobStatus.Queued, None));
 
         Job? loaded = await store.FindAsync(job.Id, None);
 
@@ -196,18 +198,49 @@ public sealed class SqliteJobStoreTests
         Assert.Null(loaded.FailureMessage);
     }
 
+    /// <summary>
+    /// 読み出してから書き戻すまでの間に他所が状態を進めていたら、書き戻してはいけない。
+    /// 上書きすると、先に進んだ側の記録（完了や失敗）が消える。
+    /// </summary>
+    [Fact]
+    public async Task UpdateAsyncは状態が食い違うと書き戻さずfalseを返す()
+    {
+        using TemporaryDatabase database = new();
+        SqliteJobStore store = await database.OpenStoreAsync();
+
+        Job job = JobAt("job-1", BaseTime);
+        job.Apply(JobTrigger.Start, BaseTime.AddMinutes(1));
+        await store.AddAsync(job, None);
+
+        // 他所が先に Completed まで進めた状況。
+        Job other = await LoadAsync(store, "job-1");
+        other.Apply(JobTrigger.Complete, BaseTime.AddMinutes(2));
+        Assert.True(await store.UpdateAsync(other, JobStatus.Running, None));
+
+        // こちらは Running のつもりで Cancelling を書こうとしている。
+        job.Apply(JobTrigger.RequestCancel, BaseTime.AddMinutes(3));
+
+        Assert.False(await store.UpdateAsync(job, JobStatus.Running, None));
+
+        // 読み直して、1 バイトも変わっていないことを確かめる。
+        Job reloaded = await LoadAsync(store, "job-1");
+        Assert.Equal(JobStatus.Completed, reloaded.Status);
+        Assert.Equal(BaseTime.AddMinutes(2), reloaded.FinishedAt);
+    }
+
     [Fact]
     public async Task UpdateAsyncは存在しないIdなら例外になる()
     {
         using TemporaryDatabase database = new();
         SqliteJobStore store = await database.OpenStoreAsync();
 
-        // 保存していない Job を書き戻そうとしている。黙って成功すると
+        // 保存していない Job を書き戻そうとしている。状態の食い違い（false）と違い、
+        // これは取り違えか他所からの削除でしかない。黙って no-op にすると
         // 遷移が失われたことに呼び出し側が気づけないので、失敗として知らせる。
         Job job = JobAt("居ない", BaseTime);
 
-        JobNotFoundException error =
-            await Assert.ThrowsAsync<JobNotFoundException>(() => store.UpdateAsync(job, None));
+        JobNotFoundException error = await Assert.ThrowsAsync<JobNotFoundException>(
+            () => store.UpdateAsync(job, JobStatus.Queued, None));
 
         Assert.Equal(job.Id, error.Id);
         Assert.Empty(await store.ListAsync(None));
@@ -315,6 +348,10 @@ public sealed class SqliteJobStoreTests
 
         Assert.Equal("Running", await command.ExecuteScalarAsync(None));
     }
+
+    private static async Task<Job> LoadAsync(SqliteJobStore store, string id) =>
+        await store.FindAsync(JobId.From(id), None)
+        ?? throw new InvalidOperationException($"Job {id} が保存されていません。");
 
     private static Job JobAt(string id, DateTimeOffset createdAt) =>
         Job.Create(JobId.From(id), $"{id} の Job", "Demo", string.Empty, createdAt);

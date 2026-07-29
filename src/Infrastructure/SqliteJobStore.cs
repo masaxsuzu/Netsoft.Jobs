@@ -106,20 +106,32 @@ public sealed class SqliteJobStore : IJobStore
     /// 指定された Job が存在しない場合。
     /// </exception>
     /// <remarks>
-    /// 存在しない Id を黙って無視しない。UpdateAsync を呼ぶ時点で呼び出し側は
-    /// 「読み出して遷移させた Job を書き戻す」つもりでいるので、対象が無いのは
-    /// 取り違えか、他所から消されたかのどちらかしかない。何もせずに成功を返すと
-    /// Running → Completed のような遷移が失われたことに誰も気づけない。
-    /// 保存されていないなら失敗として知らせるほうが、原因の近くで止まる。
+    /// <para>
+    /// 条件付き更新（WHERE に状態を含める）で、読み出しから書き込みまでの間に
+    /// 他所が状態を進めていないことを DB に確かめさせる。呼び出し側が読んだ状態を
+    /// そのまま前提にすると、同時に動く実行エンジンとキャンセルが互いの結果を上書きする。
+    /// 前提が成り立ったかどうかを判断できるのは、実際に書き込む DB だけである。
+    /// </para>
+    /// <para>
+    /// 更新できなかったとき、状態の食い違いと Id の取り違えを区別する。
+    /// 前者は同時実行のもとで普通に起きることなので false を返して読み直させる。
+    /// 後者は呼び出し側の誤り（または他所から消された）で、黙って no-op にすると
+    /// Running → Completed のような遷移が失われたことに誰も気づけないので例外にする。
+    /// 一緒くたに false を返すと、取り違えのバグが「競合に負けただけ」に化けて隠れる。
+    /// </para>
+    /// <para>
+    /// 存在確認の SELECT は 0 行だったときにしか実行しない。
+    /// 書き戻せる通常の経路に余分な問い合わせを足さないため。
+    /// </para>
     /// </remarks>
-    public async Task UpdateAsync(Job job, CancellationToken cancellationToken)
+    public async Task<bool> UpdateAsync(Job job, JobStatus expectedStatus, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(job);
 
         await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
         await using SqliteCommand command = connection.CreateCommand();
 
-        // Id は WHERE でだけ使う。作成日時と種類は登録後に変わらないが、
+        // Id と状態は WHERE でだけ使う。作成日時と種類は登録後に変わらないが、
         // 列を絞ると「何が更新対象か」を 2 箇所で管理することになるので全列を書き戻す。
         command.CommandText =
             """
@@ -132,16 +144,24 @@ public sealed class SqliteJobStore : IJobStore
                 StartedAt = $startedAt,
                 FinishedAt = $finishedAt,
                 FailureMessage = $failureMessage
-            WHERE Id = $id;
+            WHERE Id = $id AND Status = $expectedStatus;
             """;
 
         Bind(command, job);
+        command.Parameters.AddWithValue("$expectedStatus", ToText(expectedStatus));
 
         int affected = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        if (affected == 0)
+        if (affected != 0)
         {
-            throw new JobNotFoundException(job.Id);
+            return true;
         }
+
+        if (await ExistsAsync(connection, job.Id, cancellationToken).ConfigureAwait(false))
+        {
+            return false;
+        }
+
+        throw new JobNotFoundException(job.Id);
     }
 
     /// <inheritdoc />
@@ -234,6 +254,23 @@ public sealed class SqliteJobStore : IJobStore
             await connection.DisposeAsync().ConfigureAwait(false);
             throw;
         }
+    }
+
+    /// <summary>
+    /// 行が在るかだけを見る。更新が 0 行だった理由を切り分けるために使う。
+    /// </summary>
+    private static async Task<bool> ExistsAsync(
+        SqliteConnection connection,
+        JobId id,
+        CancellationToken cancellationToken)
+    {
+        await using SqliteCommand command = connection.CreateCommand();
+
+        // 列は要らない。在ることが分かればよいので 1 行取れるかだけを見る。
+        command.CommandText = "SELECT 1 FROM Jobs WHERE Id = $id LIMIT 1;";
+        command.Parameters.AddWithValue("$id", id.Value);
+
+        return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is not null;
     }
 
     private static async Task ExecuteAsync(SqliteConnection connection, string sql, CancellationToken cancellationToken)

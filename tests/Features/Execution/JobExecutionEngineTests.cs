@@ -23,6 +23,13 @@ public sealed class JobExecutionEngineTests : IDisposable
     private readonly FixedTimeProvider _timeProvider = new(Now);
     private readonly RunningJobRegistry _runningJobs = new();
 
+    // エンジンには割り込み用のデコレータ越しに store を渡す。割り込みを仕掛けなければ素通しなので、
+    // 競合を扱わないテストの見え方は変わらない。テスト自身は _store を直に使い、
+    // 「他所からの書き込み」をエンジンの経路とは別に起こす。
+    private readonly InterferingJobStore _engineStore;
+
+    public JobExecutionEngineTests() => _engineStore = new InterferingJobStore(_store);
+
     public void Dispose() => _store.Dispose();
 
     [Fact]
@@ -109,7 +116,7 @@ public sealed class JobExecutionEngineTests : IDisposable
         // 状態を Cancelling へ進めてから、実行中のハンドラへ伝える。
         Job job = await FindAsync("job-1");
         Assert.True(job.Apply(JobTrigger.RequestCancel, Now).IsAllowed);
-        await _store.UpdateAsync(job, CancellationToken.None);
+        Assert.True(await _store.UpdateAsync(job, JobStatus.Running, CancellationToken.None));
 
         Assert.True(_runningJobs.TryRequestCancel(JobId.From("job-1")));
 
@@ -132,7 +139,7 @@ public sealed class JobExecutionEngineTests : IDisposable
         // 状態だけ Cancelling にして、ハンドラには伝えずに完走させる。
         Job job = await FindAsync("job-1");
         job.Apply(JobTrigger.RequestCancel, Now);
-        await _store.UpdateAsync(job, CancellationToken.None);
+        Assert.True(await _store.UpdateAsync(job, JobStatus.Running, CancellationToken.None));
 
         handler.Release();
         await running;
@@ -192,6 +199,103 @@ public sealed class JobExecutionEngineTests : IDisposable
 
         Assert.False(await engine.RunOnceAsync(CancellationToken.None));
         Assert.Empty(await _store.ListAsync(CancellationToken.None));
+    }
+
+    /// <summary>
+    /// 候補を取ってから Running を書き戻すまでの間に、他のエンジンが同じ Job を取った状況。
+    /// ここで実行してしまうと同じ Job が 2 つのプロセスで動く。
+    /// </summary>
+    [Fact]
+    public async Task 取得と開始の間に他から開始されたJobは実行しない()
+    {
+        ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
+        await AddQueuedAsync("job-1");
+        JobExecutionEngine engine = CreateEngine(handler);
+
+        _engineStore.BeforeNextUpdate = () => StealAsync("job-1");
+
+        Assert.False(await engine.RunOnceAsync(CancellationToken.None));
+
+        Assert.Empty(handler.Executions);
+
+        // 先に取った側が実行している。こちらは何も書いていない。
+        Assert.Equal(JobStatus.Running, (await FindAsync("job-1")).Status);
+    }
+
+    [Fact]
+    public async Task 取得と開始の間に取られても次の候補は実行される()
+    {
+        ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
+        await AddQueuedAsync("job-1", parameters: "他に取られる", createdAt: Now);
+        await AddQueuedAsync("job-2", parameters: "実行される", createdAt: Now.AddSeconds(1));
+        JobExecutionEngine engine = CreateEngine(handler);
+
+        _engineStore.BeforeNextUpdate = () => StealAsync("job-1");
+
+        Assert.True(await engine.RunOnceAsync(CancellationToken.None));
+
+        // 取られた 1 件で諦めず、次の候補を取り直している。
+        Assert.Equal(["実行される"], handler.Executions);
+        Assert.Equal(JobStatus.Completed, (await FindAsync("job-2")).Status);
+    }
+
+    /// <summary>
+    /// 結末を読み出してから書き戻すまでの間にキャンセル要求が入った状況。
+    /// Running を前提に書いた Completed は弾かれるので、読み直して Cancelling から書き直す。
+    /// </summary>
+    [Fact]
+    public async Task 結末の記録が競合に負けたら読み直して書き直す()
+    {
+        ControllableJobHandler handler = new(HandledJobType);
+        await AddQueuedAsync("job-1");
+        JobExecutionEngine engine = CreateEngine(handler);
+
+        Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
+        await handler.Entered;
+
+        _engineStore.BeforeNextUpdate = async () =>
+        {
+            Job cancelling = await FindAsync("job-1");
+            Assert.True(cancelling.Apply(JobTrigger.RequestCancel, Now).IsAllowed);
+            Assert.True(await _store.UpdateAsync(cancelling, JobStatus.Running, CancellationToken.None));
+        };
+
+        handler.Release();
+        Assert.True(await running);
+
+        Assert.Equal(JobStatus.Completed, (await FindAsync("job-1")).Status);
+
+        // 開始で 1 回、結末で 2 回（1 回目は競合で弾かれた）。やり直しが起きたことの裏付け。
+        Assert.Equal(3, _engineStore.UpdateAttempts);
+    }
+
+    /// <summary>
+    /// 別のプロセスの起動時復旧が、この Job を残骸とみなして Failed で閉じた状況。
+    /// 読み直した先は終端なので、実行の結末で上書きしてはいけない。
+    /// </summary>
+    [Fact]
+    public async Task 結末を書く前に他が終端を書いていたら上書きしない()
+    {
+        ControllableJobHandler handler = new(HandledJobType);
+        await AddQueuedAsync("job-1");
+        JobExecutionEngine engine = CreateEngine(handler);
+
+        Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
+        await handler.Entered;
+
+        _engineStore.BeforeNextUpdate = async () =>
+        {
+            Job closed = await FindAsync("job-1");
+            Assert.True(closed.Apply(JobTrigger.Fail, Now, "他のプロセスが閉じました。").IsAllowed);
+            Assert.True(await _store.UpdateAsync(closed, JobStatus.Running, CancellationToken.None));
+        };
+
+        handler.Release();
+        Assert.True(await running);
+
+        Job job = await FindAsync("job-1");
+        Assert.Equal(JobStatus.Failed, job.Status);
+        Assert.Equal("他のプロセスが閉じました。", job.FailureMessage);
     }
 
     [Fact]
@@ -304,7 +408,7 @@ public sealed class JobExecutionEngineTests : IDisposable
 
     private JobExecutionEngine CreateEngine(params IJobHandler[] handlers) =>
         new(
-            _store,
+            _engineStore,
             new JobHandlerRegistry(handlers),
             _runningJobs,
             _timeProvider,
@@ -341,8 +445,19 @@ public sealed class JobExecutionEngineTests : IDisposable
             job.Apply(JobTrigger.RequestCancel, Now);
         }
 
-        await _store.UpdateAsync(job, CancellationToken.None);
+        // 保存されているのは Queued の状態。そこから書き戻す。
+        await _store.UpdateAsync(job, JobStatus.Queued, CancellationToken.None);
         return job;
+    }
+
+    /// <summary>
+    /// 他のエンジンが先に同じ Job を取った状況を作る。エンジンとは別に store へ直接書く。
+    /// </summary>
+    private async Task StealAsync(string id)
+    {
+        Job job = await FindAsync(id);
+        Assert.True(job.Apply(JobTrigger.Start, Now).IsAllowed);
+        Assert.True(await _store.UpdateAsync(job, JobStatus.Queued, CancellationToken.None));
     }
 
     private async Task<Job> FindAsync(string id) =>

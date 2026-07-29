@@ -13,6 +13,7 @@ public sealed class CancelJobHandlerTests : IDisposable
 
     private readonly TemporaryJobStore _jobs = new();
     private readonly CancelJobCallLog _log = new();
+    private readonly InterferingJobStore _interference;
     private readonly RecordingJobStore _store;
     private readonly RecordingRunningJobRegistry _runningJobs;
     private readonly FixedTimeProvider _timeProvider = new(Requested);
@@ -20,7 +21,9 @@ public sealed class CancelJobHandlerTests : IDisposable
 
     public CancelJobHandlerTests()
     {
-        _store = new RecordingJobStore(_jobs, _log);
+        // 割り込みを仕掛けなければ素通しなので、競合を扱わないテストの見え方は変わらない。
+        _interference = new InterferingJobStore(_jobs);
+        _store = new RecordingJobStore(_interference, _log);
         _runningJobs = new RecordingRunningJobRegistry(_log);
         _handler = new CancelJobHandler(_store, _runningJobs, _timeProvider);
     }
@@ -163,6 +166,60 @@ public sealed class CancelJobHandlerTests : IDisposable
 
         // 現在の状態は返す。呼び出し側が読み直さずに表示を決められるようにするため。
         Assert.Equal(status, result.Job?.Status);
+    }
+
+    /// <summary>
+    /// 読み出しと保存の間に、実行エンジンがハンドラの完走を Completed として書き込む状況。
+    /// ここで Cancelling を上書きすると、終わっている Job が永久に Cancelling のまま固まる。
+    /// </summary>
+    [Fact]
+    public async Task 読み出しと保存の間に完了が書かれても上書きしない()
+    {
+        await AddAsync(Running("job-1"));
+
+        _interference.BeforeNextUpdate = async () =>
+        {
+            Job completed = await SavedAsync("job-1");
+            Assert.True(completed.Apply(JobTrigger.Complete, Finished).IsAllowed);
+            Assert.True(await _jobs.UpdateAsync(completed, JobStatus.Running, CancellationToken.None));
+        };
+
+        CancelJobResult result = await CancelAsync("job-1");
+
+        // 読み直した先は終端なので、状態機械が拒否する。エンドポイントはこれを 409 に写す。
+        Assert.False(result.IsSuccess);
+        Assert.Equal(JobTransitionRejection.JobAlreadyFinished, result.Rejection);
+        Assert.Equal(nameof(JobStatus.Completed), result.Job?.Status);
+
+        // 保存されている状態は完了のまま。実行の結末が消えていない。
+        Job saved = await SavedAsync("job-1");
+        Assert.Equal(JobStatus.Completed, saved.Status);
+        Assert.Equal(Finished, saved.FinishedAt);
+
+        // 止める相手はもう居ない。伝えるのは保存できたときだけ。
+        Assert.Empty(_runningJobs.RequestedIds);
+    }
+
+    [Fact]
+    public async Task 読み出しと保存の間に実行が始まったら読み直して要求し直す()
+    {
+        await AddAsync(Queued("job-1"));
+
+        _interference.BeforeNextUpdate = async () =>
+        {
+            Job started = await SavedAsync("job-1");
+            Assert.True(started.Apply(JobTrigger.Start, Started).IsAllowed);
+            Assert.True(await _jobs.UpdateAsync(started, JobStatus.Queued, CancellationToken.None));
+        };
+
+        CancelJobResult result = await CancelAsync("job-1");
+
+        // 待機中のまま書けていたら Cancelled になっていた。実行が始まっている以上、
+        // ハンドラの受理を待つ Cancelling が正しい。
+        Assert.True(result.IsSuccess);
+        Assert.Equal(nameof(JobStatus.Cancelling), result.Job?.Status);
+        Assert.Equal(JobStatus.Cancelling, (await SavedAsync("job-1")).Status);
+        Assert.Equal([JobId.From("job-1")], _runningJobs.RequestedIds);
     }
 
     [Fact]

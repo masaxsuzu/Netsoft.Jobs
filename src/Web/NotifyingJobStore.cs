@@ -19,6 +19,7 @@ namespace Netsoft.Jobs.Web;
 /// <para>
 /// 通知は書き込みの成功後に出す。先に出すと、書き込みが失敗したのに画面が読み直してしまう
 /// （害は無いが無駄で、失敗時に「変わったはずなのに変わっていない」表示揺れの原因になる）。
+/// 条件付き更新が書き戻さなかった場合（<see cref="UpdateAsync"/> が false）も同じ理由で通知しない。
 /// </para>
 /// </remarks>
 public sealed class NotifyingJobStore : IJobStore
@@ -43,10 +44,18 @@ public sealed class NotifyingJobStore : IJobStore
     }
 
     /// <inheritdoc />
-    public async Task UpdateAsync(Job job, CancellationToken cancellationToken)
+    public async Task<bool> UpdateAsync(Job job, JobStatus expectedStatus, CancellationToken cancellationToken)
     {
-        await _inner.UpdateAsync(job, cancellationToken);
-        _feed.Publish();
+        bool updated = await _inner.UpdateAsync(job, expectedStatus, cancellationToken);
+        if (updated)
+        {
+            // false は「前提が崩れて何も書かなかった」。DB は 1 バイトも変わっていないので、
+            // 通知しても画面が同じ一覧を描き直すだけで無駄になる。
+            // 書き換えた側が自分の更新で通知するので、変更が伝わらないこともない。
+            _feed.Publish();
+        }
+
+        return updated;
     }
 
     /// <inheritdoc />

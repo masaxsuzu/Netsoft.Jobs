@@ -9,16 +9,24 @@ namespace Netsoft.Jobs.Features.Execution;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>このエンジンはプロセス内で 1 つだけ動かすこと。同時実行数は 1 である。</b>
-/// <see cref="IJobStore.FindOldestQueuedAsync"/> は「取得」であって「取得して予約」ではないため、
-/// ディスパッチが同時に 2 つ動くと同じ Job を二重に拾える。取得と Start の間に
-/// 他者を締め出す仕組みは store 側にも無い。
+/// <b>同時実行数が 1 なのは、このエンジン 1 インスタンスあたりの話である。</b>
+/// システム全体で 1 件ずつしか動かないという意味ではない。エンジンが複数動けば
+/// その数だけ Job が並行する。
 /// </para>
 /// <para>
-/// 将来並列化するなら、まず store 側に予約操作（Queued の 1 件を条件付き更新で Running にし、
-/// 更新できた側だけがその Job を得る）を足すこと。ここでロックを持っても、
-/// プロセスが 2 つ立った瞬間に意味を失う。あわせて
-/// <see cref="RunningJobRegistry"/> を Job 単位の辞書に変える必要がある。
+/// 二重実行が起きないことと、状態が壊れないことは <see cref="IJobStore.UpdateAsync"/> の
+/// 条件付き更新が保証する。Queued の候補を取ってから Running を書き戻すまでに他が先に取っていれば
+/// 書き戻しに失敗するので、エンジンが複数動いても（別プロセスでも）同じ Job を 2 回は実行しない。
+/// 正しさをエンジンの数の前提に置いていない
+/// （起動時復旧だけは別の前提を置いている。<see cref="EnsureRecoveredAsync"/> の注記を参照）。
+/// </para>
+/// <para>
+/// ただし<b>キャンセルの伝達は同一プロセス内に限る</b>。<see cref="RunningJobRegistry"/> は
+/// プロセス内の辞書なので、別プロセスで走っている Job にトークンは届かない。
+/// その場合その Job は <see cref="JobStatus.Cancelling"/> のまま、実際に走らせているプロセスが
+/// 完了か失敗を書くまで止まらない（状態機械が Cancelling からの Complete / Fail を
+/// 認めているのは、この決着を許すため）。プロセスをまたいでキャンセルを効かせたいなら、
+/// 伝達の口を DB など共有の場所へ移すこと。
 /// </para>
 /// <para>
 /// ホスティング（常駐させる殻）には依存しない。1 回分を進める <see cref="RunOnceAsync"/> と、
@@ -42,7 +50,10 @@ public sealed class JobExecutionEngine
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<JobExecutionEngine> _logger;
 
-    // 起動時復旧が済んだか。エンジンは 1 つしか動かない前提なので排他で守らない。
+    // 起動時復旧が済んだか。インスタンスごとに持つので、エンジンを複数立てれば
+    // その数だけ復旧が走る。復旧も条件付き更新で書くため、重なっても壊れない
+    // （先に書けた 1 つだけが Failed を記録し、残りは書き戻せずに見送る）。
+    // 1 インスタンス内では実行が始まる前に 1 度で済ませたいだけなので、排他で守らない。
     private bool _recovered;
 
     public JobExecutionEngine(
@@ -80,6 +91,12 @@ public sealed class JobExecutionEngine
     /// 逆順にすると、このプロセスが Running にした Job を復旧が Failed で上書きしうる。
     /// 明示的に呼ぶこともできるが、呼ばなくても実行前に必ず走る。
     /// </para>
+    /// <para>
+    /// 復旧は Running / Cancelling をすべて「前回の残骸」とみなす。条件付き更新はこの見立て自体は
+    /// 守ってくれないので、既に別のエンジンが動いている最中に新しいエンジンを立てると、
+    /// 本当に走っている Job まで Failed で閉じてしまう。復旧はプロセスの立ち上げ時、
+    /// つまり誰も走っていないところから始めるときのものである。
+    /// </para>
     /// </remarks>
     public async Task EnsureRecoveredAsync(CancellationToken cancellationToken)
     {
@@ -99,9 +116,16 @@ public sealed class JobExecutionEngine
                     _timeProvider.GetUtcNow(),
                     CrashRecoveryMessage);
 
-                if (result.IsAllowed)
+                if (!result.IsAllowed)
                 {
-                    await _store.UpdateAsync(job, cancellationToken);
+                    continue;
+                }
+
+                // 読み出したときの状態は絞り込みに使った status そのもの。
+                // 書き戻せなかったのは他が先にこの Job を処理したということなので、
+                // 復旧の対象ではなくなっている。読み直して試し直さずに次へ進む。
+                if (await _store.UpdateAsync(job, status, cancellationToken))
+                {
                     _logger.LogWarning("Job {JobId} を前回プロセスの異常終了として Failed にしました。", job.Id.Value);
                 }
             }
@@ -116,32 +140,51 @@ public sealed class JobExecutionEngine
     /// </summary>
     /// <returns>Job を 1 件実行したなら true。実行対象が無ければ false。</returns>
     /// <remarks>
+    /// <para>
     /// ハンドラが投げた例外はこのメソッドの外に出ない。Job の失敗として記録して正常に返す。
     /// 1 件の失敗が次の Job の実行を妨げてはいけないため。
+    /// </para>
+    /// <para>
+    /// 候補の取得と Running の書き戻しの間に他が同じ Job を取ることはありうる。
+    /// 取れた側だけが実行するので、二重に実行されることはない。
+    /// </para>
     /// </remarks>
     public async Task<bool> RunOnceAsync(CancellationToken cancellationToken)
     {
         await EnsureRecoveredAsync(cancellationToken);
 
-        Job? job = await _store.FindOldestQueuedAsync(cancellationToken);
-        if (job is null)
+        // 取れる候補が無くなるまで繰り返す。書き戻せなかったということは、
+        // その Job は他によって Queued から先へ進められたということなので、
+        // 次の FindOldestQueuedAsync はもう同じ Job を返さない。
+        // 状態機械は終端へ向かう一方通行で、Queued へ戻る遷移は無い。
+        // よって候補は減る一方であり、このループは必ず止まる。
+        while (true)
         {
-            return false;
+            Job? job = await _store.FindOldestQueuedAsync(cancellationToken);
+            if (job is null)
+            {
+                return false;
+            }
+
+            JobTransitionResult started = job.Apply(JobTrigger.Start, _timeProvider.GetUtcNow());
+            if (!started.IsAllowed)
+            {
+                // Queued で絞って取ったものが Queued でない。store の実装が契約を守っていない。
+                // ここで次の候補へ進むと同じ Job を延々と拾い続けるので、今回の周回を諦める。
+                _logger.LogWarning("Job {JobId} は既に他から開始されています。今回は実行しません。", job.Id.Value);
+                return false;
+            }
+
+            // Apply の前の状態は Queued。ここで書き戻せた 1 つだけがこの Job を実行する。
+            if (!await _store.UpdateAsync(job, JobStatus.Queued, cancellationToken))
+            {
+                _logger.LogInformation("Job {JobId} は他から開始されました。次の候補を探します。", job.Id.Value);
+                continue;
+            }
+
+            await RunHandlerAsync(job);
+            return true;
         }
-
-        JobTransitionResult started = job.Apply(JobTrigger.Start, _timeProvider.GetUtcNow());
-        if (!started.IsAllowed)
-        {
-            // Queued を指定して取ったものが Queued でない。同時実行数 1 の前提が破れている。
-            // 二重に実行するより、今回は何もしなかったことにして次の周回に任せる。
-            _logger.LogWarning("Job {JobId} は既に他から開始されています。今回は実行しません。", job.Id.Value);
-            return false;
-        }
-
-        await _store.UpdateAsync(job, cancellationToken);
-
-        await RunHandlerAsync(job);
-        return true;
     }
 
     /// <summary>
@@ -254,35 +297,51 @@ public sealed class JobExecutionEngine
     /// ここだけは停止要求で中断しない。既に起きたことを書き残す処理なので、
     /// 中断すると完了した Job が Running のまま残り、次の起動で復旧に Failed とされてしまう。
     /// </para>
+    /// <para>
+    /// 読み直してから書き戻すまでの間にも状態は動きうる（キャンセル要求が届く、など）ので、
+    /// 書き戻せなければ読み直して評価をやり直す。状態機械は終端へ向かう一方通行で、
+    /// 書き戻せなかったということは相手が状態を先へ進めたということ。
+    /// 終端に達すれば以後は動かず、そこでは遷移が拒否されて抜けるので、やり直しは必ず有限で止まる。
+    /// </para>
     /// </remarks>
     private async Task FinishAsync(JobId id, JobTrigger trigger, string? failureMessage)
     {
-        Job? job = await _store.FindAsync(id, CancellationToken.None);
-        if (job is null)
+        while (true)
         {
-            _logger.LogWarning("Job {JobId} は実行後に見つかりませんでした。結末を記録できません。", id.Value);
-            return;
-        }
+            Job? job = await _store.FindAsync(id, CancellationToken.None);
+            if (job is null)
+            {
+                _logger.LogWarning("Job {JobId} は実行後に見つかりませんでした。結末を記録できません。", id.Value);
+                return;
+            }
 
-        DateTimeOffset now = _timeProvider.GetUtcNow();
+            // Apply は Job を破壊的に変えるので、読み出したときの状態をここで控える。
+            JobStatus expected = job.Status;
+            DateTimeOffset now = _timeProvider.GetUtcNow();
 
-        JobTransitionResult result = job.Apply(trigger, now, failureMessage);
-        if (!result.IsAllowed)
-        {
-            // 状態機械の判断に従う。ただし終端に達していない Job を放置すると
-            // 誰も動かしていないのに Running のまま残るので、失敗として閉じる。
-            if (job.Status.IsTerminal())
+            JobTransitionResult result = job.Apply(trigger, now, failureMessage);
+            if (!result.IsAllowed)
+            {
+                // 状態機械の判断に従う。ただし終端に達していない Job を放置すると
+                // 誰も動かしていないのに Running のまま残るので、失敗として閉じる。
+                if (job.Status.IsTerminal())
+                {
+                    return;
+                }
+
+                job.Apply(
+                    JobTrigger.Fail,
+                    now,
+                    $"実行の結末 {trigger} を状態 {job.Status} に記録できませんでした。");
+            }
+
+            if (await _store.UpdateAsync(job, expected, CancellationToken.None))
             {
                 return;
             }
 
-            job.Apply(
-                JobTrigger.Fail,
-                now,
-                $"実行の結末 {trigger} を状態 {job.Status} に記録できませんでした。");
+            _logger.LogInformation("Job {JobId} の状態が書き換わっていました。読み直して記録し直します。", id.Value);
         }
-
-        await _store.UpdateAsync(job, CancellationToken.None);
     }
 
     /// <summary>
