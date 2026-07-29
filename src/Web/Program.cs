@@ -1,0 +1,60 @@
+using Netsoft.Jobs.Domain;
+using Netsoft.Jobs.Features;
+using Netsoft.Jobs.Infrastructure;
+using Netsoft.Jobs.Web;
+using Netsoft.Jobs.Web.Components;
+
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+
+JobsOptions options = builder.Configuration.GetSection(JobsOptions.SectionName).Get<JobsOptions>()
+    ?? new JobsOptions();
+builder.Services.AddSingleton(options);
+
+builder.Services.AddRazorComponents()
+    .AddInteractiveServerComponents();
+
+builder.Services.AddJobFeatures();
+
+// 相対パスはコンテンツルート基準にする。カレントディレクトリ基準だと
+// dotnet run をどこから叩いたかで別の DB ができてしまう。
+string databasePath = Path.IsPathRooted(options.DatabasePath)
+    ? options.DatabasePath
+    : Path.Combine(builder.Environment.ContentRootPath, options.DatabasePath);
+
+// IJobStore は Singleton で登録する。実行エンジンが Singleton なので、
+// Scoped にするとエンジンに捕まった 1 つが生き続けて意味を成さない
+// （JobExecutionServiceCollectionExtensions の注記を参照）。
+// 素の SqliteJobStore も登録しておくのは、起動時初期化が InitializeAsync を
+// 具象型でしか呼べないため。IJobStore は変更通知のデコレータで包んで公開する。
+builder.Services.AddSingleton(new SqliteJobStore(databasePath));
+builder.Services.AddSingleton<JobChangeFeed>();
+builder.Services.AddSingleton<IJobStore>(provider => new NotifyingJobStore(
+    provider.GetRequiredService<SqliteJobStore>(),
+    provider.GetRequiredService<JobChangeFeed>()));
+
+// 設定で止められるようにしてある。テストがエンジンを止めて、
+// 「待機中のまま」のような状態を前提にした検証を安定して行うため。
+if (options.RunExecutionEngine)
+{
+    builder.Services.AddHostedService<JobExecutionHostedService>();
+}
+
+WebApplication app = builder.Build();
+
+app.UseStaticFiles();
+app.UseAntiforgery();
+
+app.MapRazorComponents<App>()
+    .AddInteractiveServerRenderMode();
+app.MapJobFeatures();
+
+// スキーマの用意はホストの起動（= 実行エンジンの開始）より前に済ませる。
+// エンジンは起動時復旧で store を読むので、逆順だとテーブルが無いまま読みに行く。
+await app.Services.GetRequiredService<SqliteJobStore>().InitializeAsync(CancellationToken.None);
+
+await app.RunAsync();
+
+/// <summary>
+/// テスト（WebApplicationFactory）がホストの入口を参照するための宣言。
+/// </summary>
+public partial class Program;

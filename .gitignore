@@ -4,3 +4,6 @@ obj/
 *.user
 TestResults/
 artifacts/
+
+# dotnet run が作る開発用の DB
+jobs.db*
