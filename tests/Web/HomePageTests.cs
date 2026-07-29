@@ -40,4 +40,43 @@ public sealed class HomePageTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.True(body.Length > 10_000, $"blazor.web.js が {body.Length} バイトしかありません。空配信の回帰です。");
     }
+
+    /// <summary>
+    /// GET / の応答はプリレンダリング出力そのもの。この段階のフォームは見えるだけで
+    /// 配線されておらず、操作すると入力が失われる（登録ボタンは素のフォーム送信に
+    /// なって再読み込み、入力は回路の最初の描画で巻き戻る）。だから回路が繋がるまで
+    /// 入力とボタンは disabled で出す。これが外れる回帰をここで塞ぐ。
+    /// HTML 全体の文字列比較はしない（壊れやすい）。対象のタグに disabled が
+    /// 付いていることだけを、的を絞って確かめる。
+    /// </summary>
+    [Fact]
+    public async Task プリレンダリング出力では登録フォームの入力とボタンがdisabledになっている()
+    {
+        using HttpClient client = _factory.CreateClient();
+
+        string html = await client.GetStringAsync("/");
+
+        foreach (string id in new[] { "job-name", "job-type", "job-parameters" })
+        {
+            string tag = TagContaining(html, $"id=\"{id}\"");
+            Assert.Contains("disabled", tag);
+        }
+
+        string submit = TagContaining(html, "type=\"submit\"");
+        Assert.Contains("disabled", submit);
+    }
+
+    /// <summary>
+    /// 目印の属性を含むタグの開始タグ部分（&lt; から &gt; まで）を取り出す。
+    /// 属性の順序や他の属性の有無に依存しないための最小限の切り出し。
+    /// </summary>
+    private static string TagContaining(string html, string marker)
+    {
+        int markerIndex = html.IndexOf(marker, StringComparison.Ordinal);
+        Assert.True(markerIndex >= 0, $"{marker} を含む要素がプリレンダリング出力にありません。");
+
+        int start = html.LastIndexOf('<', markerIndex);
+        int end = html.IndexOf('>', markerIndex);
+        return html[start..(end + 1)];
+    }
 }
