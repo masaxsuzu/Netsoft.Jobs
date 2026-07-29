@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Netsoft.Jobs.Features.Execution;
 using Netsoft.Jobs.Features.RegisterJob;
 
 namespace Netsoft.Jobs.Features;
@@ -27,6 +28,7 @@ public static class JobFeaturesServiceCollectionExtensions
         services.TryAddSingleton<IJobIdFactory, GuidV7JobIdFactory>();
 
         services.AddRegisterJob();
+        services.AddJobExecution();
 
         return services;
     }
