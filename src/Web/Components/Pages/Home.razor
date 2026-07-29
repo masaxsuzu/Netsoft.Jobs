@@ -14,12 +14,15 @@
 
 <h1>Netsoft.Jobs</h1>
 
+@* プリレンダリング中（回路が繋がる前）の操作は失われる。@onsubmit は動かず素の
+   フォーム送信になって入力ごと消えるし、押さなくても入力は回路の最初の描画で
+   サーバ状態に巻き戻る。だから回路が繋がるまで入力とボタンを disabled にしておく。 *@
 <section>
     <h2>Job の登録</h2>
     <form @onsubmit="RegisterAsync">
         <div>
             <label for="job-name">名前</label>
-            <input id="job-name" @bind="_name" />
+            <input id="job-name" disabled="@(!_interactive)" @bind="_name" />
             @foreach (string message in ErrorsFor("name"))
             {
                 <p class="error">@message</p>
@@ -27,7 +30,7 @@
         </div>
         <div>
             <label for="job-type">種類</label>
-            <input id="job-type" @bind="_jobType" placeholder="demo" />
+            <input id="job-type" disabled="@(!_interactive)" @bind="_jobType" placeholder="demo" />
             @foreach (string message in ErrorsFor("jobType"))
             {
                 <p class="error">@message</p>
@@ -35,13 +38,13 @@
         </div>
         <div>
             <label for="job-parameters">パラメータ</label>
-            <input id="job-parameters" @bind="_parameters" placeholder="demo は待ち秒数（例: 10）" />
+            <input id="job-parameters" disabled="@(!_interactive)" @bind="_parameters" placeholder="demo は待ち秒数（例: 10）" />
             @foreach (string message in ErrorsFor("parameters"))
             {
                 <p class="error">@message</p>
             }
         </div>
-        <button type="submit">登録</button>
+        <button type="submit" disabled="@(!_interactive)">登録</button>
     </form>
 </section>
 
@@ -83,9 +86,10 @@
                         <td>@job.FailureMessage</td>
                         <td>
                             @* 押せるかどうかは Domain の状態機械に聞く。ここで状態名を並べて
-                               判定すると、状態が増えたときに直し忘れたボタンができる。 *@
+                               判定すると、状態が増えたときに直し忘れたボタンができる。
+                               回路が繋がる前はそれ以前の問題として全部押せない（上の説明を参照）。 *@
                             <button type="button"
-                                    disabled="@(!JobCancelability.CanRequestCancel(job))"
+                                    disabled="@(!_interactive || !JobCancelability.CanRequestCancel(job))"
                                     @onclick="() => CancelAsync(job.Id)">
                                 キャンセル
                             </button>
@@ -105,6 +109,21 @@
     private string _name = string.Empty;
     private string _jobType = string.Empty;
     private string _parameters = string.Empty;
+
+    // 回路が繋がって操作がサーバに届くようになったか。プリレンダリング中は false のまま
+    // 描画されるので、フォームは見えても disabled で押せない。
+    private bool _interactive;
+
+    // OnAfterRender はプリレンダリング中には呼ばれず、対話モードで動き始めて
+    // 初めて呼ばれる。だから firstRender をそのまま「回路が繋がった」の合図に使える。
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _interactive = true;
+            StateHasChanged();
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
