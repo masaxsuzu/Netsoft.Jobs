@@ -47,6 +47,17 @@ jobs:
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
+      # E2E が使う Chromium。リビジョンは Microsoft.Playwright の版に紐づくので、
+      # キャッシュのキーに E2E.csproj のハッシュを含め、版が変わったら取り直す。
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('tests/E2E/E2E.csproj') }}
+
+      - name: Install Playwright browser
+        run: pwsh tests/E2E/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+
       - name: Test
         run: dotnet test --no-build --configuration Release --logger "trx;LogFileName=test-results.trx" --results-directory TestResults
 
