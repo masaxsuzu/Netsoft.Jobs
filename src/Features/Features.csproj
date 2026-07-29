@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    エンドポイントを機能と同じ場所に置くため ASP.NET Core を参照する。
+    NuGet ではなく FrameworkReference にするのは、ASP.NET Core が共有フレームワークとして
+    ランタイムに含まれているため。パッケージで取ると版がランタイムと二重管理になる。
+  -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!--
+    参照してよいのは Domain だけ。Infrastructure を参照すると、
+    機能の書き方が特定の DB 実装に引きずられる。永続化は IJobStore 越しにしか触らない。
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Domain\Domain.csproj" />
+  </ItemGroup>
+
+</Project>
