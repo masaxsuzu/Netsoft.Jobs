@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Routing;
+using Netsoft.Jobs.Features.CancelJob;
 using Netsoft.Jobs.Features.QueryJobs;
 using Netsoft.Jobs.Features.RegisterJob;
 
@@ -18,6 +19,7 @@ public static class JobFeaturesEndpointRouteBuilderExtensions
 
         endpoints.MapRegisterJob();
         endpoints.MapQueryJobs();
+        endpoints.MapCancelJob();
 
         return endpoints;
     }

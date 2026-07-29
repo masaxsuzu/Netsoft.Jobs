@@ -15,22 +15,15 @@ namespace Netsoft.Jobs.Features.QueryJobs;
 public static class QueryJobsEndpoint
 {
     /// <summary>
-    /// この機能が扱う URL。
-    /// </summary>
-    /// <remarks>
-    /// 登録が返す Location ヘッダ（<c>/api/jobs/{id}</c>）が指す先がこの詳細エンドポイントなので、
-    /// <see cref="RegisterJob.RegisterJobEndpoint"/> の URL と一致していなければならない。
-    /// </remarks>
-    private const string JobsPath = "/api/jobs";
-
-    /// <summary>
     /// <c>GET /api/jobs</c> と <c>GET /api/jobs/{id}</c> を登録する。Web 側はこれを呼ぶだけでよい。
     /// </summary>
     public static IEndpointRouteBuilder MapQueryJobs(this IEndpointRouteBuilder endpoints)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
 
-        endpoints.MapGet(JobsPath, async Task<Ok<IReadOnlyList<JobDto>>> (
+        // URL は登録の Location ヘッダとキャンセルの生え先が一致していなければならないので、
+        // 機能ごとに定数を持たず Features 直下の JobApiRoutes を共有する。
+        endpoints.MapGet(JobApiRoutes.Jobs, async Task<Ok<IReadOnlyList<JobDto>>> (
             QueryJobsHandler handler,
             CancellationToken cancellationToken) =>
         {
@@ -41,7 +34,7 @@ public static class QueryJobsEndpoint
         })
         .WithName("ListJobs");
 
-        endpoints.MapGet($"{JobsPath}/{{id}}", async Task<Results<Ok<JobDto>, NotFound>> (
+        endpoints.MapGet($"{JobApiRoutes.Jobs}/{{id}}", async Task<Results<Ok<JobDto>, NotFound>> (
             string id,
             QueryJobsHandler handler,
             CancellationToken cancellationToken) =>

@@ -14,9 +14,6 @@ namespace Netsoft.Jobs.Features.RegisterJob;
 /// </remarks>
 public static class RegisterJobEndpoint
 {
-    /// <summary>この機能が扱う URL。Location ヘッダの組み立てと共有する。</summary>
-    private const string JobsPath = "/api/jobs";
-
     /// <summary>
     /// <c>POST /api/jobs</c> を登録する。Web 側はこれを呼ぶだけでよい。
     /// </summary>
@@ -24,7 +21,7 @@ public static class RegisterJobEndpoint
     {
         ArgumentNullException.ThrowIfNull(endpoints);
 
-        endpoints.MapPost(JobsPath, async Task<Results<Created<JobDto>, ValidationProblem>> (
+        endpoints.MapPost(JobApiRoutes.Jobs, async Task<Results<Created<JobDto>, ValidationProblem>> (
             RegisterJobCommand command,
             RegisterJobHandler handler,
             CancellationToken cancellationToken) =>
@@ -36,9 +33,10 @@ public static class RegisterJobEndpoint
                 return TypedResults.ValidationProblem(result.Errors.ToProblemDetailsErrors());
             }
 
-            // 作られた資源の場所を返す。取得のエンドポイントは後続タスクで同じ URL に生える。
+            // 作られた資源の場所を返す。この URL が指す先は読み出しの詳細エンドポイントなので、
+            // 両者が同じ値を使うように定数を Features 直下で共有している。
             return TypedResults.Created(
-                $"{JobsPath}/{Uri.EscapeDataString(result.Value.Id)}",
+                $"{JobApiRoutes.Jobs}/{Uri.EscapeDataString(result.Value.Id)}",
                 result.Value);
         })
         .WithName("RegisterJob");
