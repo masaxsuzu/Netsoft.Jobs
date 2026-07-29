@@ -1,0 +1,186 @@
+@page "/"
+@using Netsoft.Jobs.Features
+@using Netsoft.Jobs.Features.CancelJob
+@using Netsoft.Jobs.Features.QueryJobs
+@using Netsoft.Jobs.Features.RegisterJob
+@implements IDisposable
+@inject RegisterJobHandler RegisterJob
+@inject QueryJobsHandler QueryJobs
+@inject CancelJobHandler CancelJob
+@inject JobChangeFeed ChangeFeed
+
+@* 画面は HTTP を経由せず、ハンドラを直接呼ぶ。同じプロセスにあるものを
+   HttpClient で叩くのは無駄なうえ、エラーが HTTP の形に化けて扱いにくくなる。 *@
+
+<h1>Netsoft.Jobs</h1>
+
+<section>
+    <h2>Job の登録</h2>
+    <form @onsubmit="RegisterAsync">
+        <div>
+            <label for="job-name">名前</label>
+            <input id="job-name" @bind="_name" />
+            @foreach (string message in ErrorsFor("name"))
+            {
+                <p class="error">@message</p>
+            }
+        </div>
+        <div>
+            <label for="job-type">種類</label>
+            <input id="job-type" @bind="_jobType" placeholder="demo" />
+            @foreach (string message in ErrorsFor("jobType"))
+            {
+                <p class="error">@message</p>
+            }
+        </div>
+        <div>
+            <label for="job-parameters">パラメータ</label>
+            <input id="job-parameters" @bind="_parameters" placeholder="demo は待ち秒数（例: 10）" />
+            @foreach (string message in ErrorsFor("parameters"))
+            {
+                <p class="error">@message</p>
+            }
+        </div>
+        <button type="submit">登録</button>
+    </form>
+</section>
+
+<section>
+    <h2>Job の一覧</h2>
+    @if (_notice is not null)
+    {
+        <p class="notice">@_notice</p>
+    }
+    @if (_jobs.Count == 0)
+    {
+        <p>Job はまだありません。</p>
+    }
+    else
+    {
+        <table>
+            <thead>
+                <tr>
+                    <th>名前</th>
+                    <th>種類</th>
+                    <th>状態</th>
+                    <th>作成日時</th>
+                    <th>開始日時</th>
+                    <th>終了日時</th>
+                    <th>失敗理由</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (JobDto job in _jobs)
+                {
+                    <tr>
+                        <td>@job.Name</td>
+                        <td>@job.JobType</td>
+                        <td>@job.Status</td>
+                        <td>@Format(job.CreatedAt)</td>
+                        <td>@Format(job.StartedAt)</td>
+                        <td>@Format(job.FinishedAt)</td>
+                        <td>@job.FailureMessage</td>
+                        <td>
+                            @* 押せるかどうかは Domain の状態機械に聞く。ここで状態名を並べて
+                               判定すると、状態が増えたときに直し忘れたボタンができる。 *@
+                            <button type="button"
+                                    disabled="@(!JobCancelability.CanRequestCancel(job))"
+                                    @onclick="() => CancelAsync(job.Id)">
+                                キャンセル
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+@code {
+    private IReadOnlyList<JobDto> _jobs = [];
+    private IDictionary<string, string[]> _registrationErrors = new Dictionary<string, string[]>();
+    private string? _notice;
+
+    private string _name = string.Empty;
+    private string _jobType = string.Empty;
+    private string _parameters = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 読み込みより先に購読する。逆順だと、読み込みと再描画のすき間に起きた変更を取りこぼす。
+        ChangeFeed.Changed += HandleChanged;
+
+        await LoadAsync();
+    }
+
+    public void Dispose() => ChangeFeed.Changed -= HandleChanged;
+
+    /// <summary>
+    /// 実行エンジンや他の画面が Job を変えたときに呼ばれる。
+    /// </summary>
+    private void HandleChanged()
+    {
+        // 発火元はエンジンや API のスレッドなので、必ずこの回路の同期コンテキストへ載せ替える。
+        // 例外を出すと通知の発火元（store の書き込み）へ漏れるため、ここで握って表示に変える。
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await LoadAsync();
+                StateHasChanged();
+            }
+            catch (Exception exception)
+            {
+                _notice = $"一覧の更新に失敗しました: {exception.Message}";
+                StateHasChanged();
+            }
+        });
+    }
+
+    private async Task LoadAsync() =>
+        _jobs = await QueryJobs.ListAsync(CancellationToken.None);
+
+    private async Task RegisterAsync()
+    {
+        Result<JobDto> result = await RegisterJob.HandleAsync(
+            new RegisterJobCommand(_name, _jobType, _parameters),
+            CancellationToken.None);
+
+        if (result.IsFailure)
+        {
+            // 項目ごとの表示に使う形は HTTP の ValidationProblem と同じでよいので、変換を共有する。
+            _registrationErrors = result.Errors.ToProblemDetailsErrors();
+            return;
+        }
+
+        _registrationErrors = new Dictionary<string, string[]>();
+        _name = string.Empty;
+        _jobType = string.Empty;
+        _parameters = string.Empty;
+
+        // 一覧は store の変更通知でも更新されるが、自分の操作の結果は通知を待たずに反映する。
+        await LoadAsync();
+    }
+
+    private async Task CancelAsync(string id)
+    {
+        CancelJobResult result = await CancelJob.HandleAsync(id, CancellationToken.None);
+
+        // 拒否は誤りではなく「ボタンを出した後に状態が進んだ」競合。現在の状態を見せて説明する。
+        _notice = result switch
+        {
+            { Job: null } => "対象の Job が見つかりませんでした。",
+            { IsSuccess: false } => $"キャンセルできませんでした。現在の状態: {result.Job.Status}",
+            _ => null,
+        };
+
+        await LoadAsync();
+    }
+
+    private IEnumerable<string> ErrorsFor(string field) =>
+        _registrationErrors.TryGetValue(field, out string[]? messages) ? messages : [];
+
+    private static string Format(DateTimeOffset? value) =>
+        value is { } present ? present.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") : "-";
+}

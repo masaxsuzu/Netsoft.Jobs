@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    Web だけが Features と Infrastructure の両方を参照する。
+    どの永続化を使うかを選んで結線するのはホストの責務で、
+    Features は IJobStore 越しにしか永続化を知らない（Features.csproj の注記を参照）。
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Features\Features.csproj" />
+    <ProjectReference Include="..\Infrastructure\Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>
