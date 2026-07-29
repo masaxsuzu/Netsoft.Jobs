@@ -10,8 +10,12 @@ namespace Netsoft.Jobs.Features.Tests.Execution;
 /// <summary>
 /// DI 登録のテスト。Web 側が組み立てたときに解決できることをここで確かめる。
 /// </summary>
-public sealed class JobExecutionServiceCollectionExtensionsTests
+public sealed class JobExecutionServiceCollectionExtensionsTests : IDisposable
 {
+    private readonly TemporaryJobStore _store = new();
+
+    public void Dispose() => _store.Dispose();
+
     [Fact]
     public void 実行エンジンをDIから解決できる()
     {
@@ -44,13 +48,13 @@ public sealed class JobExecutionServiceCollectionExtensionsTests
         Assert.IsType<DemoJobHandler>(registry.Find(DemoJobHandler.DemoJobType));
     }
 
-    private static ServiceProvider BuildProvider()
+    private ServiceProvider BuildProvider()
     {
         ServiceCollection services = new();
 
         // Web 側がやることと同じ。IJobStore の実装を選ぶのは Features の関心ではない。
         services.AddLogging();
-        services.AddSingleton<IJobStore>(new InMemoryJobStore());
+        services.AddSingleton<IJobStore>(_store);
 
         services.AddJobExecution();
 

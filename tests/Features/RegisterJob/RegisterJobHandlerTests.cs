@@ -4,12 +4,14 @@ using Netsoft.Jobs.Features.Tests.Fakes;
 
 namespace Netsoft.Jobs.Features.Tests.RegisterJob;
 
-public sealed class RegisterJobHandlerTests
+public sealed class RegisterJobHandlerTests : IDisposable
 {
     private static readonly DateTimeOffset Now = new(2026, 7, 29, 9, 0, 0, TimeSpan.Zero);
 
-    private readonly InMemoryJobStore _store = new();
+    private readonly TemporaryJobStore _store = new();
     private readonly FixedTimeProvider _timeProvider = new(Now);
+
+    public void Dispose() => _store.Dispose();
 
     [Fact]
     public async Task 登録すると待機中のJobが保存される()
@@ -21,7 +23,7 @@ public sealed class RegisterJobHandlerTests
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Job saved = Assert.Single(_store.Jobs);
+        Job saved = Assert.Single(await ListAsync());
         Assert.Equal(JobStatus.Queued, saved.Status);
         Assert.Equal(nameof(JobStatus.Queued), result.Value.Status);
     }
@@ -35,7 +37,7 @@ public sealed class RegisterJobHandlerTests
             new RegisterJobCommand("毎晩の集計", "Demo", "これは JSON ではない"),
             CancellationToken.None);
 
-        Job saved = Assert.Single(_store.Jobs);
+        Job saved = Assert.Single(await ListAsync());
         Assert.Equal("毎晩の集計", saved.Name);
         Assert.Equal("Demo", saved.JobType);
         Assert.Equal("これは JSON ではない", saved.Parameters);
@@ -54,7 +56,7 @@ public sealed class RegisterJobHandlerTests
             new RegisterJobCommand("毎晩の集計", "Demo", "{}"),
             CancellationToken.None);
 
-        Job saved = Assert.Single(_store.Jobs);
+        Job saved = Assert.Single(await ListAsync());
         Assert.Equal(Now, saved.CreatedAt);
         Assert.Equal(Now, result.Value.CreatedAt);
         Assert.Null(saved.StartedAt);
@@ -70,7 +72,7 @@ public sealed class RegisterJobHandlerTests
             new RegisterJobCommand("毎晩の集計", "Demo", "{}"),
             CancellationToken.None);
 
-        Job saved = Assert.Single(_store.Jobs);
+        Job saved = Assert.Single(await ListAsync());
         Assert.Equal(JobId.From("job-1"), saved.Id);
         Assert.Equal("job-1", result.Value.Id);
     }
@@ -88,7 +90,7 @@ public sealed class RegisterJobHandlerTests
             CancellationToken.None);
 
         Assert.True(result.IsFailure);
-        Assert.Empty(_store.Jobs);
+        Assert.Empty(await ListAsync());
     }
 
     [Theory]
@@ -104,7 +106,7 @@ public sealed class RegisterJobHandlerTests
             CancellationToken.None);
 
         Assert.True(result.IsFailure);
-        Assert.Empty(_store.Jobs);
+        Assert.Empty(await ListAsync());
     }
 
     [Fact]
@@ -118,7 +120,7 @@ public sealed class RegisterJobHandlerTests
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Job saved = Assert.Single(_store.Jobs);
+        Job saved = Assert.Single(await ListAsync());
         Assert.Equal(string.Empty, saved.Parameters);
     }
 
@@ -133,7 +135,7 @@ public sealed class RegisterJobHandlerTests
 
         Assert.True(result.IsFailure);
         Assert.Equal("parameters", Assert.Single(result.Errors).Field);
-        Assert.Empty(_store.Jobs);
+        Assert.Empty(await ListAsync());
     }
 
     [Fact]
@@ -179,9 +181,11 @@ public sealed class RegisterJobHandlerTests
             Assert.True(result.IsSuccess);
         }
 
-        Assert.Equal(100, _store.Jobs.Select(job => job.Id).Distinct().Count());
+        Assert.Equal(100, (await ListAsync()).Select(job => job.Id).Distinct().Count());
     }
 
     private RegisterJobHandler CreateHandler(params string[] ids) =>
         new(_store, new StubJobIdFactory(ids), _timeProvider);
+
+    private Task<IReadOnlyList<Job>> ListAsync() => _store.ListAsync(CancellationToken.None);
 }

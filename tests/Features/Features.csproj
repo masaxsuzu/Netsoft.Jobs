@@ -10,11 +10,13 @@
   </ItemGroup>
 
   <!--
-    Infrastructure は参照しない。IJobStore の偽実装をテスト側に置くことで、
-    機能のテストが SQLite の挙動やファイル I/O に左右されなくなる。
+    本番の src/Features は Infrastructure を参照しない（DB 実装に引きずられないため）。
+    テストはその規則の外にいる。IJobStore の偽実装を置くと本物の仕様を手で写す約束が生まれ、
+    本物が変わると黙って乖離するので、テストは本物の SqliteJobStore で検証する。
   -->
   <ItemGroup>
     <ProjectReference Include="..\..\src\Features\Features.csproj" />
+    <ProjectReference Include="..\..\src\Infrastructure\Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
