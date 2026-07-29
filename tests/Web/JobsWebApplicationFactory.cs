@@ -31,6 +31,11 @@ internal sealed class JobsWebApplicationFactory : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        // 本番相当の環境でテストする。WebApplicationFactory の既定は Development で、
+        // Development だけで成立する構成 (静的アセットの扱いなど) の欠陥が素通りする。
+        // 実際に blazor.web.js の 404 が Development 既定のテストでは検出できなかった。
+        builder.UseEnvironment("Production");
+
         builder.UseSetting("Jobs:DatabasePath", Path.Combine(_directory, "jobs.db"));
         builder.UseSetting("Jobs:RunExecutionEngine", "false");
 

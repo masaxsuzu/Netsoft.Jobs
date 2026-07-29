@@ -7,3 +7,6 @@ artifacts/
 
 # dotnet run が作る開発用の DB
 jobs.db*
+
+# ビルドが NuGet キャッシュからコピーするフレームワークのスクリプト
+src/Web/wwwroot/_framework/
