@@ -79,7 +79,13 @@ CI の完了を待ってから何かをする必要はない。有効にした�
 dotnet build
 dotnet test
 dotnet format            # 整形。CI では --verify-no-changes で検査される
+bash scripts/coverage.sh # カバレッジ計測 + 基準判定。CI の Test はこれで動く
 ```
+
+カバレッジの基準は **行 95% / ブランチ 80%**（全体、マージ後の値）。下回ると CI が落ちる。
+除外は「E2E が実プロセスで検証しているが coverlet が別プロセスを計測できないもの」
+（Razor コンポーネント・実行エンジンの殻）だけ。テストを書けるのに書いていないものを
+除外で隠さないこと。方針の詳細は coverage.runsettings のコメントを参照。
 
 **.NET 10 SDK が必要。** `global.json` で固定してあるので、
 古い SDK しか無い環境では `dotnet` 実行時に気づける。

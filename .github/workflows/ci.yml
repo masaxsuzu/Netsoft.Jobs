@@ -58,8 +58,10 @@ jobs:
       - name: Install Playwright browser
         run: pwsh tests/E2E/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
 
-      - name: Test
-        run: dotnet test --no-build --configuration Release --logger "trx;LogFileName=test-results.trx" --results-directory TestResults
+      # カバレッジ計測込みでテストを実行し、行 95% / ブランチ 80% を下回ったら失敗する。
+      # 手元でも scripts/coverage.sh で同じ判定を再現できる。
+      - name: Test with coverage gate
+        run: bash scripts/coverage.sh
 
       - name: Upload test results
         if: always()
