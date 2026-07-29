@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Netsoft.Jobs.Features.Execution;
+using Netsoft.Jobs.Features.QueryJobs;
 using Netsoft.Jobs.Features.RegisterJob;
 
 namespace Netsoft.Jobs.Features;
@@ -29,6 +30,7 @@ public static class JobFeaturesServiceCollectionExtensions
 
         services.AddRegisterJob();
         services.AddJobExecution();
+        services.AddQueryJobs();
 
         return services;
     }
