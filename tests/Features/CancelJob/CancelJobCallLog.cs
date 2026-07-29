@@ -45,13 +45,14 @@ internal sealed class RecordingJobStore : IJobStore
         _inner.AddAsync(job, cancellationToken);
 
     /// <inheritdoc />
-    public Task UpdateAsync(Job job, CancellationToken cancellationToken)
+    public Task<bool> UpdateAsync(Job job, JobStatus expectedStatus, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(job);
 
         // 状態も一緒に残す。何を保存した時点で伝えたのかが分かるようにするため。
+        // 書き戻せずにやり直した場合は、その分だけ記録が増える。
         _log.Record($"update:{job.Id.Value}:{job.Status}");
-        return _inner.UpdateAsync(job, cancellationToken);
+        return _inner.UpdateAsync(job, expectedStatus, cancellationToken);
     }
 
     /// <inheritdoc />

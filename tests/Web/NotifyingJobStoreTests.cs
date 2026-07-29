@@ -34,9 +34,24 @@ public sealed class NotifyingJobStoreTests
     [Fact]
     public async Task 更新が成功すると通知される()
     {
-        await _store.UpdateAsync(CreateJob(), CancellationToken.None);
+        Assert.True(await _store.UpdateAsync(CreateJob(), JobStatus.Queued, CancellationToken.None));
 
         Assert.Equal(1, _published);
+        Assert.Equal(["Update"], _inner.Calls);
+    }
+
+    /// <summary>
+    /// 条件付き更新の false は「前提が崩れたので何も書かなかった」。
+    /// DB が変わっていない以上、通知しても画面が同じ一覧を描き直すだけで無駄になる。
+    /// </summary>
+    [Fact]
+    public async Task 更新が書き戻されなかったら通知されない()
+    {
+        _inner.UpdateResult = false;
+
+        Assert.False(await _store.UpdateAsync(CreateJob(), JobStatus.Queued, CancellationToken.None));
+
+        Assert.Equal(0, _published);
         Assert.Equal(["Update"], _inner.Calls);
     }
 
@@ -51,6 +66,17 @@ public sealed class NotifyingJobStoreTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => _store.AddAsync(CreateJob(), CancellationToken.None));
+
+        Assert.Equal(0, _published);
+    }
+
+    [Fact]
+    public async Task 更新が失敗すると通知されない()
+    {
+        _inner.FailWrites = true;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _store.UpdateAsync(CreateJob(), JobStatus.Queued, CancellationToken.None));
 
         Assert.Equal(0, _published);
     }
@@ -80,6 +106,9 @@ public sealed class NotifyingJobStoreTests
 
         public bool FailWrites { get; set; }
 
+        /// <summary>条件付き更新が書き戻せたかどうか。既定は「書き戻せた」。</summary>
+        public bool UpdateResult { get; set; } = true;
+
         public Task AddAsync(Job job, CancellationToken cancellationToken)
         {
             ThrowIfWriteShouldFail();
@@ -87,11 +116,11 @@ public sealed class NotifyingJobStoreTests
             return Task.CompletedTask;
         }
 
-        public Task UpdateAsync(Job job, CancellationToken cancellationToken)
+        public Task<bool> UpdateAsync(Job job, JobStatus expectedStatus, CancellationToken cancellationToken)
         {
             ThrowIfWriteShouldFail();
             Calls.Add("Update");
-            return Task.CompletedTask;
+            return Task.FromResult(UpdateResult);
         }
 
         public Task<Job?> FindAsync(JobId id, CancellationToken cancellationToken)
