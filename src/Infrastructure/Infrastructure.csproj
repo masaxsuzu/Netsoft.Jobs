@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    SQLite は Microsoft.Data.Sqlite を直接使う。対象は 1 テーブル・6 メソッドで、
+    マイグレーション基盤も変更追跡も要らない。EF Core を挟むと依存と起動コストが増えるだけ。
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+
+    <!--
+      Microsoft.Data.Sqlite 10.0.10 が連れてくる SQLitePCLRaw 2.1.11 には
+      既知の脆弱性があり、NU1903 が警告として上がる (TreatWarningsAsErrors なので落ちる)。
+      修正版へ明示的に引き上げる。Microsoft.Data.Sqlite 側が同じ系列を参照するようになれば
+      この行は消してよい。
+    -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Domain\Domain.csproj" />
+  </ItemGroup>
+
+</Project>
