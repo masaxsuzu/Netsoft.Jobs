@@ -58,8 +58,10 @@ jobs:
       - name: Install Playwright browser
         run: pwsh tests/E2E/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
 
+      # カバレッジ計測込みで実行する。基準を下回ると coverlet がビルドを失敗させる。
+      # 基準と除外は tests/Directory.Build.props と tests/Web/Web.csproj にある。
       - name: Test
-        run: dotnet test --no-build --configuration Release --logger "trx;LogFileName=test-results.trx" --results-directory TestResults
+        run: dotnet test --no-build --configuration Release -p:CollectCoverage=true
 
       - name: Upload test results
         if: always()

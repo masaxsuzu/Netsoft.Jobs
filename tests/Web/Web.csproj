@@ -1,6 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="coverlet.msbuild" Version="10.0.1">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.10" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
@@ -13,5 +17,18 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Web\Web.csproj" />
   </ItemGroup>
+
+  <!--
+    カバレッジの基準。マージ済みの全体に対して判定するので、最後に走るこの
+    プロジェクトにだけ置く（設定は tests/Directory.Build.props の注記を参照）。
+
+    ThresholdStat を Total にするのは、既定の Minimum がモジュール単位の最小値を
+    見るため。全体が基準を満たしていても小さなモジュール 1 つで落ちてしまう。
+  -->
+  <PropertyGroup Condition="'$(CollectCoverage)' == 'true'">
+    <Threshold>90,80</Threshold>
+    <ThresholdType>line,branch</ThresholdType>
+    <ThresholdStat>Total</ThresholdStat>
+  </PropertyGroup>
 
 </Project>

@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 using Netsoft.Jobs.Features.Execution;
 
 namespace Netsoft.Jobs.Web;
@@ -9,6 +11,9 @@ namespace Netsoft.Jobs.Web;
 /// エンジンはホスティングに依存しない作りになっている（エンジン側の注記を参照）。
 /// ここに処理を足したくなったら、それはエンジンかテストできる別の場所の仕事。
 /// </remarks>
+[ExcludeFromCodeCoverage(Justification =
+    "結合テストは決定性のためエンジンを止めて動かす (Jobs:RunExecutionEngine=false)。" +
+    "この殻を通すのは実アプリを起動する E2E だけで、別プロセスのため coverlet では計測できない。")]
 public sealed class JobExecutionHostedService : BackgroundService
 {
     private readonly JobExecutionEngine _engine;
