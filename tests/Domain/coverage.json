@@ -1,0 +1,738 @@
+{
+  "Netsoft.Jobs.Domain.dll": {
+    "/home/user/Netsoft.Jobs/src/Domain/Job.cs": {
+      "Netsoft.Jobs.Domain.Job": {
+        "Netsoft.Jobs.Domain.JobId Netsoft.Jobs.Domain.Job::get_Id()": {
+          "Lines": {
+            "36": 0
+          },
+          "Branches": []
+        },
+        "System.String Netsoft.Jobs.Domain.Job::get_Name()": {
+          "Lines": {
+            "39": 0
+          },
+          "Branches": []
+        },
+        "System.String Netsoft.Jobs.Domain.Job::get_JobType()": {
+          "Lines": {
+            "42": 0
+          },
+          "Branches": []
+        },
+        "System.String Netsoft.Jobs.Domain.Job::get_Parameters()": {
+          "Lines": {
+            "52": 2
+          },
+          "Branches": []
+        },
+        "Netsoft.Jobs.Domain.JobStatus Netsoft.Jobs.Domain.Job::get_Status()": {
+          "Lines": {
+            "55": 90
+          },
+          "Branches": []
+        },
+        "System.DateTimeOffset Netsoft.Jobs.Domain.Job::get_CreatedAt()": {
+          "Lines": {
+            "58": 1
+          },
+          "Branches": []
+        },
+        "System.Nullable`1<System.DateTimeOffset> Netsoft.Jobs.Domain.Job::get_StartedAt()": {
+          "Lines": {
+            "61": 36
+          },
+          "Branches": []
+        },
+        "System.Nullable`1<System.DateTimeOffset> Netsoft.Jobs.Domain.Job::get_FinishedAt()": {
+          "Lines": {
+            "64": 49
+          },
+          "Branches": []
+        },
+        "System.String Netsoft.Jobs.Domain.Job::get_FailureMessage()": {
+          "Lines": {
+            "67": 37
+          },
+          "Branches": []
+        },
+        "Netsoft.Jobs.Domain.Job Netsoft.Jobs.Domain.Job::Create(Netsoft.Jobs.Domain.JobId,System.String,System.String,System.String,System.DateTimeOffset)": {
+          "Lines": {
+            "74": 9,
+            "76": 1,
+            "79": 8,
+            "80": 7,
+            "83": 6,
+            "85": 6
+          },
+          "Branches": [
+            {
+              "Line": 74,
+              "Offset": 7,
+              "EndOffset": 9,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1
+            },
+            {
+              "Line": 74,
+              "Offset": 7,
+              "EndOffset": 25,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 8
+            }
+          ]
+        },
+        "Netsoft.Jobs.Domain.Job Netsoft.Jobs.Domain.Job::Rehydrate(Netsoft.Jobs.Domain.JobId,System.String,System.String,System.String,Netsoft.Jobs.Domain.JobStatus,System.DateTimeOffset,System.Nullable`1<System.DateTimeOffset>,System.Nullable`1<System.DateTimeOffset>,System.String)": {
+          "Lines": {
+            "106": 20
+          },
+          "Branches": []
+        },
+        "Netsoft.Jobs.Domain.JobTransitionResult Netsoft.Jobs.Domain.Job::Apply(Netsoft.Jobs.Domain.JobTrigger,System.DateTimeOffset,System.String)": {
+          "Lines": {
+            "120": 23,
+            "121": 23,
+            "124": 4,
+            "127": 19,
+            "129": 19,
+            "131": 2,
+            "134": 17,
+            "136": 2,
+            "139": 17,
+            "141": 14,
+            "144": 17,
+            "146": 6,
+            "149": 17,
+            "150": 17
+          },
+          "Branches": [
+            {
+              "Line": 121,
+              "Offset": 20,
+              "EndOffset": 22,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 4
+            },
+            {
+              "Line": 121,
+              "Offset": 20,
+              "EndOffset": 24,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 19
+            },
+            {
+              "Line": 129,
+              "Offset": 34,
+              "EndOffset": 36,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 8
+            },
+            {
+              "Line": 129,
+              "Offset": 42,
+              "EndOffset": 44,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 2
+            },
+            {
+              "Line": 129,
+              "Offset": 34,
+              "EndOffset": 60,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 17
+            },
+            {
+              "Line": 129,
+              "Offset": 42,
+              "EndOffset": 60,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 17
+            },
+            {
+              "Line": 134,
+              "Offset": 62,
+              "EndOffset": 64,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 2
+            },
+            {
+              "Line": 134,
+              "Offset": 62,
+              "EndOffset": 76,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 15
+            },
+            {
+              "Line": 139,
+              "Offset": 82,
+              "EndOffset": 84,
+              "Path": 0,
+              "Ordinal": 8,
+              "Hits": 14
+            },
+            {
+              "Line": 139,
+              "Offset": 82,
+              "EndOffset": 96,
+              "Path": 1,
+              "Ordinal": 9,
+              "Hits": 3
+            },
+            {
+              "Line": 144,
+              "Offset": 98,
+              "EndOffset": 100,
+              "Path": 0,
+              "Ordinal": 10,
+              "Hits": 6
+            },
+            {
+              "Line": 144,
+              "Offset": 98,
+              "EndOffset": 107,
+              "Path": 1,
+              "Ordinal": 11,
+              "Hits": 11
+            }
+          ]
+        },
+        "System.Void Netsoft.Jobs.Domain.Job::.ctor(Netsoft.Jobs.Domain.JobId,System.String,System.String,System.String,Netsoft.Jobs.Domain.JobStatus,System.DateTimeOffset,System.Nullable`1<System.DateTimeOffset>,System.Nullable`1<System.DateTimeOffset>,System.String)": {
+          "Lines": {
+            "13": 26,
+            "14": 26,
+            "15": 26,
+            "16": 26,
+            "17": 26,
+            "18": 26,
+            "19": 26,
+            "20": 26,
+            "21": 26,
+            "22": 26,
+            "24": 26,
+            "25": 26,
+            "26": 26,
+            "27": 26,
+            "28": 26,
+            "29": 26,
+            "30": 26,
+            "31": 26,
+            "32": 26,
+            "33": 26
+          },
+          "Branches": []
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Domain/JobId.cs": {
+      "Netsoft.Jobs.Domain.JobId": {
+        "System.String Netsoft.Jobs.Domain.JobId::get_Value()": {
+          "Lines": {
+            "21": 4
+          },
+          "Branches": [
+            {
+              "Line": 21,
+              "Offset": 7,
+              "EndOffset": 9,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1
+            },
+            {
+              "Line": 21,
+              "Offset": 7,
+              "EndOffset": 15,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 3
+            }
+          ]
+        },
+        "System.Boolean Netsoft.Jobs.Domain.JobId::get_IsEmpty()": {
+          "Lines": {
+            "26": 14
+          },
+          "Branches": []
+        },
+        "Netsoft.Jobs.Domain.JobId Netsoft.Jobs.Domain.JobId::From(System.String)": {
+          "Lines": {
+            "34": 35,
+            "36": 2,
+            "39": 33
+          },
+          "Branches": [
+            {
+              "Line": 34,
+              "Offset": 6,
+              "EndOffset": 8,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 2
+            },
+            {
+              "Line": 34,
+              "Offset": 6,
+              "EndOffset": 24,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 33
+            }
+          ]
+        },
+        "System.Boolean Netsoft.Jobs.Domain.JobId::TryFrom(System.String,Netsoft.Jobs.Domain.JobId&)": {
+          "Lines": {
+            "47": 4,
+            "49": 3,
+            "50": 3,
+            "53": 1,
+            "54": 1
+          },
+          "Branches": [
+            {
+              "Line": 47,
+              "Offset": 6,
+              "EndOffset": 8,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 3
+            },
+            {
+              "Line": 47,
+              "Offset": 6,
+              "EndOffset": 17,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 1
+            }
+          ]
+        },
+        "System.String Netsoft.Jobs.Domain.JobId::ToString()": {
+          "Lines": {
+            "57": 1
+          },
+          "Branches": []
+        },
+        "System.Void Netsoft.Jobs.Domain.JobId::.ctor(System.String)": {
+          "Lines": {
+            "16": 34
+          },
+          "Branches": []
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Domain/JobStateMachine.cs": {
+      "Netsoft.Jobs.Domain.JobStateMachine": {
+        "Netsoft.Jobs.Domain.JobTransitionResult Netsoft.Jobs.Domain.JobStateMachine::Evaluate(Netsoft.Jobs.Domain.JobStatus,Netsoft.Jobs.Domain.JobTrigger)": {
+          "Lines": {
+            "19": 130,
+            "21": 55,
+            "24": 75,
+            "25": 75,
+            "26": 5,
+            "27": 75,
+            "28": 75,
+            "29": 6,
+            "30": 75,
+            "31": 5,
+            "32": 7,
+            "33": 4,
+            "34": 75,
+            "35": 5,
+            "36": 75,
+            "37": 75,
+            "38": 75,
+            "39": 75,
+            "40": 6,
+            "41": 4,
+            "42": 75,
+            "43": 75,
+            "44": 75,
+            "45": 75,
+            "46": 5,
+            "47": 4,
+            "48": 75,
+            "49": 24,
+            "50": 75
+          },
+          "Branches": [
+            {
+              "Line": 19,
+              "Offset": 6,
+              "EndOffset": 8,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 55
+            },
+            {
+              "Line": 19,
+              "Offset": 6,
+              "EndOffset": 16,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 75
+            },
+            {
+              "Line": 24,
+              "Offset": 17,
+              "EndOffset": 39,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 22
+            },
+            {
+              "Line": 24,
+              "Offset": 40,
+              "EndOffset": 42,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 17
+            },
+            {
+              "Line": 24,
+              "Offset": 17,
+              "EndOffset": 51,
+              "Path": 2,
+              "Ordinal": 4,
+              "Hits": 28
+            },
+            {
+              "Line": 24,
+              "Offset": 17,
+              "EndOffset": 81,
+              "Path": 3,
+              "Ordinal": 5,
+              "Hits": 25
+            },
+            {
+              "Line": 24,
+              "Offset": 40,
+              "EndOffset": 111,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 5
+            },
+            {
+              "Line": 24,
+              "Offset": 44,
+              "EndOffset": 120,
+              "Path": 1,
+              "Ordinal": 9,
+              "Hits": 6
+            },
+            {
+              "Line": 24,
+              "Offset": 54,
+              "EndOffset": 129,
+              "Path": 1,
+              "Ordinal": 11,
+              "Hits": 5
+            },
+            {
+              "Line": 24,
+              "Offset": 54,
+              "EndOffset": 138,
+              "Path": 2,
+              "Ordinal": 12,
+              "Hits": 7
+            },
+            {
+              "Line": 24,
+              "Offset": 54,
+              "EndOffset": 147,
+              "Path": 3,
+              "Ordinal": 13,
+              "Hits": 4
+            },
+            {
+              "Line": 24,
+              "Offset": 84,
+              "EndOffset": 156,
+              "Path": 4,
+              "Ordinal": 20,
+              "Hits": 5
+            },
+            {
+              "Line": 24,
+              "Offset": 84,
+              "EndOffset": 165,
+              "Path": 1,
+              "Ordinal": 17,
+              "Hits": 6
+            },
+            {
+              "Line": 24,
+              "Offset": 84,
+              "EndOffset": 174,
+              "Path": 2,
+              "Ordinal": 18,
+              "Hits": 4
+            },
+            {
+              "Line": 24,
+              "Offset": 54,
+              "EndOffset": 183,
+              "Path": 5,
+              "Ordinal": 15,
+              "Hits": 5
+            },
+            {
+              "Line": 24,
+              "Offset": 84,
+              "EndOffset": 192,
+              "Path": 5,
+              "Ordinal": 21,
+              "Hits": 4
+            },
+            {
+              "Line": 24,
+              "Offset": 17,
+              "EndOffset": 201,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 24
+            },
+            {
+              "Line": 24,
+              "Offset": 44,
+              "EndOffset": 201,
+              "Path": 0,
+              "Ordinal": 8,
+              "Hits": 24
+            },
+            {
+              "Line": 24,
+              "Offset": 54,
+              "EndOffset": 201,
+              "Path": 0,
+              "Ordinal": 10,
+              "Hits": 24
+            },
+            {
+              "Line": 24,
+              "Offset": 54,
+              "EndOffset": 201,
+              "Path": 4,
+              "Ordinal": 14,
+              "Hits": 24
+            },
+            {
+              "Line": 24,
+              "Offset": 84,
+              "EndOffset": 201,
+              "Path": 0,
+              "Ordinal": 16,
+              "Hits": 24
+            },
+            {
+              "Line": 24,
+              "Offset": 84,
+              "EndOffset": 201,
+              "Path": 3,
+              "Ordinal": 19,
+              "Hits": 24
+            }
+          ]
+        },
+        "Netsoft.Jobs.Domain.JobTransitionRejection Netsoft.Jobs.Domain.JobStateMachine::Classify(Netsoft.Jobs.Domain.JobStatus,Netsoft.Jobs.Domain.JobTrigger)": {
+          "Lines": {
+            "56": 24,
+            "57": 24,
+            "58": 24,
+            "59": 5,
+            "60": 24,
+            "61": 24,
+            "62": 4,
+            "63": 24,
+            "64": 15,
+            "65": 24
+          },
+          "Branches": [
+            {
+              "Line": 56,
+              "Offset": 2,
+              "EndOffset": 4,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 17
+            },
+            {
+              "Line": 56,
+              "Offset": 2,
+              "EndOffset": 10,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 7
+            },
+            {
+              "Line": 56,
+              "Offset": 6,
+              "EndOffset": 15,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 6
+            },
+            {
+              "Line": 56,
+              "Offset": 16,
+              "EndOffset": 18,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 4
+            },
+            {
+              "Line": 56,
+              "Offset": 11,
+              "EndOffset": 24,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 5
+            },
+            {
+              "Line": 56,
+              "Offset": 16,
+              "EndOffset": 24,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 5
+            },
+            {
+              "Line": 56,
+              "Offset": 20,
+              "EndOffset": 28,
+              "Path": 1,
+              "Ordinal": 9,
+              "Hits": 4
+            },
+            {
+              "Line": 56,
+              "Offset": 6,
+              "EndOffset": 32,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 15
+            },
+            {
+              "Line": 56,
+              "Offset": 11,
+              "EndOffset": 32,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 15
+            },
+            {
+              "Line": 56,
+              "Offset": 20,
+              "EndOffset": 32,
+              "Path": 0,
+              "Ordinal": 8,
+              "Hits": 15
+            }
+          ]
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Domain/JobStatus.cs": {
+      "Netsoft.Jobs.Domain.JobStatusExtensions": {
+        "System.Boolean Netsoft.Jobs.Domain.JobStatusExtensions::IsTerminal(Netsoft.Jobs.Domain.JobStatus)": {
+          "Lines": {
+            "41": 172
+          },
+          "Branches": [
+            {
+              "Line": 41,
+              "Offset": 4,
+              "EndOffset": 6,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 76
+            },
+            {
+              "Line": 41,
+              "Offset": 4,
+              "EndOffset": 10,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 96
+            }
+          ]
+        },
+        "System.Boolean Netsoft.Jobs.Domain.JobStatusExtensions::IsHandlerActive(Netsoft.Jobs.Domain.JobStatus)": {
+          "Lines": {
+            "52": 7
+          },
+          "Branches": [
+            {
+              "Line": 52,
+              "Offset": 4,
+              "EndOffset": 6,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 2
+            },
+            {
+              "Line": 52,
+              "Offset": 4,
+              "EndOffset": 10,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 5
+            }
+          ]
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Domain/JobTransitionResult.cs": {
+      "Netsoft.Jobs.Domain.JobTransitionResult": {
+        "System.Boolean Netsoft.Jobs.Domain.JobTransitionResult::get_IsAllowed()": {
+          "Lines": {
+            "20": 142
+          },
+          "Branches": []
+        },
+        "Netsoft.Jobs.Domain.JobStatus Netsoft.Jobs.Domain.JobTransitionResult::get_Status()": {
+          "Lines": {
+            "25": 76
+          },
+          "Branches": []
+        },
+        "System.Nullable`1<Netsoft.Jobs.Domain.JobTransitionRejection> Netsoft.Jobs.Domain.JobTransitionResult::get_Rejection()": {
+          "Lines": {
+            "28": 61
+          },
+          "Branches": []
+        },
+        "Netsoft.Jobs.Domain.JobTransitionResult Netsoft.Jobs.Domain.JobTransitionResult::Allowed(Netsoft.Jobs.Domain.JobStatus)": {
+          "Lines": {
+            "31": 51
+          },
+          "Branches": []
+        },
+        "Netsoft.Jobs.Domain.JobTransitionResult Netsoft.Jobs.Domain.JobTransitionResult::Rejected(Netsoft.Jobs.Domain.JobStatus,Netsoft.Jobs.Domain.JobTransitionRejection)": {
+          "Lines": {
+            "35": 79
+          },
+          "Branches": []
+        },
+        "System.Void Netsoft.Jobs.Domain.JobTransitionResult::.ctor(System.Boolean,Netsoft.Jobs.Domain.JobStatus,System.Nullable`1<Netsoft.Jobs.Domain.JobTransitionRejection>)": {
+          "Lines": {
+            "14": 130,
+            "15": 130,
+            "16": 130,
+            "17": 130
+          },
+          "Branches": []
+        }
+      }
+    }
+  }
+}

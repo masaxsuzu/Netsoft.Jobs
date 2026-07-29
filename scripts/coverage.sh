@@ -1,43 +1,56 @@
 #!/usr/bin/env bash
-# テストをカバレッジ計測つきで実行し、基準を下回ったら失敗する。
-# CI の Test ステップと手元の確認で同じものを使う。
 #
-# 基準: 行 95% / ブランチ 80%
-# 除外の方針は coverage.runsettings のコメントを参照。
+# テストを実行し、カバレッジが基準を下回ったら失敗する。CI の Test ステップと手元で同じものを使う。
+#
+# 基準の判定は coverlet の /p:Threshold に任せ、自前で数字を比較しない。
+#
+# 基準を「全体（マージ後）」に置いているのは、テストが層をまたいで書かれているため。
+# Web の結合テストが Features のハンドラを通し、Features のテストが Domain を通す。
+# プロジェクト単位で測ると、実際には検証されているコードが未カバーに見える
+# （実測: Features 単独 73.7%、Web 単独のブランチ 70%）。だから順に実行して
+# 1 つのファイルにマージし、最後の 1 つでまとめて判定する。
+#
+# 除外は「E2E が実プロセスで検証しているが、coverlet が別プロセスを計測できないもの」だけ。
+#   *.razor                    … イベントハンドラは回路 (WebSocket) 経由でしか動かない
+#   JobExecutionHostedService  … 結合テストは決定性のためエンジンを止めている（属性で除外）
+# テストを書けるのに書いていないものを除外で隠さないこと。
+#
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-LINE_THRESHOLD=95
-BRANCH_THRESHOLD=80
+# 行, ブランチ。カンマは MSBuild が引数の区切りと解釈するので %2C で渡す。
+THRESHOLD='95%2C80'
+THRESHOLD_TYPE='line%2Cbranch'
+
+# 既定は Minimum（モジュール単位の最小値）で、これだと小さなモジュール 1 つで落ちる。
+# 基準は全体に対するものなので Total を明示する。
+THRESHOLD_STAT='Total'
+
+MERGE_FILE="$PWD/TestResults/coverage.json"
 
 rm -rf TestResults
-dotnet test -c Release --no-build \
-  --collect:"XPlat Code Coverage" \
-  --settings coverage.runsettings \
-  --logger "trx;LogFileName=test-results.trx" \
-  --results-directory TestResults
+mkdir -p TestResults
 
-dotnet tool restore > /dev/null
-dotnet reportgenerator \
-  -reports:"TestResults/*/coverage.cobertura.xml" \
-  -targetdir:TestResults/coverage \
-  -reporttypes:"TextSummary;JsonSummary" > /dev/null
+coverage_args=(
+  -c Release --no-build
+  /p:CollectCoverage=true
+  "/p:CoverletOutput=$MERGE_FILE"
+  "/p:MergeWith=$MERGE_FILE"
+  '/p:Exclude=[*.Tests]*'
+  '/p:ExcludeByFile=**/*.razor'
+)
 
-cat TestResults/coverage/Summary.txt
+# 順に実行してマージする。最後の Web で全体を判定するので、
+# テストプロジェクトを足すときは Web より前に入れること。
+for project in Domain Infrastructure Features; do
+  dotnet test "tests/$project" "${coverage_args[@]}"
+done
 
-python3 - "$LINE_THRESHOLD" "$BRANCH_THRESHOLD" <<'PY'
-import json, sys
-line_min, branch_min = float(sys.argv[1]), float(sys.argv[2])
-s = json.load(open('TestResults/coverage/Summary.json'))['summary']
-line, branch = s['linecoverage'], s['branchcoverage']
-print(f"\nカバレッジ判定: line {line}% (基準 {line_min}%) / branch {branch}% (基準 {branch_min}%)")
-failed = []
-if line < line_min:
-    failed.append(f"行カバレッジ {line}% が基準 {line_min}% を下回っています")
-if branch < branch_min:
-    failed.append(f"ブランチカバレッジ {branch}% が基準 {branch_min}% を下回っています")
-if failed:
-    print("\n".join(f"NG: {f}" for f in failed))
-    sys.exit(1)
-print("OK")
-PY
+dotnet test tests/Web "${coverage_args[@]}" \
+  "/p:Threshold=$THRESHOLD" \
+  "/p:ThresholdType=$THRESHOLD_TYPE" \
+  "/p:ThresholdStat=$THRESHOLD_STAT"
+
+# E2E はアプリを別プロセスで起動するため coverlet の計測に乗らない。
+# 計測から外して普通に実行する。
+dotnet test tests/E2E -c Release --no-build

@@ -1,0 +1,1576 @@
+{
+  "Netsoft.Jobs.Features.dll": {
+    "/home/user/Netsoft.Jobs/src/Features/IJobIdFactory.cs": {
+      "Netsoft.Jobs.Features.GuidV7JobIdFactory": {
+        "Netsoft.Jobs.Domain.JobId Netsoft.Jobs.Features.GuidV7JobIdFactory::Create()": {
+          "Lines": {
+            "31": 250
+          },
+          "Branches": []
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/JobDto.cs": {
+      "Netsoft.Jobs.Features.JobDto": {
+        "System.String Netsoft.Jobs.Features.JobDto::get_Id()": {
+          "Lines": {
+            "13": 9
+          },
+          "Branches": []
+        },
+        "System.String Netsoft.Jobs.Features.JobDto::get_Name()": {
+          "Lines": {
+            "14": 2
+          },
+          "Branches": []
+        },
+        "System.String Netsoft.Jobs.Features.JobDto::get_JobType()": {
+          "Lines": {
+            "15": 2
+          },
+          "Branches": []
+        },
+        "System.String Netsoft.Jobs.Features.JobDto::get_Parameters()": {
+          "Lines": {
+            "16": 2
+          },
+          "Branches": []
+        },
+        "System.String Netsoft.Jobs.Features.JobDto::get_Status()": {
+          "Lines": {
+            "17": 16
+          },
+          "Branches": []
+        },
+        "System.DateTimeOffset Netsoft.Jobs.Features.JobDto::get_CreatedAt()": {
+          "Lines": {
+            "18": 2
+          },
+          "Branches": []
+        },
+        "System.Nullable`1<System.DateTimeOffset> Netsoft.Jobs.Features.JobDto::get_StartedAt()": {
+          "Lines": {
+            "19": 6
+          },
+          "Branches": []
+        },
+        "System.Nullable`1<System.DateTimeOffset> Netsoft.Jobs.Features.JobDto::get_FinishedAt()": {
+          "Lines": {
+            "20": 7
+          },
+          "Branches": []
+        },
+        "System.String Netsoft.Jobs.Features.JobDto::get_FailureMessage()": {
+          "Lines": {
+            "21": 145
+          },
+          "Branches": []
+        },
+        "Netsoft.Jobs.Features.JobDto Netsoft.Jobs.Features.JobDto::From(Netsoft.Jobs.Domain.Job)": {
+          "Lines": {
+            "26": 138,
+            "28": 138,
+            "29": 138,
+            "30": 138,
+            "31": 138,
+            "32": 138,
+            "33": 138,
+            "34": 138,
+            "35": 138,
+            "36": 138,
+            "37": 138
+          },
+          "Branches": []
+        },
+        "System.Void Netsoft.Jobs.Features.JobDto::.ctor(System.String,System.String,System.String,System.String,System.String,System.DateTimeOffset,System.Nullable`1<System.DateTimeOffset>,System.Nullable`1<System.DateTimeOffset>,System.String)": {
+          "Lines": {
+            "12": 138
+          },
+          "Branches": []
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/JobFeaturesEndpointRouteBuilderExtensions.cs": {
+      "Netsoft.Jobs.Features.JobFeaturesEndpointRouteBuilderExtensions": {
+        "Microsoft.AspNetCore.Routing.IEndpointRouteBuilder Netsoft.Jobs.Features.JobFeaturesEndpointRouteBuilderExtensions::MapJobFeatures(Microsoft.AspNetCore.Routing.IEndpointRouteBuilder)": {
+          "Lines": {
+            "18": 0,
+            "20": 0,
+            "21": 0,
+            "22": 0,
+            "24": 0
+          },
+          "Branches": []
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/JobFeaturesServiceCollectionExtensions.cs": {
+      "Netsoft.Jobs.Features.JobFeaturesServiceCollectionExtensions": {
+        "Microsoft.Extensions.DependencyInjection.IServiceCollection Netsoft.Jobs.Features.JobFeaturesServiceCollectionExtensions::AddJobFeatures(Microsoft.Extensions.DependencyInjection.IServiceCollection)": {
+          "Lines": {
+            "27": 1,
+            "29": 1,
+            "30": 1,
+            "32": 1,
+            "33": 1,
+            "34": 1,
+            "38": 1,
+            "40": 1
+          },
+          "Branches": []
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/Result.cs": {
+      "Netsoft.Jobs.Features.Result`1": {
+        "System.Boolean Netsoft.Jobs.Features.Result`1::get_IsSuccess()": {
+          "Lines": {
+            "25": 117
+          },
+          "Branches": []
+        },
+        "System.Boolean Netsoft.Jobs.Features.Result`1::get_IsFailure()": {
+          "Lines": {
+            "28": 8
+          },
+          "Branches": []
+        },
+        "System.Collections.Generic.IReadOnlyList`1<Netsoft.Jobs.Features.ValidationError> Netsoft.Jobs.Features.Result`1::get_Errors()": {
+          "Lines": {
+            "31": 3
+          },
+          "Branches": []
+        },
+        "T Netsoft.Jobs.Features.Result`1::get_Value()": {
+          "Lines": {
+            "40": 7,
+            "41": 7,
+            "42": 7
+          },
+          "Branches": [
+            {
+              "Line": 40,
+              "Offset": 6,
+              "EndOffset": 8,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1
+            },
+            {
+              "Line": 40,
+              "Offset": 6,
+              "EndOffset": 19,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 6
+            }
+          ]
+        },
+        "Netsoft.Jobs.Features.Result`1<T> Netsoft.Jobs.Features.Result`1::Success(T)": {
+          "Lines": {
+            "45": 105
+          },
+          "Branches": []
+        },
+        "Netsoft.Jobs.Features.Result`1<T> Netsoft.Jobs.Features.Result`1::Failure(System.Collections.Generic.IReadOnlyList`1<Netsoft.Jobs.Features.ValidationError>)": {
+          "Lines": {
+            "51": 9,
+            "53": 9,
+            "55": 0,
+            "58": 9
+          },
+          "Branches": [
+            {
+              "Line": 53,
+              "Offset": 17,
+              "EndOffset": 19,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 53,
+              "Offset": 17,
+              "EndOffset": 35,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 9
+            }
+          ]
+        },
+        "Netsoft.Jobs.Features.Result`1<T> Netsoft.Jobs.Features.Result`1::Failure(Netsoft.Jobs.Features.ValidationError[])": {
+          "Lines": {
+            "63": 0
+          },
+          "Branches": []
+        },
+        "System.Void Netsoft.Jobs.Features.Result`1::.ctor(System.Boolean,T,System.Collections.Generic.IReadOnlyList`1<Netsoft.Jobs.Features.ValidationError>)": {
+          "Lines": {
+            "17": 114,
+            "19": 114,
+            "20": 114,
+            "21": 114,
+            "22": 114
+          },
+          "Branches": []
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/ValidationError.cs": {
+      "Netsoft.Jobs.Features.ValidationError": {
+        "System.String Netsoft.Jobs.Features.ValidationError::get_Field()": {
+          "Lines": {
+            "14": 24
+          },
+          "Branches": []
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/ValidationErrorExtensions.cs": {
+      "Netsoft.Jobs.Features.ValidationErrorExtensions": {
+        "System.Collections.Generic.IDictionary`2<System.String,System.String[]> Netsoft.Jobs.Features.ValidationErrorExtensions::ToProblemDetailsErrors(System.Collections.Generic.IReadOnlyList`1<Netsoft.Jobs.Features.ValidationError>)": {
+          "Lines": {
+            "17": 1,
+            "19": 1,
+            "20": 3,
+            "21": 1,
+            "22": 2,
+            "23": 5,
+            "24": 1
+          },
+          "Branches": []
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/RegisterJob/RegisterJobCommand.cs": {
+      "Netsoft.Jobs.Features.RegisterJob.RegisterJobCommand": {
+        "System.String Netsoft.Jobs.Features.RegisterJob.RegisterJobCommand::get_Name()": {
+          "Lines": {
+            "13": 771
+          },
+          "Branches": []
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/RegisterJob/RegisterJobEndpoint.cs": {
+      "Netsoft.Jobs.Features.RegisterJob.RegisterJobEndpoint": {
+        "Microsoft.AspNetCore.Routing.IEndpointRouteBuilder Netsoft.Jobs.Features.RegisterJob.RegisterJobEndpoint::MapRegisterJob(Microsoft.AspNetCore.Routing.IEndpointRouteBuilder)": {
+          "Lines": {
+            "22": 0,
+            "24": 0,
+            "25": 0,
+            "26": 0,
+            "27": 0,
+            "28": 0,
+            "29": 0,
+            "30": 0,
+            "31": 0,
+            "32": 0,
+            "33": 0,
+            "34": 0,
+            "35": 0,
+            "36": 0,
+            "37": 0,
+            "38": 0,
+            "39": 0,
+            "40": 0,
+            "41": 0,
+            "42": 0,
+            "44": 0
+          },
+          "Branches": []
+        }
+      },
+      "Netsoft.Jobs.Features.RegisterJob.RegisterJobEndpoint/<>c/<<MapRegisterJob>b__0_0>d": {
+        "System.Void Netsoft.Jobs.Features.RegisterJob.RegisterJobEndpoint/<>c/<<MapRegisterJob>b__0_0>d::MoveNext()": {
+          "Lines": {},
+          "Branches": [
+            {
+              "Line": 31,
+              "Offset": 125,
+              "EndOffset": 127,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 31,
+              "Offset": 125,
+              "EndOffset": 156,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 0
+            }
+          ]
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/RegisterJob/RegisterJobHandler.cs": {
+      "Netsoft.Jobs.Features.RegisterJob.RegisterJobHandler": {
+        "System.Collections.Generic.IReadOnlyList`1<Netsoft.Jobs.Features.ValidationError> Netsoft.Jobs.Features.RegisterJob.RegisterJobHandler::Validate(Netsoft.Jobs.Features.RegisterJob.RegisterJobCommand)": {
+          "Lines": {
+            "63": 114,
+            "65": 114,
+            "67": 5,
+            "70": 114,
+            "72": 4,
+            "77": 114,
+            "79": 1,
+            "82": 114
+          },
+          "Branches": [
+            {
+              "Line": 65,
+              "Offset": 17,
+              "EndOffset": 19,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 5
+            },
+            {
+              "Line": 65,
+              "Offset": 17,
+              "EndOffset": 40,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 109
+            },
+            {
+              "Line": 70,
+              "Offset": 51,
+              "EndOffset": 53,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 4
+            },
+            {
+              "Line": 70,
+              "Offset": 51,
+              "EndOffset": 74,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 110
+            },
+            {
+              "Line": 77,
+              "Offset": 80,
+              "EndOffset": 82,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 1
+            },
+            {
+              "Line": 77,
+              "Offset": 80,
+              "EndOffset": 103,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 113
+            }
+          ]
+        },
+        "System.Void Netsoft.Jobs.Features.RegisterJob.RegisterJobHandler::.ctor(Netsoft.Jobs.Domain.IJobStore,Netsoft.Jobs.Features.IJobIdFactory,System.TimeProvider)": {
+          "Lines": {
+            "18": 15,
+            "20": 15,
+            "21": 15,
+            "22": 15,
+            "24": 15,
+            "25": 15,
+            "26": 15,
+            "27": 15
+          },
+          "Branches": []
+        }
+      },
+      "Netsoft.Jobs.Features.RegisterJob.RegisterJobHandler/<HandleAsync>d__4": {
+        "System.Void Netsoft.Jobs.Features.RegisterJob.RegisterJobHandler/<HandleAsync>d__4::MoveNext()": {
+          "Lines": {
+            "34": 114,
+            "36": 114,
+            "37": 114,
+            "40": 9,
+            "43": 105,
+            "44": 105,
+            "45": 105,
+            "46": 105,
+            "47": 105,
+            "48": 105,
+            "50": 105,
+            "52": 105,
+            "53": 114
+          },
+          "Branches": [
+            {
+              "Line": 37,
+              "Offset": 55,
+              "EndOffset": 57,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 9
+            },
+            {
+              "Line": 37,
+              "Offset": 55,
+              "EndOffset": 69,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 105
+            }
+          ]
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/RegisterJob/RegisterJobServiceCollectionExtensions.cs": {
+      "Netsoft.Jobs.Features.RegisterJob.RegisterJobServiceCollectionExtensions": {
+        "Microsoft.Extensions.DependencyInjection.IServiceCollection Netsoft.Jobs.Features.RegisterJob.RegisterJobServiceCollectionExtensions::AddRegisterJob(Microsoft.Extensions.DependencyInjection.IServiceCollection)": {
+          "Lines": {
+            "19": 1,
+            "21": 1,
+            "23": 1
+          },
+          "Branches": []
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/QueryJobs/QueryJobsEndpoint.cs": {
+      "Netsoft.Jobs.Features.QueryJobs.QueryJobsEndpoint": {
+        "Microsoft.AspNetCore.Routing.IEndpointRouteBuilder Netsoft.Jobs.Features.QueryJobs.QueryJobsEndpoint::MapQueryJobs(Microsoft.AspNetCore.Routing.IEndpointRouteBuilder)": {
+          "Lines": {
+            "22": 0,
+            "26": 0,
+            "27": 0,
+            "28": 0,
+            "29": 0,
+            "30": 0,
+            "31": 0,
+            "32": 0,
+            "33": 0,
+            "34": 0,
+            "35": 0,
+            "37": 0,
+            "38": 0,
+            "39": 0,
+            "40": 0,
+            "41": 0,
+            "42": 0,
+            "43": 0,
+            "44": 0,
+            "45": 0,
+            "46": 0,
+            "47": 0,
+            "48": 0,
+            "50": 0
+          },
+          "Branches": []
+        }
+      },
+      "Netsoft.Jobs.Features.QueryJobs.QueryJobsEndpoint/<>c/<<MapQueryJobs>b__0_1>d": {
+        "System.Void Netsoft.Jobs.Features.QueryJobs.QueryJobsEndpoint/<>c/<<MapQueryJobs>b__0_1>d::MoveNext()": {
+          "Lines": {},
+          "Branches": [
+            {
+              "Line": 44,
+              "Offset": 117,
+              "EndOffset": 119,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 44,
+              "Offset": 117,
+              "EndOffset": 132,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 0
+            }
+          ]
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/QueryJobs/QueryJobsHandler.cs": {
+      "Netsoft.Jobs.Features.QueryJobs.QueryJobsHandler": {
+        "System.Void Netsoft.Jobs.Features.QueryJobs.QueryJobsHandler::.ctor(Netsoft.Jobs.Domain.IJobStore)": {
+          "Lines": {
+            "29": 18,
+            "31": 18,
+            "33": 18,
+            "34": 18
+          },
+          "Branches": []
+        }
+      },
+      "Netsoft.Jobs.Features.QueryJobs.QueryJobsHandler/<FindAsync>d__3": {
+        "System.Void Netsoft.Jobs.Features.QueryJobs.QueryJobsHandler/<FindAsync>d__3::MoveNext()": {
+          "Lines": {
+            "57": 13,
+            "59": 3,
+            "62": 10,
+            "64": 10,
+            "65": 13
+          },
+          "Branches": [
+            {
+              "Line": 57,
+              "Offset": 30,
+              "EndOffset": 32,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 3
+            },
+            {
+              "Line": 57,
+              "Offset": 30,
+              "EndOffset": 39,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 10
+            },
+            {
+              "Line": 64,
+              "Offset": 146,
+              "EndOffset": 148,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 9
+            },
+            {
+              "Line": 64,
+              "Offset": 146,
+              "EndOffset": 157,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 1
+            }
+          ]
+        }
+      },
+      "Netsoft.Jobs.Features.QueryJobs.QueryJobsHandler/<ListAsync>d__2": {
+        "System.Void Netsoft.Jobs.Features.QueryJobs.QueryJobsHandler/<ListAsync>d__2::MoveNext()": {
+          "Lines": {
+            "45": 4,
+            "47": 4,
+            "48": 4
+          },
+          "Branches": []
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/QueryJobs/QueryJobsServiceCollectionExtensions.cs": {
+      "Netsoft.Jobs.Features.QueryJobs.QueryJobsServiceCollectionExtensions": {
+        "Microsoft.Extensions.DependencyInjection.IServiceCollection Netsoft.Jobs.Features.QueryJobs.QueryJobsServiceCollectionExtensions::AddQueryJobs(Microsoft.Extensions.DependencyInjection.IServiceCollection)": {
+          "Lines": {
+            "19": 2,
+            "21": 2,
+            "23": 2
+          },
+          "Branches": []
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/Execution/DemoJobHandler.cs": {
+      "Netsoft.Jobs.Features.Execution.DemoJobHandler": {
+        "System.String Netsoft.Jobs.Features.Execution.DemoJobHandler::get_JobType()": {
+          "Lines": {
+            "31": 5
+          },
+          "Branches": []
+        },
+        "System.Threading.Tasks.Task Netsoft.Jobs.Features.Execution.DemoJobHandler::ExecuteAsync(System.String,System.Threading.CancellationToken)": {
+          "Lines": {
+            "44": 7,
+            "47": 3
+          },
+          "Branches": []
+        },
+        "System.TimeSpan Netsoft.Jobs.Features.Execution.DemoJobHandler::ParseDuration(System.String)": {
+          "Lines": {
+            "52": 7,
+            "54": 1,
+            "58": 6,
+            "59": 6,
+            "60": 6,
+            "61": 6,
+            "63": 4,
+            "64": 4,
+            "67": 2
+          },
+          "Branches": [
+            {
+              "Line": 52,
+              "Offset": 6,
+              "EndOffset": 8,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1
+            },
+            {
+              "Line": 52,
+              "Offset": 6,
+              "EndOffset": 14,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 6
+            },
+            {
+              "Line": 58,
+              "Offset": 37,
+              "EndOffset": 39,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 3
+            },
+            {
+              "Line": 58,
+              "Offset": 45,
+              "EndOffset": 47,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 3
+            },
+            {
+              "Line": 58,
+              "Offset": 53,
+              "EndOffset": 55,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 3
+            },
+            {
+              "Line": 58,
+              "Offset": 37,
+              "EndOffset": 67,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 3
+            },
+            {
+              "Line": 58,
+              "Offset": 45,
+              "EndOffset": 67,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 0
+            },
+            {
+              "Line": 58,
+              "Offset": 53,
+              "EndOffset": 67,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 0
+            },
+            {
+              "Line": 58,
+              "Offset": 65,
+              "EndOffset": 67,
+              "Path": 0,
+              "Ordinal": 8,
+              "Hits": 4
+            },
+            {
+              "Line": 58,
+              "Offset": 65,
+              "EndOffset": 89,
+              "Path": 1,
+              "Ordinal": 9,
+              "Hits": 2
+            }
+          ]
+        },
+        "System.Void Netsoft.Jobs.Features.Execution.DemoJobHandler::.ctor(System.TimeProvider)": {
+          "Lines": {
+            "23": 10,
+            "25": 10,
+            "27": 10,
+            "28": 10
+          },
+          "Branches": []
+        },
+        "System.Void Netsoft.Jobs.Features.Execution.DemoJobHandler::.cctor()": {
+          "Lines": {
+            "19": 1
+          },
+          "Branches": []
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/Execution/IRunningJobRegistry.cs": {
+      "Netsoft.Jobs.Features.Execution.RunningJobRegistry": {
+        "System.IDisposable Netsoft.Jobs.Features.Execution.RunningJobRegistry::Track(Netsoft.Jobs.Domain.JobId,System.Threading.CancellationTokenSource)": {
+          "Lines": {
+            "53": 15,
+            "57": 15,
+            "61": 0,
+            "62": 0,
+            "65": 15,
+            "66": 15,
+            "67": 15,
+            "69": 15
+          },
+          "Branches": [
+            {
+              "Line": 57,
+              "Offset": 29,
+              "EndOffset": 31,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 57,
+              "Offset": 29,
+              "EndOffset": 90,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 15
+            }
+          ]
+        },
+        "System.Boolean Netsoft.Jobs.Features.Execution.RunningJobRegistry::TryRequestCancel(Netsoft.Jobs.Domain.JobId)": {
+          "Lines": {
+            "74": 2,
+            "80": 2,
+            "82": 1,
+            "85": 1,
+            "86": 1,
+            "88": 2
+          },
+          "Branches": [
+            {
+              "Line": 80,
+              "Offset": 18,
+              "EndOffset": 20,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1
+            },
+            {
+              "Line": 80,
+              "Offset": 18,
+              "EndOffset": 34,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 1
+            },
+            {
+              "Line": 80,
+              "Offset": 32,
+              "EndOffset": 34,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 1
+            },
+            {
+              "Line": 80,
+              "Offset": 32,
+              "EndOffset": 38,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 1
+            }
+          ]
+        },
+        "System.Void Netsoft.Jobs.Features.Execution.RunningJobRegistry::Untrack(Netsoft.Jobs.Domain.JobId)": {
+          "Lines": {
+            "91": 15,
+            "94": 15,
+            "96": 0,
+            "99": 15,
+            "100": 15,
+            "101": 15,
+            "102": 15
+          },
+          "Branches": [
+            {
+              "Line": 94,
+              "Offset": 24,
+              "EndOffset": 26,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 94,
+              "Offset": 24,
+              "EndOffset": 28,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 15
+            }
+          ]
+        },
+        "System.Void Netsoft.Jobs.Features.Execution.RunningJobRegistry::.ctor()": {
+          "Lines": {
+            "40": 20
+          },
+          "Branches": []
+        }
+      },
+      "Netsoft.Jobs.Features.Execution.RunningJobRegistry/Registration": {
+        "System.Void Netsoft.Jobs.Features.Execution.RunningJobRegistry/Registration::Dispose()": {
+          "Lines": {
+            "106": 15
+          },
+          "Branches": []
+        },
+        "System.Void Netsoft.Jobs.Features.Execution.RunningJobRegistry/Registration::.ctor(Netsoft.Jobs.Features.Execution.RunningJobRegistry,Netsoft.Jobs.Domain.JobId)": {
+          "Lines": {
+            "104": 15
+          },
+          "Branches": []
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/Execution/JobExecutionEngine.cs": {
+      "Netsoft.Jobs.Features.Execution.JobExecutionEngine": {
+        "System.String Netsoft.Jobs.Features.Execution.JobExecutionEngine::Describe(System.Exception)": {
+          "Lines": {
+            "296": 2,
+            "297": 2,
+            "298": 2
+          },
+          "Branches": [
+            {
+              "Line": 296,
+              "Offset": 11,
+              "EndOffset": 13,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 2
+            },
+            {
+              "Line": 296,
+              "Offset": 11,
+              "EndOffset": 41,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 0
+            }
+          ]
+        },
+        "System.Void Netsoft.Jobs.Features.Execution.JobExecutionEngine::.ctor(Netsoft.Jobs.Domain.IJobStore,Netsoft.Jobs.Features.Execution.JobHandlerRegistry,Netsoft.Jobs.Features.Execution.RunningJobRegistry,System.TimeProvider,Microsoft.Extensions.Logging.ILogger`1<Netsoft.Jobs.Features.Execution.JobExecutionEngine>)": {
+          "Lines": {
+            "48": 17,
+            "49": 17,
+            "50": 17,
+            "51": 17,
+            "52": 17,
+            "53": 17,
+            "55": 17,
+            "56": 17,
+            "57": 17,
+            "58": 17,
+            "59": 17,
+            "61": 17,
+            "62": 17,
+            "63": 17,
+            "64": 17,
+            "65": 17,
+            "66": 17
+          },
+          "Branches": []
+        },
+        "System.Void Netsoft.Jobs.Features.Execution.JobExecutionEngine::.cctor()": {
+          "Lines": {
+            "36": 1,
+            "37": 7
+          },
+          "Branches": []
+        }
+      },
+      "Netsoft.Jobs.Features.Execution.JobExecutionEngine/<EnsureRecoveredAsync>d__9": {
+        "System.Void Netsoft.Jobs.Features.Execution.JobExecutionEngine/<EnsureRecoveredAsync>d__9::MoveNext()": {
+          "Lines": {
+            "86": 24,
+            "88": 8,
+            "91": 96,
+            "93": 32,
+            "95": 70,
+            "97": 3,
+            "98": 3,
+            "99": 3,
+            "100": 3,
+            "102": 3,
+            "104": 3,
+            "105": 3,
+            "107": 3,
+            "111": 16,
+            "112": 24
+          },
+          "Branches": [
+            {
+              "Line": 86,
+              "Offset": 30,
+              "EndOffset": 32,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 8
+            },
+            {
+              "Line": 86,
+              "Offset": 30,
+              "EndOffset": 37,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 16
+            },
+            {
+              "Line": 91,
+              "Offset": 505,
+              "EndOffset": 60,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 32
+            },
+            {
+              "Line": 95,
+              "Offset": 439,
+              "EndOffset": 206,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 3
+            },
+            {
+              "Line": 102,
+              "Offset": 260,
+              "EndOffset": 265,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 3
+            },
+            {
+              "Line": 102,
+              "Offset": 260,
+              "EndOffset": 421,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 3
+            },
+            {
+              "Line": 95,
+              "Offset": 439,
+              "EndOffset": 444,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 32
+            },
+            {
+              "Line": 91,
+              "Offset": 505,
+              "EndOffset": 510,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 16
+            }
+          ]
+        }
+      },
+      "Netsoft.Jobs.Features.Execution.JobExecutionEngine/<FinishAsync>d__13": {
+        "System.Void Netsoft.Jobs.Features.Execution.JobExecutionEngine/<FinishAsync>d__13::MoveNext()": {
+          "Lines": {
+            "260": 16,
+            "261": 16,
+            "263": 0,
+            "264": 0,
+            "267": 16,
+            "269": 16,
+            "270": 16,
+            "274": 0,
+            "276": 0,
+            "279": 0,
+            "280": 0,
+            "281": 0,
+            "282": 0,
+            "285": 16,
+            "286": 16
+          },
+          "Branches": [
+            {
+              "Line": 261,
+              "Offset": 136,
+              "EndOffset": 138,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 261,
+              "Offset": 136,
+              "EndOffset": 179,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 16
+            },
+            {
+              "Line": 270,
+              "Offset": 219,
+              "EndOffset": 221,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 0
+            },
+            {
+              "Line": 274,
+              "Offset": 232,
+              "EndOffset": 234,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 0
+            },
+            {
+              "Line": 274,
+              "Offset": 232,
+              "EndOffset": 239,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 0
+            },
+            {
+              "Line": 270,
+              "Offset": 219,
+              "EndOffset": 327,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 16
+            }
+          ]
+        }
+      },
+      "Netsoft.Jobs.Features.Execution.JobExecutionEngine/<RunAsync>d__11": {
+        "System.Void Netsoft.Jobs.Features.Execution.JobExecutionEngine/<RunAsync>d__11::MoveNext()": {
+          "Lines": {
+            "157": 1,
+            "159": 1,
+            "161": 3,
+            "166": 2,
+            "167": 2,
+            "168": 0,
+            "170": 0,
+            "172": 0,
+            "176": 0,
+            "177": 0,
+            "178": 0,
+            "180": 2,
+            "188": 0,
+            "189": 0,
+            "190": 0,
+            "192": 0,
+            "195": 1
+          },
+          "Branches": [
+            {
+              "Line": 161,
+              "Offset": 456,
+              "EndOffset": 155,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 3
+            },
+            {
+              "Line": 180,
+              "Offset": 328,
+              "EndOffset": 330,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 180,
+              "Offset": 328,
+              "EndOffset": 445,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 3
+            },
+            {
+              "Line": 161,
+              "Offset": 456,
+              "EndOffset": 461,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 1
+            }
+          ]
+        }
+      },
+      "Netsoft.Jobs.Features.Execution.JobExecutionEngine/<RunHandlerAsync>d__12": {
+        "System.Void Netsoft.Jobs.Features.Execution.JobExecutionEngine/<RunHandlerAsync>d__12::MoveNext()": {
+          "Lines": {
+            "204": 16,
+            "207": 16,
+            "211": 16,
+            "212": 16,
+            "216": 1,
+            "217": 1,
+            "221": 15,
+            "223": 15,
+            "224": 12,
+            "226": 12,
+            "228": 13,
+            "229": 1,
+            "233": 1,
+            "234": 1,
+            "235": 2,
+            "237": 2,
+            "238": 2,
+            "239": 2,
+            "241": 16,
+            "242": 16
+          },
+          "Branches": [
+            {
+              "Line": 212,
+              "Offset": 75,
+              "EndOffset": 77,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1
+            },
+            {
+              "Line": 212,
+              "Offset": 75,
+              "EndOffset": 116,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 15
+            }
+          ]
+        }
+      },
+      "Netsoft.Jobs.Features.Execution.JobExecutionEngine/<RunOnceAsync>d__10": {
+        "System.Void Netsoft.Jobs.Features.Execution.JobExecutionEngine/<RunOnceAsync>d__10::MoveNext()": {
+          "Lines": {
+            "124": 18,
+            "126": 18,
+            "127": 18,
+            "129": 2,
+            "132": 16,
+            "133": 16,
+            "137": 0,
+            "138": 0,
+            "141": 16,
+            "143": 16,
+            "144": 16,
+            "145": 18
+          },
+          "Branches": [
+            {
+              "Line": 127,
+              "Offset": 257,
+              "EndOffset": 259,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 2
+            },
+            {
+              "Line": 127,
+              "Offset": 257,
+              "EndOffset": 266,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 16
+            },
+            {
+              "Line": 133,
+              "Offset": 298,
+              "EndOffset": 300,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 0
+            },
+            {
+              "Line": 133,
+              "Offset": 298,
+              "EndOffset": 352,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 16
+            }
+          ]
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/Execution/JobExecutionServiceCollectionExtensions.cs": {
+      "Netsoft.Jobs.Features.Execution.JobExecutionServiceCollectionExtensions": {
+        "Microsoft.Extensions.DependencyInjection.IServiceCollection Netsoft.Jobs.Features.Execution.JobExecutionServiceCollectionExtensions::AddJobExecution(Microsoft.Extensions.DependencyInjection.IServiceCollection)": {
+          "Lines": {
+            "28": 4,
+            "30": 4,
+            "34": 4,
+            "36": 4,
+            "37": 4,
+            "38": 6,
+            "39": 4,
+            "41": 4
+          },
+          "Branches": []
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/Execution/JobHandlerRegistry.cs": {
+      "Netsoft.Jobs.Features.Execution.JobHandlerRegistry": {
+        "Netsoft.Jobs.Features.Execution.IJobHandler Netsoft.Jobs.Features.Execution.JobHandlerRegistry::Find(System.String)": {
+          "Lines": {
+            "51": 23
+          },
+          "Branches": [
+            {
+              "Line": 51,
+              "Offset": 6,
+              "EndOffset": 8,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 21
+            },
+            {
+              "Line": 51,
+              "Offset": 6,
+              "EndOffset": 21,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 2
+            }
+          ]
+        },
+        "System.Void Netsoft.Jobs.Features.Execution.JobHandlerRegistry::.ctor(System.Collections.Generic.IEnumerable`1<Netsoft.Jobs.Features.Execution.IJobHandler>)": {
+          "Lines": {
+            "22": 25,
+            "24": 25,
+            "26": 25,
+            "27": 97,
+            "29": 24,
+            "31": 24,
+            "33": 1,
+            "34": 1,
+            "35": 1,
+            "39": 24,
+            "40": 24
+          },
+          "Branches": [
+            {
+              "Line": 27,
+              "Offset": 113,
+              "EndOffset": 37,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 24
+            },
+            {
+              "Line": 31,
+              "Offset": 73,
+              "EndOffset": 75,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1
+            },
+            {
+              "Line": 31,
+              "Offset": 73,
+              "EndOffset": 107,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 48
+            },
+            {
+              "Line": 27,
+              "Offset": 113,
+              "EndOffset": 115,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 24
+            }
+          ]
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/CancelJob/CancelJobEndpoint.cs": {
+      "Netsoft.Jobs.Features.CancelJob.CancelJobEndpoint": {
+        "Microsoft.AspNetCore.Routing.IEndpointRouteBuilder Netsoft.Jobs.Features.CancelJob.CancelJobEndpoint::MapCancelJob(Microsoft.AspNetCore.Routing.IEndpointRouteBuilder)": {
+          "Lines": {
+            "27": 0,
+            "29": 0,
+            "30": 0,
+            "31": 0,
+            "32": 0,
+            "33": 0,
+            "34": 0,
+            "35": 0,
+            "36": 0,
+            "37": 0,
+            "38": 0,
+            "39": 0,
+            "40": 0,
+            "41": 0,
+            "42": 0,
+            "43": 0,
+            "44": 0,
+            "45": 0,
+            "46": 0,
+            "47": 0,
+            "48": 0,
+            "49": 0,
+            "50": 0,
+            "52": 0
+          },
+          "Branches": []
+        }
+      },
+      "Netsoft.Jobs.Features.CancelJob.CancelJobEndpoint/<>c/<<MapCancelJob>b__0_0>d": {
+        "System.Void Netsoft.Jobs.Features.CancelJob.CancelJobEndpoint/<>c/<<MapCancelJob>b__0_0>d::MoveNext()": {
+          "Lines": {},
+          "Branches": [
+            {
+              "Line": 38,
+              "Offset": 130,
+              "EndOffset": 132,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 38,
+              "Offset": 130,
+              "EndOffset": 145,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 0
+            },
+            {
+              "Line": 46,
+              "Offset": 151,
+              "EndOffset": 153,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 0
+            },
+            {
+              "Line": 46,
+              "Offset": 151,
+              "EndOffset": 166,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 0
+            }
+          ]
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/CancelJob/CancelJobHandler.cs": {
+      "Netsoft.Jobs.Features.CancelJob.CancelJobHandler": {
+        "System.Void Netsoft.Jobs.Features.CancelJob.CancelJobHandler::.ctor(Netsoft.Jobs.Domain.IJobStore,Netsoft.Jobs.Features.Execution.IRunningJobRegistry,System.TimeProvider)": {
+          "Lines": {
+            "20": 21,
+            "22": 21,
+            "23": 21,
+            "24": 21,
+            "26": 21,
+            "27": 21,
+            "28": 21,
+            "29": 21
+          },
+          "Branches": []
+        }
+      },
+      "Netsoft.Jobs.Features.CancelJob.CancelJobHandler/<HandleAsync>d__4": {
+        "System.Void Netsoft.Jobs.Features.CancelJob.CancelJobHandler/<HandleAsync>d__4::MoveNext()": {
+          "Lines": {
+            "37": 22,
+            "39": 3,
+            "42": 19,
+            "43": 19,
+            "45": 3,
+            "48": 16,
+            "49": 16,
+            "54": 8,
+            "55": 8,
+            "57": 8,
+            "64": 8,
+            "70": 8,
+            "72": 8,
+            "73": 22
+          },
+          "Branches": [
+            {
+              "Line": 37,
+              "Offset": 37,
+              "EndOffset": 39,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 3
+            },
+            {
+              "Line": 37,
+              "Offset": 37,
+              "EndOffset": 50,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 19
+            },
+            {
+              "Line": 43,
+              "Offset": 172,
+              "EndOffset": 174,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 3
+            },
+            {
+              "Line": 43,
+              "Offset": 172,
+              "EndOffset": 185,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 16
+            },
+            {
+              "Line": 49,
+              "Offset": 218,
+              "EndOffset": 220,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 8
+            },
+            {
+              "Line": 54,
+              "Offset": 236,
+              "EndOffset": 238,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 0
+            },
+            {
+              "Line": 54,
+              "Offset": 236,
+              "EndOffset": 249,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 8
+            },
+            {
+              "Line": 49,
+              "Offset": 218,
+              "EndOffset": 282,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 8
+            }
+          ]
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/CancelJob/CancelJobResult.cs": {
+      "Netsoft.Jobs.Features.CancelJob.CancelJobResult": {
+        "Netsoft.Jobs.Features.JobDto Netsoft.Jobs.Features.CancelJob.CancelJobResult::get_Job()": {
+          "Lines": {
+            "43": 26
+          },
+          "Branches": []
+        },
+        "System.Nullable`1<Netsoft.Jobs.Domain.JobTransitionRejection> Netsoft.Jobs.Features.CancelJob.CancelJobResult::get_Rejection()": {
+          "Lines": {
+            "48": 14
+          },
+          "Branches": []
+        },
+        "System.Boolean Netsoft.Jobs.Features.CancelJob.CancelJobResult::get_IsSuccess()": {
+          "Lines": {
+            "59": 12
+          },
+          "Branches": [
+            {
+              "Line": 59,
+              "Offset": 14,
+              "EndOffset": 16,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 8
+            },
+            {
+              "Line": 59,
+              "Offset": 30,
+              "EndOffset": 32,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 4
+            },
+            {
+              "Line": 59,
+              "Offset": 30,
+              "EndOffset": 41,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 4
+            },
+            {
+              "Line": 59,
+              "Offset": 39,
+              "EndOffset": 41,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 1
+            },
+            {
+              "Line": 59,
+              "Offset": 39,
+              "EndOffset": 45,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 3
+            },
+            {
+              "Line": 59,
+              "Offset": 14,
+              "EndOffset": 49,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 4
+            }
+          ]
+        },
+        "Netsoft.Jobs.Features.CancelJob.CancelJobResult Netsoft.Jobs.Features.CancelJob.CancelJobResult::NotFound()": {
+          "Lines": {
+            "62": 6
+          },
+          "Branches": []
+        },
+        "Netsoft.Jobs.Features.CancelJob.CancelJobResult Netsoft.Jobs.Features.CancelJob.CancelJobResult::Accepted(Netsoft.Jobs.Features.JobDto)": {
+          "Lines": {
+            "67": 8,
+            "69": 8
+          },
+          "Branches": []
+        },
+        "Netsoft.Jobs.Features.CancelJob.CancelJobResult Netsoft.Jobs.Features.CancelJob.CancelJobResult::Rejected(Netsoft.Jobs.Features.JobDto,Netsoft.Jobs.Domain.JobTransitionRejection)": {
+          "Lines": {
+            "75": 8,
+            "77": 8
+          },
+          "Branches": []
+        },
+        "System.Void Netsoft.Jobs.Features.CancelJob.CancelJobResult::.ctor(Netsoft.Jobs.Features.JobDto,System.Nullable`1<Netsoft.Jobs.Domain.JobTransitionRejection>)": {
+          "Lines": {
+            "30": 22,
+            "32": 22,
+            "33": 22,
+            "34": 22
+          },
+          "Branches": []
+        }
+      }
+    },
+    "/home/user/Netsoft.Jobs/src/Features/CancelJob/CancelJobServiceCollectionExtensions.cs": {
+      "Netsoft.Jobs.Features.CancelJob.CancelJobServiceCollectionExtensions": {
+        "Microsoft.Extensions.DependencyInjection.IServiceCollection Netsoft.Jobs.Features.CancelJob.CancelJobServiceCollectionExtensions::AddCancelJob(Microsoft.Extensions.DependencyInjection.IServiceCollection)": {
+          "Lines": {
+            "23": 2,
+            "25": 2,
+            "27": 2
+          },
+          "Branches": []
+        }
+      }
+    }
+  }
+}
