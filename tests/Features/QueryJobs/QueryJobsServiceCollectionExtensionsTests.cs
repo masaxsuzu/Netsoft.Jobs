@@ -14,10 +14,11 @@ public sealed class QueryJobsServiceCollectionExtensionsTests
     [Fact]
     public void 読み出しのハンドラをDIから解決できる()
     {
+        using TemporaryJobStore store = new();
         ServiceCollection services = new();
 
         // Web 側がやることと同じ。IJobStore の実装を選ぶのは Features の関心ではない。
-        services.AddSingleton<IJobStore>(new InMemoryJobStore());
+        services.AddSingleton<IJobStore>(store);
         services.AddQueryJobs();
 
         using ServiceProvider provider = services.BuildServiceProvider(new ServiceProviderOptions

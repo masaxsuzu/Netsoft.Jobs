@@ -13,15 +13,17 @@ namespace Netsoft.Jobs.Features.Tests.Execution;
 /// 時間で待つテストを書かない。「ハンドラの中にいる」ことは
 /// <see cref="ControllableJobHandler.Entered"/> で確定させてから次の操作をする。
 /// </remarks>
-public sealed class JobExecutionEngineTests
+public sealed class JobExecutionEngineTests : IDisposable
 {
     private const string HandledJobType = "test-job";
 
     private static readonly DateTimeOffset Now = new(2026, 7, 29, 9, 0, 0, TimeSpan.Zero);
 
-    private readonly InMemoryJobStore _store = new();
+    private readonly TemporaryJobStore _store = new();
     private readonly FixedTimeProvider _timeProvider = new(Now);
     private readonly RunningJobRegistry _runningJobs = new();
+
+    public void Dispose() => _store.Dispose();
 
     [Fact]
     public async Task 待機中のJobが実行されて完了になる()
@@ -189,7 +191,7 @@ public sealed class JobExecutionEngineTests
         JobExecutionEngine engine = CreateEngine(Released(new ControllableJobHandler(HandledJobType)));
 
         Assert.False(await engine.RunOnceAsync(CancellationToken.None));
-        Assert.Empty(_store.Jobs);
+        Assert.Empty(await _store.ListAsync(CancellationToken.None));
     }
 
     [Fact]

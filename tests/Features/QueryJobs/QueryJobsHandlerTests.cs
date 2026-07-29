@@ -4,16 +4,18 @@ using Netsoft.Jobs.Features.Tests.Fakes;
 
 namespace Netsoft.Jobs.Features.Tests.QueryJobs;
 
-public sealed class QueryJobsHandlerTests
+public sealed class QueryJobsHandlerTests : IDisposable
 {
     private static readonly DateTimeOffset Created = new(2026, 7, 29, 9, 0, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset Started = new(2026, 7, 29, 9, 1, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset Finished = new(2026, 7, 29, 9, 2, 0, TimeSpan.Zero);
 
-    private readonly InMemoryJobStore _store = new();
+    private readonly TemporaryJobStore _store = new();
     private readonly QueryJobsHandler _handler;
 
     public QueryJobsHandlerTests() => _handler = new QueryJobsHandler(_store);
+
+    public void Dispose() => _store.Dispose();
 
     [Fact]
     public async Task 一覧は作成日時の新しい順で返る()
@@ -76,11 +78,11 @@ public sealed class QueryJobsHandlerTests
         await AddAsync(Running("job-2", Created));
         await AddAsync(Failed("job-3", Created, "接続できませんでした。"));
 
-        IReadOnlyList<string> before = Snapshot();
+        IReadOnlyList<string> before = await SnapshotAsync();
 
         await _handler.ListAsync(CancellationToken.None);
 
-        Assert.Equal(before, Snapshot());
+        Assert.Equal(before, await SnapshotAsync());
     }
 
     [Fact]
@@ -89,11 +91,11 @@ public sealed class QueryJobsHandlerTests
         await AddAsync(Queued("job-1", Created));
         await AddAsync(Running("job-2", Created));
 
-        IReadOnlyList<string> before = Snapshot();
+        IReadOnlyList<string> before = await SnapshotAsync();
 
         await _handler.FindAsync("job-2", CancellationToken.None);
 
-        Assert.Equal(before, Snapshot());
+        Assert.Equal(before, await SnapshotAsync());
     }
 
     [Fact]
@@ -221,9 +223,9 @@ public sealed class QueryJobsHandlerTests
     /// <summary>
     /// store の中身を文字列に写して、読み出しの前後で変わっていないことを比べられるようにする。
     /// </summary>
-    private IReadOnlyList<string> Snapshot() =>
+    private async Task<IReadOnlyList<string>> SnapshotAsync() =>
     [
-        .. _store.Jobs.Select(job =>
+        .. (await _store.ListAsync(CancellationToken.None)).Select(job =>
             $"{job.Id}|{job.Status}|{job.CreatedAt:O}|{job.StartedAt:O}|{job.FinishedAt:O}|{job.FailureMessage}")
     ];
 

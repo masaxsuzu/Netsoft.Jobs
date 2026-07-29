@@ -4,14 +4,14 @@ using Netsoft.Jobs.Features.Tests.Fakes;
 
 namespace Netsoft.Jobs.Features.Tests.CancelJob;
 
-public sealed class CancelJobHandlerTests
+public sealed class CancelJobHandlerTests : IDisposable
 {
     private static readonly DateTimeOffset Created = new(2026, 7, 29, 9, 0, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset Started = new(2026, 7, 29, 9, 1, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset Finished = new(2026, 7, 29, 9, 2, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset Requested = new(2026, 7, 29, 9, 3, 0, TimeSpan.Zero);
 
-    private readonly InMemoryJobStore _jobs = new();
+    private readonly TemporaryJobStore _jobs = new();
     private readonly CancelJobCallLog _log = new();
     private readonly RecordingJobStore _store;
     private readonly RecordingRunningJobRegistry _runningJobs;
@@ -24,6 +24,8 @@ public sealed class CancelJobHandlerTests
         _runningJobs = new RecordingRunningJobRegistry(_log);
         _handler = new CancelJobHandler(_store, _runningJobs, _timeProvider);
     }
+
+    public void Dispose() => _jobs.Dispose();
 
     [Fact]
     public async Task 待機中のJobをキャンセルすると即座に中止済みになる()
@@ -46,7 +48,7 @@ public sealed class CancelJobHandlerTests
 
         await CancelAsync("job-1");
 
-        Job saved = Saved("job-1");
+        Job saved = await SavedAsync("job-1");
         Assert.Equal(JobStatus.Cancelled, saved.Status);
 
         // 終端に達したので終了時刻が入る。時刻は要求した時点のもの。
@@ -66,7 +68,7 @@ public sealed class CancelJobHandlerTests
         Assert.NotNull(result.Job);
         Assert.Equal(nameof(JobStatus.Cancelling), result.Job.Status);
 
-        Job saved = Saved("job-1");
+        Job saved = await SavedAsync("job-1");
         Assert.Equal(JobStatus.Cancelling, saved.Status);
         Assert.Null(saved.FinishedAt);
     }
@@ -105,7 +107,7 @@ public sealed class CancelJobHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(nameof(JobStatus.Cancelling), result.Job?.Status);
-        Assert.Equal(JobStatus.Cancelling, Saved("job-1").Status);
+        Assert.Equal(JobStatus.Cancelling, (await SavedAsync("job-1")).Status);
     }
 
     [Fact]
@@ -118,7 +120,7 @@ public sealed class CancelJobHandlerTests
         CancelJobResult result = await CancelAsync("job-1");
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(JobStatus.Cancelled, Saved("job-1").Status);
+        Assert.Equal(JobStatus.Cancelled, (await SavedAsync("job-1")).Status);
     }
 
     [Fact]
@@ -207,14 +209,14 @@ public sealed class CancelJobHandlerTests
         await AddAsync(Terminal("job-2", nameof(JobStatus.Failed)));
         await AddAsync(Cancelling("job-3"));
 
-        IReadOnlyList<string> before = Snapshot();
+        IReadOnlyList<string> before = await SnapshotAsync();
 
         await CancelAsync("job-1");
         await CancelAsync("job-2");
         await CancelAsync("job-3");
         await CancelAsync("job-4");
 
-        Assert.Equal(before, Snapshot());
+        Assert.Equal(before, await SnapshotAsync());
         Assert.Empty(_log.Entries);
     }
 
@@ -226,22 +228,24 @@ public sealed class CancelJobHandlerTests
 
         await CancelAsync("job-2");
 
-        Assert.Equal(JobStatus.Queued, Saved("job-1").Status);
-        Assert.Equal(JobStatus.Cancelling, Saved("job-2").Status);
+        Assert.Equal(JobStatus.Queued, (await SavedAsync("job-1")).Status);
+        Assert.Equal(JobStatus.Cancelling, (await SavedAsync("job-2")).Status);
     }
 
     private Task<CancelJobResult> CancelAsync(string id) => _handler.HandleAsync(id, CancellationToken.None);
 
     private Task AddAsync(Job job) => _jobs.AddAsync(job, CancellationToken.None);
 
-    private Job Saved(string id) => _jobs.Jobs.Single(job => job.Id.Value == id);
+    private async Task<Job> SavedAsync(string id) =>
+        await _jobs.FindAsync(JobId.From(id), CancellationToken.None)
+        ?? throw new InvalidOperationException($"Job {id} が保存されていません。");
 
     /// <summary>
     /// store の中身を文字列に写して、要求の前後で変わっていないことを比べられるようにする。
     /// </summary>
-    private IReadOnlyList<string> Snapshot() =>
+    private async Task<IReadOnlyList<string>> SnapshotAsync() =>
     [
-        .. _jobs.Jobs.Select(job =>
+        .. (await _jobs.ListAsync(CancellationToken.None)).Select(job =>
             $"{job.Id}|{job.Status}|{job.CreatedAt:O}|{job.StartedAt:O}|{job.FinishedAt:O}|{job.FailureMessage}")
     ];
 

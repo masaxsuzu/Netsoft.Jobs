@@ -16,12 +16,13 @@ public sealed class CancelJobServiceCollectionExtensionsTests
     [Fact]
     public void キャンセルのハンドラをDIから解決できる()
     {
+        using TemporaryJobStore store = new();
         ServiceCollection services = new();
 
         // Web 側がやることと同じ。IJobStore の実装を選ぶのは Features の関心ではない。
         // TimeProvider と IRunningJobRegistry は機能をまたいで共有するもので、
         // AddCancelJob は自分のハンドラしか登録しない（登録は AddJobFeatures がまとめて行う）。
-        services.AddSingleton<IJobStore>(new InMemoryJobStore());
+        services.AddSingleton<IJobStore>(store);
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IRunningJobRegistry>(new RecordingRunningJobRegistry(new CancelJobCallLog()));
         services.AddCancelJob();
@@ -42,10 +43,11 @@ public sealed class CancelJobServiceCollectionExtensionsTests
     {
         // キャンセルは実行エンジン側の IRunningJobRegistry に依存する。
         // AddCancelJob が自分で登録しない以上、まとめた登録に取りこぼしが無いことを見ておく。
+        using TemporaryJobStore store = new();
         ServiceCollection services = new();
 
         services.AddLogging();
-        services.AddSingleton<IJobStore>(new InMemoryJobStore());
+        services.AddSingleton<IJobStore>(store);
         services.AddJobFeatures();
 
         using ServiceProvider provider = services.BuildServiceProvider(new ServiceProviderOptions

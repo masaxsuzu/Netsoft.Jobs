@@ -26,15 +26,15 @@ internal sealed class CancelJobCallLog
 /// 保存の呼び出しを <see cref="CancelJobCallLog"/> に記録する <see cref="IJobStore"/>。
 /// </summary>
 /// <remarks>
-/// 保存そのものの振る舞いは <see cref="InMemoryJobStore"/> に任せる。
+/// 保存そのものの振る舞いは包んだ本物の store（<see cref="Fakes.TemporaryJobStore"/>）に任せる。
 /// ここで作り直すと、他の機能のテストが見ている store と挙動がずれる。
 /// </remarks>
 internal sealed class RecordingJobStore : IJobStore
 {
-    private readonly InMemoryJobStore _inner;
+    private readonly IJobStore _inner;
     private readonly CancelJobCallLog _log;
 
-    public RecordingJobStore(InMemoryJobStore inner, CancelJobCallLog log)
+    public RecordingJobStore(IJobStore inner, CancelJobCallLog log)
     {
         _inner = inner;
         _log = log;
