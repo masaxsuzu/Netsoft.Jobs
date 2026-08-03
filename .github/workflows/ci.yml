@@ -60,8 +60,13 @@ jobs:
 
       # カバレッジ計測込みで実行する。基準を下回ると coverlet がビルドを失敗させる。
       # 基準と除外は tests/Directory.Build.props と tests/Web/Web.csproj にある。
+      #
+      # -m:1 でテストプロジェクトを直列に走らせる。判定を持つ tests/Web が最後に
+      # 走ることが基準判定の前提だが、並列だと「先に終わった順」でマージされるため、
+      # どれかのテストが遅くなるだけで順序が入れ替わって判定が不完全なデータに当たる
+      # (実際に起きた)。直列なら .slnx の並び順で決まるので、実行時間に左右されない。
       - name: Test
-        run: dotnet test --no-build --configuration Release -p:CollectCoverage=true
+        run: dotnet test --no-build --configuration Release -m:1 -p:CollectCoverage=true
 
       - name: Upload test results
         if: always()

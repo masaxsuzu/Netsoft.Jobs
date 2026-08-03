@@ -1,0 +1,106 @@
+using Netsoft.Jobs.Domain;
+
+namespace Netsoft.Jobs.Features.Tests.Concurrency;
+
+/// <summary>
+/// 観測された状態の列が <see cref="JobStateMachine"/> で説明できるかを検査する。
+/// </summary>
+/// <remarks>
+/// <para>
+/// 競合が状態を壊したことは、壊れた瞬間を捕まえなくても後から証明できる。
+/// ひとつの Job について観測された状態を並べ、隣り合う 2 つが状態機械の遷移で
+/// 繋がらなければ、その間に誰かが状態機械を迂回して書いたということになる。
+/// </para>
+/// <para>
+/// 判定に使うのは「1 手で行けるか」ではなく「何手かで行けるか」（到達可能性）である。
+/// 観測は連続していないので、<c>Queued</c> の次に <c>Completed</c> を見ることは普通に起きる。
+/// これを非合法にすると、正しい実装でも観測の間隔次第で落ちる（＝ flaky な）検査になる。
+/// 逆に <c>Running → Queued</c> や <c>Completed → Cancelling</c> のような後退は
+/// 何手かけても到達できないので、到達可能性で見ても確実に捕まる。
+/// </para>
+/// <para>
+/// 到達可能性は <see cref="JobStateMachine"/> から組み立てる。遷移表をここに書き写すと
+/// 状態機械が変わったときに黙って乖離し、オラクル自身が嘘をつくようになる。
+/// </para>
+/// </remarks>
+public static class JobStateSequenceOracle
+{
+    private static readonly IReadOnlyDictionary<JobStatus, IReadOnlySet<JobStatus>> ReachableFrom = BuildReachability();
+
+    /// <summary>
+    /// <paramref name="from"/> から 1 手で <paramref name="to"/> へ行けるか。
+    /// </summary>
+    public static bool IsLegalStep(JobStatus from, JobStatus to) =>
+        Enum.GetValues<JobTrigger>()
+            .Select(trigger => JobStateMachine.Evaluate(from, trigger))
+            .Any(result => result.IsAllowed && result.Status == to);
+
+    /// <summary>
+    /// <paramref name="from"/> から 0 手以上で <paramref name="to"/> へ行けるか。
+    /// </summary>
+    /// <remarks>
+    /// 0 手を含めるのは、状態が変わっていない 2 回の観測を合法とするため。
+    /// </remarks>
+    public static bool IsReachable(JobStatus from, JobStatus to) =>
+        from == to || ReachableFrom[from].Contains(to);
+
+    /// <summary>
+    /// 観測された状態の列を検査する。説明できない箇所があればその説明、無ければ null。
+    /// </summary>
+    /// <remarks>
+    /// 見つけた最初の 1 件だけを返す。1 箇所でも壊れていればそれで十分な証拠であり、
+    /// 壊れた後の列は既に信用できないので、続きを数えても意味が無い。
+    /// </remarks>
+    public static string? FindViolation(IReadOnlyList<JobStatus> observed)
+    {
+        ArgumentNullException.ThrowIfNull(observed);
+
+        // 最初の観測は Queued から到達できていなければならない。Job は必ず Queued で作られる。
+        if (observed.Count > 0 && !IsReachable(JobStatus.Queued, observed[0]))
+        {
+            return $"最初の観測 {observed[0]} は Queued から到達できません。";
+        }
+
+        for (int i = 1; i < observed.Count; i++)
+        {
+            if (!IsReachable(observed[i - 1], observed[i]))
+            {
+                return $"観測 {i - 1} → {i} の {observed[i - 1]} → {observed[i]} は状態機械で説明できません。"
+                    + $" 列: {string.Join(" → ", observed)}";
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 状態機械を歩いて到達可能性を作る。
+    /// </summary>
+    private static IReadOnlyDictionary<JobStatus, IReadOnlySet<JobStatus>> BuildReachability()
+    {
+        Dictionary<JobStatus, IReadOnlySet<JobStatus>> reachable = [];
+
+        foreach (JobStatus origin in Enum.GetValues<JobStatus>())
+        {
+            HashSet<JobStatus> visited = [];
+            Queue<JobStatus> pending = new();
+            pending.Enqueue(origin);
+
+            while (pending.TryDequeue(out JobStatus current))
+            {
+                foreach (JobTrigger trigger in Enum.GetValues<JobTrigger>())
+                {
+                    JobTransitionResult result = JobStateMachine.Evaluate(current, trigger);
+                    if (result.IsAllowed && visited.Add(result.Status))
+                    {
+                        pending.Enqueue(result.Status);
+                    }
+                }
+            }
+
+            reachable[origin] = visited;
+        }
+
+        return reachable;
+    }
+}
