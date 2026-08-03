@@ -1,17 +1,12 @@
 @page "/"
 @using Netsoft.Jobs.Contracts
-@using Netsoft.Jobs.Features
-@using Netsoft.Jobs.Features.CancelJob
-@using Netsoft.Jobs.Features.QueryJobs
-@using Netsoft.Jobs.Features.RegisterJob
 @implements IDisposable
-@inject RegisterJobHandler RegisterJob
-@inject QueryJobsHandler QueryJobs
-@inject CancelJobHandler CancelJob
+@inject JobsApiClient Api
 @inject JobChangeFeed ChangeFeed
 
-@* 画面は HTTP を経由せず、ハンドラを直接呼ぶ。同じプロセスにあるものを
-   HttpClient で叩くのは無駄なうえ、エラーが HTTP の形に化けて扱いにくくなる。 *@
+@* 画面は HTTP API（別プロセスの Web ホスト）を型付きクライアント越しに呼ぶ。
+   ハンドラはもう同じプロセスに居ない。HTTP の形（400/404/409）はクライアントが
+   結果型へ写すので、この画面はステータスコードを知らない。 *@
 
 <h1>Netsoft.Jobs</h1>
 
@@ -159,18 +154,17 @@
     }
 
     private async Task LoadAsync() =>
-        _jobs = await QueryJobs.ListAsync(CancellationToken.None);
+        _jobs = await Api.ListJobsAsync(CancellationToken.None);
 
     private async Task RegisterAsync()
     {
-        Result<JobDto> result = await RegisterJob.HandleAsync(
-            new RegisterJobCommand(_name, _jobType, _parameters),
-            CancellationToken.None);
+        RegisterJobResponse result = await Api.RegisterJobAsync(
+            _name, _jobType, _parameters, CancellationToken.None);
 
-        if (result.IsFailure)
+        if (!result.IsSuccess)
         {
-            // 項目ごとの表示に使う形は HTTP の ValidationProblem と同じでよいので、変換を共有する。
-            _registrationErrors = result.Errors.ToProblemDetailsErrors();
+            // API の 400（ValidationProblem）の errors がそのまま項目ごとの表示に使える形。
+            _registrationErrors = result.Errors;
             return;
         }
 
@@ -185,7 +179,7 @@
 
     private async Task CancelAsync(string id)
     {
-        CancelJobResult result = await CancelJob.HandleAsync(id, CancellationToken.None);
+        CancelJobResponse result = await Api.CancelJobAsync(id, CancellationToken.None);
 
         // 拒否は誤りではなく「ボタンを出した後に状態が進んだ」競合。現在の状態を見せて説明する。
         _notice = result switch

@@ -11,11 +11,12 @@
   </ItemGroup>
 
   <!--
-    E2E はビルド済みの Netsoft.Jobs.Web.dll を実プロセスとして起動する。
-    参照アセンブリとしては使わないが、ProjectReference を張ることで
-    `dotnet test tests/E2E` 単独でも Web が先にビルドされることを保証する。
+    E2E はビルド済みの Netsoft.Jobs.Web.dll（API）と Netsoft.Jobs.Ui.dll（画面）を
+    実プロセスとして起動する。参照アセンブリとしては使わないが、ProjectReference を
+    張ることで `dotnet test tests/E2E` 単独でも両方が先にビルドされることを保証する。
   -->
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Ui\Ui.csproj" />
     <ProjectReference Include="..\..\src\Web\Web.csproj" />
   </ItemGroup>
 

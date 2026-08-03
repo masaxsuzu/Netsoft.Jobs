@@ -2,38 +2,39 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 
-namespace Netsoft.Jobs.Web.Tests;
+namespace Netsoft.Jobs.Ui.Tests;
 
 /// <summary>
-/// テスト用のホスト。DB を使い捨ての一時ファイルへ差し替え、実行エンジンを止める。
+/// UI の結合テストが繋ぐ先の API ホスト（Web）。DB を使い捨ての一時ファイルへ
+/// 差し替え、実行エンジンを止める。tests/Web の JobsWebApplicationFactory と同じ構成。
 /// </summary>
 /// <remarks>
 /// <para>
-/// エンジンを止めるのは設定（<c>Jobs:RunExecutionEngine</c>）で行う。Program が
-/// この設定を見て HostedService を登録しないので、テスト側でサービスを抜き取る細工が要らない。
-/// 止めないと「待機中のまま」を前提にした検証をエンジンが勝手に進めて、結果が時間に左右される。
+/// 型引数がホストの Program ではなく <see cref="Web.JobsOptions"/> なのは、Web と Ui の
+/// Program が同名でどちらもグローバル名前空間に居るため。両方を参照するこの
+/// アセンブリからは型名で区別できないので、対象アセンブリ内の代表的な公開型を
+/// 目印にする（WebApplicationFactory は型が属するアセンブリしか見ない）。
 /// </para>
 /// <para>
-/// DI の検証（ValidateOnBuild / ValidateScopes）はここで常に有効にする。
-/// 登録漏れが特定のテストではなく、ホストを立てるすべてのテストで露見する。
+/// エンジンを止めるのは、UI 側のテストが「登録した Job は Queued のまま」を
+/// 前提にするため。DI の検証（ValidateOnBuild / ValidateScopes）は常に有効にして、
+/// 登録漏れがホストを立てるすべてのテストで露見するようにする。
 /// </para>
 /// </remarks>
-internal sealed class JobsWebApplicationFactory : WebApplicationFactory<Program>
+internal sealed class ApiHostFactory : WebApplicationFactory<Web.JobsOptions>
 {
     private readonly string _directory;
 
-    public JobsWebApplicationFactory()
+    public ApiHostFactory()
     {
         // テストは並行して走るので、ディレクトリごと分けて衝突を避ける。
-        _directory = Path.Combine(Path.GetTempPath(), "netsoft-jobs-web-tests", Path.GetRandomFileName());
+        _directory = Path.Combine(Path.GetTempPath(), "netsoft-jobs-ui-tests", Path.GetRandomFileName());
         Directory.CreateDirectory(_directory);
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        // 本番相当の環境でテストする。WebApplicationFactory の既定は Development で、
-        // Development だけで成立する構成の欠陥が素通りする（画面が Web に居た頃、
-        // 実際に blazor.web.js の 404 が Development 既定のテストでは検出できなかった）。
+        // 本番相当の環境でテストする。Development だけで成立する構成の欠陥を素通ししない。
         builder.UseEnvironment("Production");
 
         builder.UseSetting("Jobs:DatabasePath", Path.Combine(_directory, "jobs.db"));

@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.msbuild" Version="10.0.1">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.10" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!--
+    Web も参照するのは、UI の結合テストが API ホスト（Web）を in-process で立てて
+    UI の HttpClient をそこへ繋ぐため。src/Ui 自身は Web を参照しない（UI が実装を
+    抱えないことが分離の目的）。2 つのホストを繋いで初めて意味のある検証になるので、
+    テストだけが両方を知る。
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Ui\Ui.csproj" />
+    <ProjectReference Include="..\..\src\Web\Web.csproj" />
+  </ItemGroup>
+
+</Project>
