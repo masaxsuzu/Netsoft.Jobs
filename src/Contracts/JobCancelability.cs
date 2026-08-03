@@ -1,7 +1,6 @@
 using Netsoft.Jobs.Domain;
-using Netsoft.Jobs.Features;
 
-namespace Netsoft.Jobs.Web;
+namespace Netsoft.Jobs.Contracts;
 
 /// <summary>
 /// 画面がキャンセルボタンを押せる状態にするかの判定。判断は Domain の状態機械に委ねる。

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
+using Netsoft.Jobs.Contracts;
 
 namespace Netsoft.Jobs.Features.RegisterJob;
 

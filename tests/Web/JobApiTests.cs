@@ -4,7 +4,7 @@ using System.Text.Json;
 
 using Microsoft.Extensions.DependencyInjection;
 
-using Netsoft.Jobs.Features;
+using Netsoft.Jobs.Contracts;
 using Netsoft.Jobs.Features.Execution;
 
 namespace Netsoft.Jobs.Web.Tests;

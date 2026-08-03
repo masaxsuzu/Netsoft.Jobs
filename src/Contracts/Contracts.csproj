@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    UI プロセスと API プロセスの両方が参照する、プロセスをまたぐ契約層。
+    依存は Domain だけに保つ。ASP.NET Core の FrameworkReference も持たせない。
+    ここが重くなると、UI を別プロセスへ分離しても両方が同じ重い依存を抱えることになり、
+    分離の意味が薄れる。契約に必要なのは型の形だけで、実行基盤は要らない。
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Domain\Domain.csproj" />
+  </ItemGroup>
+
+</Project>

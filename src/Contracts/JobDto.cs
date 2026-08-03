@@ -1,6 +1,6 @@
 using Netsoft.Jobs.Domain;
 
-namespace Netsoft.Jobs.Features;
+namespace Netsoft.Jobs.Contracts;
 
 /// <summary>
 /// 外に見せる Job の表現。登録の応答と、後続の一覧・詳細で共通に使う。

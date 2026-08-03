@@ -10,10 +10,12 @@
   </ItemGroup>
 
   <!--
-    参照してよいのは Domain だけ。Infrastructure を参照すると、
+    参照してよいのは Domain と Contracts だけ。Contracts はプロセスをまたぐ契約で、
+    Features はそれを実装する側として参照する。Infrastructure を参照すると、
     機能の書き方が特定の DB 実装に引きずられる。永続化は IJobStore 越しにしか触らない。
   -->
   <ItemGroup>
+    <ProjectReference Include="..\Contracts\Contracts.csproj" />
     <ProjectReference Include="..\Domain\Domain.csproj" />
   </ItemGroup>
 
