@@ -14,15 +14,20 @@ public sealed class Result<T>
 {
     private readonly T? _value;
 
-    private Result(bool isSuccess, T? value, IReadOnlyList<ValidationError> errors)
+    private Result(T? value, IReadOnlyList<ValidationError> errors)
     {
-        IsSuccess = isSuccess;
         _value = value;
         Errors = errors;
     }
 
     /// <summary>成功したか。</summary>
-    public bool IsSuccess { get; }
+    /// <remarks>
+    /// 理由の有無から導く。<see cref="Failure"/> は理由が空の失敗を弾き、
+    /// <see cref="Success"/> は必ず空で作るので、両者は同じことを言っている。
+    /// 別に持つと「成功なのに理由がある」ような、生成側が間違えないと作れない組み合わせを
+    /// 表現できてしまう。
+    /// </remarks>
+    public bool IsSuccess => Errors.Count == 0;
 
     /// <summary>失敗したか。</summary>
     public bool IsFailure => !IsSuccess;
@@ -42,7 +47,7 @@ public sealed class Result<T>
         : throw new InvalidOperationException("失敗した結果には値がありません。IsSuccess を確認してください。");
 
     /// <summary>成功した結果を作る。</summary>
-    public static Result<T> Success(T value) => new(true, value, []);
+    public static Result<T> Success(T value) => new(value, []);
 
     /// <summary>失敗した結果を作る。</summary>
     /// <exception cref="ArgumentException">理由が 1 つも無い場合。理由の無い失敗は利用者に何も説明できない。</exception>
@@ -55,10 +60,6 @@ public sealed class Result<T>
             throw new ArgumentException("失敗には理由が必要です。", nameof(errors));
         }
 
-        return new Result<T>(false, default, errors);
+        return new Result<T>(default, errors);
     }
-
-    /// <summary>失敗した結果を作る。</summary>
-    public static Result<T> Failure(params ValidationError[] errors) =>
-        Failure((IReadOnlyList<ValidationError>)errors);
 }

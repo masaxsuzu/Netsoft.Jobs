@@ -173,15 +173,7 @@ public sealed class SqliteJobStore : IJobStore
         command.CommandText = $"SELECT {Columns} FROM Jobs WHERE Id = $id;";
         command.Parameters.AddWithValue("$id", id.Value);
 
-        await using SqliteDataReader reader =
-            await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-
-        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-        {
-            return null;
-        }
-
-        return Read(reader);
+        return await ReadOneAsync(command, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -212,15 +204,7 @@ public sealed class SqliteJobStore : IJobStore
             """;
         command.Parameters.AddWithValue("$status", ToText(JobStatus.Queued));
 
-        await using SqliteDataReader reader =
-            await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-
-        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-        {
-            return null;
-        }
-
-        return Read(reader);
+        return await ReadOneAsync(command, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -278,6 +262,15 @@ public sealed class SqliteJobStore : IJobStore
         await using SqliteCommand command = connection.CreateCommand();
         command.CommandText = sql;
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>1 件だけ読む。1 行も無ければ null。</summary>
+    private static async Task<Job?> ReadOneAsync(SqliteCommand command, CancellationToken cancellationToken)
+    {
+        await using SqliteDataReader reader =
+            await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+
+        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false) ? Read(reader) : null;
     }
 
     private static async Task<IReadOnlyList<Job>> ReadAllAsync(

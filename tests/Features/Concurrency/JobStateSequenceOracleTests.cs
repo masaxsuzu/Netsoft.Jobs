@@ -59,17 +59,6 @@ public sealed class JobStateSequenceOracleTests
         Assert.Null(JobStateSequenceOracle.FindViolation([JobStatus.Queued]));
     }
 
-    [Theory]
-    [InlineData(JobStatus.Queued, JobStatus.Running, true)]
-    [InlineData(JobStatus.Queued, JobStatus.Cancelled, true)]
-    [InlineData(JobStatus.Queued, JobStatus.Completed, false)]
-    [InlineData(JobStatus.Running, JobStatus.Cancelled, false)]
-    [InlineData(JobStatus.Cancelling, JobStatus.Cancelled, true)]
-    public void 一手で行けるかは状態機械と一致する(JobStatus from, JobStatus to, bool expected)
-    {
-        Assert.Equal(expected, JobStateSequenceOracle.IsLegalStep(from, to));
-    }
-
     [Fact]
     public void 終端からはどこへも行けない()
     {

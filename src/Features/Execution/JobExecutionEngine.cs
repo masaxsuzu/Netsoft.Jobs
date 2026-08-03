@@ -121,10 +121,9 @@ public sealed class JobExecutionEngine
                     continue;
                 }
 
-                // 読み出したときの状態は絞り込みに使った status そのもの。
                 // 書き戻せなかったのは他が先にこの Job を処理したということなので、
                 // 復旧の対象ではなくなっている。読み直して試し直さずに次へ進む。
-                if (await _store.UpdateAsync(job, status, cancellationToken))
+                if (await _store.UpdateAsync(job, result.Previous, cancellationToken))
                 {
                     _logger.LogWarning("Job {JobId} を前回プロセスの異常終了として Failed にしました。", job.Id.Value);
                 }
@@ -175,8 +174,8 @@ public sealed class JobExecutionEngine
                 return false;
             }
 
-            // Apply の前の状態は Queued。ここで書き戻せた 1 つだけがこの Job を実行する。
-            if (!await _store.UpdateAsync(job, JobStatus.Queued, cancellationToken))
+            // ここで書き戻せた 1 つだけがこの Job を実行する。
+            if (!await _store.UpdateAsync(job, started.Previous, cancellationToken))
             {
                 _logger.LogInformation("Job {JobId} は他から開始されました。次の候補を探します。", job.Id.Value);
                 continue;
@@ -315,8 +314,6 @@ public sealed class JobExecutionEngine
                 return;
             }
 
-            // Apply は Job を破壊的に変えるので、読み出したときの状態をここで控える。
-            JobStatus expected = job.Status;
             DateTimeOffset now = _timeProvider.GetUtcNow();
 
             JobTransitionResult result = job.Apply(trigger, now, failureMessage);
@@ -335,7 +332,9 @@ public sealed class JobExecutionEngine
                     $"実行の結末 {trigger} を状態 {job.Status} に記録できませんでした。");
             }
 
-            if (await _store.UpdateAsync(job, expected, CancellationToken.None))
+            // 拒否されて Fail を再適用した場合も、状態は 1 回目の拒否で変わっていないので
+            // 期待状態は同じ。どちらの経路でも result.Previous が読み出したときの状態を指す。
+            if (await _store.UpdateAsync(job, result.Previous, CancellationToken.None))
             {
                 return;
             }

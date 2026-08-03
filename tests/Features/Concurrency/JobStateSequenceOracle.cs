@@ -28,14 +28,6 @@ public static class JobStateSequenceOracle
     private static readonly IReadOnlyDictionary<JobStatus, IReadOnlySet<JobStatus>> ReachableFrom = BuildReachability();
 
     /// <summary>
-    /// <paramref name="from"/> から 1 手で <paramref name="to"/> へ行けるか。
-    /// </summary>
-    public static bool IsLegalStep(JobStatus from, JobStatus to) =>
-        Enum.GetValues<JobTrigger>()
-            .Select(trigger => JobStateMachine.Evaluate(from, trigger))
-            .Any(result => result.IsAllowed && result.Status == to);
-
-    /// <summary>
     /// <paramref name="from"/> から 0 手以上で <paramref name="to"/> へ行けるか。
     /// </summary>
     /// <remarks>

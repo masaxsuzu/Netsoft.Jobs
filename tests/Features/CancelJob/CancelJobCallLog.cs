@@ -29,12 +29,12 @@ internal sealed class CancelJobCallLog
 /// 保存そのものの振る舞いは包んだ本物の store（<see cref="Fakes.TemporaryJobStore"/>）に任せる。
 /// ここで作り直すと、他の機能のテストが見ている store と挙動がずれる。
 /// </remarks>
-internal sealed class RecordingJobStore : IJobStore
+internal sealed class CallLoggingJobStore : IJobStore
 {
     private readonly IJobStore _inner;
     private readonly CancelJobCallLog _log;
 
-    public RecordingJobStore(IJobStore inner, CancelJobCallLog log)
+    public CallLoggingJobStore(IJobStore inner, CancelJobCallLog log)
     {
         _inner = inner;
         _log = log;
