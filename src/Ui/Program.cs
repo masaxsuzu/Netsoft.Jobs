@@ -3,6 +3,15 @@ using Netsoft.Jobs.Ui.Components;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
+// 既定のポートは 5100。API ホスト（Web）が既定の 5000 で待つので、素の起動同士で共存できる。
+// appsettings.json の Urls で置くと環境変数（ASPNETCORE_URLS）より優先されてしまい、
+// 上書きの手段が --urls 引数だけになる（実際に環境変数が効かず気づいた）。
+// コードで「何も指定が無いときだけ」置けば、環境変数と --urls のどちらでも上書きできる。
+if (string.IsNullOrEmpty(builder.Configuration["urls"]))
+{
+    builder.WebHost.UseUrls("http://localhost:5100");
+}
+
 UiOptions options = builder.Configuration.GetSection(UiOptions.SectionName).Get<UiOptions>()
     ?? new UiOptions();
 builder.Services.AddSingleton(options);
