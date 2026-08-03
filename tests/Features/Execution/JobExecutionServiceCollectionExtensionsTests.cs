@@ -48,6 +48,16 @@ public sealed class JobExecutionServiceCollectionExtensionsTests : IDisposable
         Assert.IsType<DemoJobHandler>(registry.Find(DemoJobHandler.DemoJobType));
     }
 
+    [Fact]
+    public void 書庫Jobのハンドラが登録される()
+    {
+        using ServiceProvider provider = BuildProvider();
+
+        JobHandlerRegistry registry = provider.GetRequiredService<JobHandlerRegistry>();
+
+        Assert.IsType<ArchiveJobHandler>(registry.Find(ArchiveJobHandler.ArchiveJobType));
+    }
+
     private ServiceProvider BuildProvider()
     {
         ServiceCollection services = new();
