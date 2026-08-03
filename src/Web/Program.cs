@@ -17,9 +17,8 @@ builder.Services.AddJobFeatures();
 
 // 相対パスはコンテンツルート基準にする。カレントディレクトリ基準だと
 // dotnet run をどこから叩いたかで別の DB ができてしまう。
-string databasePath = Path.IsPathRooted(options.DatabasePath)
-    ? options.DatabasePath
-    : Path.Combine(builder.Environment.ContentRootPath, options.DatabasePath);
+// 絶対パスなら Path.Combine がそのまま返すので、ルート判定の分岐は要らない。
+string databasePath = Path.Combine(builder.Environment.ContentRootPath, options.DatabasePath);
 
 // IJobStore は Singleton で登録する。実行エンジンが Singleton なので、
 // Scoped にするとエンジンに捕まった 1 つが生き続けて意味を成さない

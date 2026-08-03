@@ -54,6 +54,9 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('tests/E2E/E2E.csproj') }}
+          # 版が変わらない csproj の変更でキャッシュを丸ごと捨てないための保険。
+          # 旧キャッシュが復元されても playwright install が差分だけ取り直す。
+          restore-keys: playwright-${{ runner.os }}-
 
       - name: Install Playwright browser
         run: pwsh tests/E2E/bin/Release/net10.0/playwright.ps1 install --with-deps chromium

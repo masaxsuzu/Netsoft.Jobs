@@ -56,8 +56,7 @@ public sealed class DemoJobHandler : IJobHandler
 
         // 画面や API から来る文字列なので、区切り記号が環境で変わらない不変文化で読む。
         if (!double.TryParse(parameters.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double seconds)
-            || double.IsNaN(seconds)
-            || double.IsInfinity(seconds)
+            || !double.IsFinite(seconds)
             || seconds < 0)
         {
             throw new FormatException(

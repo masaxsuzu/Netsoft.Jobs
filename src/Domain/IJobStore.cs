@@ -22,6 +22,11 @@ public interface IJobStore
     /// </param>
     /// <param name="cancellationToken">I/O の中断に使う。</param>
     /// <returns>書き戻せたなら true。他から状態が進められていたなら false。</returns>
+    /// <exception cref="JobNotFoundException">
+    /// その Id の Job が保存されていない場合。状態の食い違い（false）とは区別する。
+    /// 取り違えまで false にすると、呼び出し側は「競合に負けただけ」と読んで読み直し、
+    /// 保存されていない Job を延々と探すことになる。この区別は実装の任意ではなく契約である。
+    /// </exception>
     /// <remarks>
     /// <para>
     /// false は失敗ではない。「書き戻す前提（読んだときの状態）が崩れた。読み直して評価をやり直せ」
