@@ -126,9 +126,15 @@ public sealed class Job
 
         JobStatus next = result.Status;
 
-        if (next == JobStatus.Failed && string.IsNullOrWhiteSpace(failureMessage))
+        // 検証は代入より先。ここで投げれば集約は一切変更されていない。
+        if (next == JobStatus.Failed)
         {
-            throw new ArgumentException("Failed へ遷移するには失敗理由が必要です。", nameof(failureMessage));
+            if (string.IsNullOrWhiteSpace(failureMessage))
+            {
+                throw new ArgumentException("Failed へ遷移するには失敗理由が必要です。", nameof(failureMessage));
+            }
+
+            FailureMessage = failureMessage;
         }
 
         if (next == JobStatus.Running)
@@ -139,11 +145,6 @@ public sealed class Job
         if (next.IsTerminal())
         {
             FinishedAt = at;
-        }
-
-        if (next == JobStatus.Failed)
-        {
-            FailureMessage = failureMessage;
         }
 
         Status = next;

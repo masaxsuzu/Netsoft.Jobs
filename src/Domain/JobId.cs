@@ -28,16 +28,15 @@ public readonly record struct JobId
     /// <summary>
     /// 文字列から識別子を作る。空文字・空白のみは識別子になりえないので弾く。
     /// </summary>
+    /// <remarks>
+    /// 何が有効かの定義は <see cref="TryFrom"/> が持ち、こちらは委譲する。
+    /// 両方に判定を書くと、定義を変えたときに片方だけ直って受理範囲がずれる。
+    /// </remarks>
     /// <exception cref="ArgumentException">値が null・空文字・空白のみの場合。</exception>
-    public static JobId From(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            throw new ArgumentException("JobId は空にできません。", nameof(value));
-        }
-
-        return new JobId(value);
-    }
+    public static JobId From(string value) =>
+        TryFrom(value, out JobId id)
+            ? id
+            : throw new ArgumentException("JobId は空にできません。", nameof(value));
 
     /// <summary>
     /// 例外を投げずに識別子を作る。外部入力（URL のパスなど）の検証に使う。

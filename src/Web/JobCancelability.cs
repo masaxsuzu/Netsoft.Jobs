@@ -20,9 +20,9 @@ public static class JobCancelability
     {
         ArgumentNullException.ThrowIfNull(job);
 
-        // DTO の状態は enum の名前をそのまま写した文字列。読み戻せない値は未知の状態で、
+        // DTO の状態は JobStatusText の文字列表現。読み戻せない値は未知の状態で、
         // 何が起きるか分からない操作を許すより、押させない側に倒す。
-        return Enum.TryParse(job.Status, out JobStatus status)
+        return JobStatusText.TryFromText(job.Status, out JobStatus status)
             && JobStateMachine.Evaluate(status, JobTrigger.RequestCancel).IsAllowed;
     }
 }

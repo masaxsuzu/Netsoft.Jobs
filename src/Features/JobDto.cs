@@ -30,7 +30,7 @@ public sealed record JobDto(
             job.Name,
             job.JobType,
             job.Parameters,
-            job.Status.ToString(),
+            JobStatusText.ToText(job.Status),
             job.CreatedAt,
             job.StartedAt,
             job.FinishedAt,

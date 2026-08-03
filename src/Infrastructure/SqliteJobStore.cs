@@ -148,7 +148,7 @@ public sealed class SqliteJobStore : IJobStore
             """;
 
         Bind(command, job);
-        command.Parameters.AddWithValue("$expectedStatus", ToText(expectedStatus));
+        command.Parameters.AddWithValue("$expectedStatus", JobStatusText.ToText(expectedStatus));
 
         int affected = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         if (affected != 0)
@@ -202,7 +202,7 @@ public sealed class SqliteJobStore : IJobStore
             ORDER BY CreatedAt ASC, Id ASC
             LIMIT 1;
             """;
-        command.Parameters.AddWithValue("$status", ToText(JobStatus.Queued));
+        command.Parameters.AddWithValue("$status", JobStatusText.ToText(JobStatus.Queued));
 
         return await ReadOneAsync(command, cancellationToken).ConfigureAwait(false);
     }
@@ -219,7 +219,7 @@ public sealed class SqliteJobStore : IJobStore
             WHERE Status = $status
             ORDER BY CreatedAt DESC, Id DESC;
             """;
-        command.Parameters.AddWithValue("$status", ToText(status));
+        command.Parameters.AddWithValue("$status", JobStatusText.ToText(status));
 
         return await ReadAllAsync(command, cancellationToken).ConfigureAwait(false);
     }
@@ -299,7 +299,7 @@ public sealed class SqliteJobStore : IJobStore
         command.Parameters.AddWithValue("$name", job.Name);
         command.Parameters.AddWithValue("$jobType", job.JobType);
         command.Parameters.AddWithValue("$parameters", job.Parameters);
-        command.Parameters.AddWithValue("$status", ToText(job.Status));
+        command.Parameters.AddWithValue("$status", JobStatusText.ToText(job.Status));
         command.Parameters.AddWithValue("$createdAt", SqliteTimestamp.ToText(job.CreatedAt));
         command.Parameters.AddWithValue("$startedAt", ToNullable(job.StartedAt));
         command.Parameters.AddWithValue("$finishedAt", ToNullable(job.FinishedAt));
@@ -312,7 +312,7 @@ public sealed class SqliteJobStore : IJobStore
             reader.GetString(1),
             reader.GetString(2),
             reader.GetString(3),
-            Enum.Parse<JobStatus>(reader.GetString(4)),
+            JobStatusText.FromText(reader.GetString(4)),
             SqliteTimestamp.FromText(reader.GetString(5)),
             ReadNullableTimestamp(reader, 6),
             ReadNullableTimestamp(reader, 7),
@@ -324,14 +324,4 @@ public sealed class SqliteJobStore : IJobStore
     private static object ToNullable(DateTimeOffset? value) =>
         value is { } present ? SqliteTimestamp.ToText(present) : DBNull.Value;
 
-    /// <summary>
-    /// 状態を列に書く形へ変換する。
-    /// </summary>
-    /// <remarks>
-    /// 数値ではなく enum の名前で保存する。理由は 2 つある。
-    /// 1 つは、数値だと DB を直接覗いたときに "3" が何を指すのか読めないこと。
-    /// もう 1 つは、enum のメンバーを並べ替えたり途中に足したりした瞬間に
-    /// 既存データの意味が変わってしまうこと。名前なら並び順から独立していられる。
-    /// </remarks>
-    private static string ToText(JobStatus status) => status.ToString();
 }
