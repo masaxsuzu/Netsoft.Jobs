@@ -46,6 +46,7 @@ app.UseAntiforgery();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 app.MapJobFeatures();
+app.MapJobEvents();
 
 // スキーマの用意はホストの起動（= 実行エンジンの開始）より前に済ませる。
 // エンジンは起動時復旧で store を読むので、逆順だとテーブルが無いまま読みに行く。
