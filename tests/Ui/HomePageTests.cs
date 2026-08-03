@@ -1,14 +1,16 @@
 using System.Net;
 
-namespace Netsoft.Jobs.Web.Tests;
+namespace Netsoft.Jobs.Ui.Tests;
 
 /// <summary>
 /// 画面の入口が結線されていることのテスト。表示の中身は確かめない
-/// （それはハンドラのテストと目視の領分で、HTML の文字列比較は壊れやすいだけ）。
+/// （それは API クライアントのテストと目視の領分で、HTML の文字列比較は壊れやすいだけ）。
+/// プリレンダリングは一覧の取得で API を呼ぶので、これが通ること自体が
+/// 「UI ホスト → HttpClient → API ホスト」の結線の証明にもなっている。
 /// </summary>
 public sealed class HomePageTests : IDisposable
 {
-    private readonly JobsWebApplicationFactory _factory = new();
+    private readonly UiHostFactory _factory = new();
 
     public void Dispose() => _factory.Dispose();
 

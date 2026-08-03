@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    UI ホストが参照してよいのは Contracts だけ。Features / Infrastructure / Web を
+    参照しないことがプロセス分離の目的そのもので、UI は API の実装を一切抱えない。
+    サーバの状態は HTTP API 越しにしか触れず、変更通知も SSE 越しにしか受けない。
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Contracts\Contracts.csproj" />
+  </ItemGroup>
+
+  <!--
+    blazor.web.js をビルド時に wwwroot へ物理コピーして UseStaticFiles で配る。
+
+    本来はフレームワークが静的アセットのマニフェスト経由で配信するが、この環境の
+    SDK (Ubuntu パッケージ版 10.0.1xx) ではそれが壊れている: マニフェスト由来の
+    エンドポイントは 200 を返すのに本文が 0 バイトになり (圧縮アセットの
+    ファイル名にプレースホルダ {0} が未展開で残る不具合も併発)、画面が一度も
+    対話モードにならない。UseStaticWebAssets / MapStaticAssets の両方を試して
+    どちらも空応答だった。物理ファイルならどの SDK・どの環境でも同じに動く。
+
+    Content Remove しているのは、コピーした実ファイルを SDK のアセット管理に
+    見せないため。見せると「フレームワーク由来の同じパスのアセットと衝突」として
+    ビルドが落ちうる。配信は UseStaticFiles が素のファイルとして行う。
+  -->
+  <ItemGroup>
+    <Content Remove="wwwroot\_framework\**" />
+  </ItemGroup>
+
+  <Target Name="NsjCopyBlazorWebScript" BeforeTargets="Build">
+    <ItemGroup>
+      <_NsjBlazorWebScript Include="$(NuGetPackageRoot)microsoft.aspnetcore.app.internal.assets\*\_framework\blazor.web.js" />
+    </ItemGroup>
+    <Error Condition="'@(_NsjBlazorWebScript)' == ''"
+           Text="blazor.web.js が NuGet キャッシュに見つかりません。restore が済んでいるか確認してください。" />
+    <Copy SourceFiles="@(_NsjBlazorWebScript)"
+          DestinationFolder="$(MSBuildProjectDirectory)\wwwroot\_framework"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

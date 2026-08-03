@@ -2,16 +2,12 @@ using Netsoft.Jobs.Domain;
 using Netsoft.Jobs.Features;
 using Netsoft.Jobs.Infrastructure;
 using Netsoft.Jobs.Web;
-using Netsoft.Jobs.Web.Components;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 JobsOptions options = builder.Configuration.GetSection(JobsOptions.SectionName).Get<JobsOptions>()
     ?? new JobsOptions();
 builder.Services.AddSingleton(options);
-
-builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
 
 builder.Services.AddJobFeatures();
 
@@ -40,11 +36,8 @@ if (options.RunExecutionEngine)
 
 WebApplication app = builder.Build();
 
-app.UseStaticFiles();
-app.UseAntiforgery();
-
-app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+// 画面は持たない。画面は別プロセスの UI ホスト（src/Ui）にあり、
+// ここは API + 実行エンジンのホストとして HTTP の口だけを開ける。
 app.MapJobFeatures();
 app.MapJobEvents();
 

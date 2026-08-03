@@ -4,6 +4,7 @@
     <Project Path="src/Domain/Domain.csproj" />
     <Project Path="src/Features/Features.csproj" />
     <Project Path="src/Infrastructure/Infrastructure.csproj" />
+    <Project Path="src/Ui/Ui.csproj" />
     <Project Path="src/Web/Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
@@ -11,6 +12,9 @@
     <Project Path="tests/E2E/E2E.csproj" />
     <Project Path="tests/Features/Features.csproj" />
     <Project Path="tests/Infrastructure/Infrastructure.csproj" />
+    <!-- tests/Ui は tests/Web より前に置くこと。カバレッジは全プロジェクトの結果を
+         1 つへマージし、最後に走る tests/Web が基準を判定する（CLAUDE.md 参照）。 -->
+    <Project Path="tests/Ui/Ui.csproj" />
     <Project Path="tests/Web/Web.csproj" />
   </Folder>
 </Solution>
