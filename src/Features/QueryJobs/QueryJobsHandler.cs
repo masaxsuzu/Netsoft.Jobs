@@ -1,3 +1,4 @@
+using Netsoft.Jobs.Contracts;
 using Netsoft.Jobs.Domain;
 
 namespace Netsoft.Jobs.Features.QueryJobs;

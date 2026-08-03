@@ -1,3 +1,4 @@
+using Netsoft.Jobs.Contracts;
 using Netsoft.Jobs.Domain;
 using Netsoft.Jobs.Features.QueryJobs;
 using Netsoft.Jobs.Features.Tests.Fakes;

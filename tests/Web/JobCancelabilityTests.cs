@@ -1,4 +1,4 @@
-using Netsoft.Jobs.Features;
+using Netsoft.Jobs.Contracts;
 
 namespace Netsoft.Jobs.Web.Tests;
 
