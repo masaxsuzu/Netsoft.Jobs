@@ -14,7 +14,7 @@ public sealed class CancelJobHandlerTests : IDisposable
     private readonly TemporaryJobStore _jobs = new();
     private readonly CancelJobCallLog _log = new();
     private readonly InterferingJobStore _interference;
-    private readonly RecordingJobStore _store;
+    private readonly CallLoggingJobStore _store;
     private readonly RecordingRunningJobRegistry _runningJobs;
     private readonly FixedTimeProvider _timeProvider = new(Requested);
     private readonly CancelJobHandler _handler;
@@ -23,7 +23,7 @@ public sealed class CancelJobHandlerTests : IDisposable
     {
         // 割り込みを仕掛けなければ素通しなので、競合を扱わないテストの見え方は変わらない。
         _interference = new InterferingJobStore(_jobs);
-        _store = new RecordingJobStore(_interference, _log);
+        _store = new CallLoggingJobStore(_interference, _log);
         _runningJobs = new RecordingRunningJobRegistry(_log);
         _handler = new CancelJobHandler(_store, _runningJobs, _timeProvider);
     }

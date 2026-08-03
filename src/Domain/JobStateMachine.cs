@@ -23,28 +23,28 @@ public static class JobStateMachine
 
         return (current, trigger) switch
         {
-            (JobStatus.Queued, JobTrigger.Start) => JobTransitionResult.Allowed(JobStatus.Running),
+            (JobStatus.Queued, JobTrigger.Start) => JobTransitionResult.Allowed(current, JobStatus.Running),
 
             // ハンドラをまだ起動していないので、受理を待つ相手がいない。即座に終端へ落とす。
-            (JobStatus.Queued, JobTrigger.RequestCancel) => JobTransitionResult.Allowed(JobStatus.Cancelled),
+            (JobStatus.Queued, JobTrigger.RequestCancel) => JobTransitionResult.Allowed(current, JobStatus.Cancelled),
 
-            (JobStatus.Running, JobTrigger.Complete) => JobTransitionResult.Allowed(JobStatus.Completed),
-            (JobStatus.Running, JobTrigger.Fail) => JobTransitionResult.Allowed(JobStatus.Failed),
-            (JobStatus.Running, JobTrigger.RequestCancel) => JobTransitionResult.Allowed(JobStatus.Cancelling),
+            (JobStatus.Running, JobTrigger.Complete) => JobTransitionResult.Allowed(current, JobStatus.Completed),
+            (JobStatus.Running, JobTrigger.Fail) => JobTransitionResult.Allowed(current, JobStatus.Failed),
+            (JobStatus.Running, JobTrigger.RequestCancel) => JobTransitionResult.Allowed(current, JobStatus.Cancelling),
 
-            (JobStatus.Cancelling, JobTrigger.ConfirmCancelled) => JobTransitionResult.Allowed(JobStatus.Cancelled),
+            (JobStatus.Cancelling, JobTrigger.ConfirmCancelled) => JobTransitionResult.Allowed(current, JobStatus.Cancelled),
 
             // キャンセルが効く前にハンドラが完走したケース。
             // 記録するのは「要求されたこと」ではなく「実際に起きたこと」なので Completed にする。
             // ここを Cancelled にすると、成果物が出来ているのに中止したという嘘の記録が残る。
-            (JobStatus.Cancelling, JobTrigger.Complete) => JobTransitionResult.Allowed(JobStatus.Completed),
-            (JobStatus.Cancelling, JobTrigger.Fail) => JobTransitionResult.Allowed(JobStatus.Failed),
+            (JobStatus.Cancelling, JobTrigger.Complete) => JobTransitionResult.Allowed(current, JobStatus.Completed),
+            (JobStatus.Cancelling, JobTrigger.Fail) => JobTransitionResult.Allowed(current, JobStatus.Failed),
 
             // 前回プロセスの異常終了。ハンドラが動いていたはずの状態は、
             // 結果が分からない以上 Failed として閉じるしかない。
             // Queued はハンドラを起動していないため対象外で、次のプロセスがそのまま実行する。
-            (JobStatus.Running, JobTrigger.RecoverAfterCrash) => JobTransitionResult.Allowed(JobStatus.Failed),
-            (JobStatus.Cancelling, JobTrigger.RecoverAfterCrash) => JobTransitionResult.Allowed(JobStatus.Failed),
+            (JobStatus.Running, JobTrigger.RecoverAfterCrash) => JobTransitionResult.Allowed(current, JobStatus.Failed),
+            (JobStatus.Cancelling, JobTrigger.RecoverAfterCrash) => JobTransitionResult.Allowed(current, JobStatus.Failed),
 
             _ => JobTransitionResult.Rejected(current, Classify(current, trigger)),
         };

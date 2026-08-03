@@ -54,9 +54,6 @@ public sealed class CancelJobHandler
                 return CancelJobResult.NotFound();
             }
 
-            // Apply は Job を破壊的に変えるので、読み出したときの状態をここで控える。
-            JobStatus expected = job.Status;
-
             JobTransitionResult transition = job.Apply(JobTrigger.RequestCancel, _timeProvider.GetUtcNow());
             if (!transition.IsAllowed)
             {
@@ -76,7 +73,7 @@ public sealed class CancelJobHandler
             // 条件付き更新にしたことで、その追い越しが起きても上書きは成立しなくなった。
             // 順序自体は保つ。伝達を先にすると、上書きこそ防げても
             // 「まだ Cancelling を書けていない Job にキャンセルが届く」ことになる。
-            if (!await _store.UpdateAsync(job, expected, cancellationToken))
+            if (!await _store.UpdateAsync(job, transition.Previous, cancellationToken))
             {
                 // 読み出しから保存までの間に他所が状態を進めた。前提が崩れただけなので、
                 // 読み直して評価をやり直す。相手が終端まで進めていたなら、
