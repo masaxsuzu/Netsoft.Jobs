@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 using Netsoft.Jobs.Contracts;
 using Netsoft.Jobs.Domain;
 using Netsoft.Jobs.Features.Execution;
@@ -17,16 +19,23 @@ public sealed class CancelJobHandler
     private readonly IJobStore _store;
     private readonly IRunningJobRegistry _runningJobs;
     private readonly TimeProvider _timeProvider;
+    private readonly ILogger<CancelJobHandler> _logger;
 
-    public CancelJobHandler(IJobStore store, IRunningJobRegistry runningJobs, TimeProvider timeProvider)
+    public CancelJobHandler(
+        IJobStore store,
+        IRunningJobRegistry runningJobs,
+        TimeProvider timeProvider,
+        ILogger<CancelJobHandler> logger)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(runningJobs);
         ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(logger);
 
         _store = store;
         _runningJobs = runningJobs;
         _timeProvider = timeProvider;
+        _logger = logger;
     }
 
     /// <summary>
@@ -64,6 +73,15 @@ public sealed class CancelJobHandler
                 JobTransitionRejection rejection = transition.Rejection
                     ?? throw new InvalidOperationException("拒否された遷移に理由がありません。");
 
+                // 既に終わっていた・不正な状態への要求は、利用者の操作として普通に起きること。
+                // 異常ではないので Warning にしない。Job 行には要求の痕跡が残らないため、
+                // 「要求はあったが受け付けなかった」事実と時刻はこのログだけが持つ。
+                _logger.LogInformation(
+                    "Job {JobId} のキャンセル要求を受け付けませんでした。理由は {Rejection}、現在の状態は {Status} です。",
+                    jobId.Value,
+                    rejection,
+                    job.Status);
+
                 return CancelJobResult.Rejected(JobDto.From(job), rejection);
             }
 
@@ -87,6 +105,14 @@ public sealed class CancelJobHandler
             // これを理由に状態遷移を巻き戻さない。待機中の Job は必ず false になるが、
             // その場合は状態機械が既に Cancelled まで進めていて、止める相手がいない。
             _runningJobs.TryRequestCancel(job.Id);
+
+            // Job 行に Cancelling の時刻列は無いので、要求が受理された時刻はこのログだけが持つ。
+            // Cancelled へ直行した（待機中だった）か、Cancelling でハンドラの受理待ちかは
+            // 遷移後の状態で読み取れる。
+            _logger.LogInformation(
+                "Job {JobId} のキャンセル要求を受理しました。状態は {Status} になりました。",
+                jobId.Value,
+                job.Status);
 
             return CancelJobResult.Accepted(JobDto.From(job));
         }
