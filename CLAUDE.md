@@ -1,139 +1,62 @@
 # Netsoft.Jobs
 
 Windows ワークステーション上で動作する、長時間実行 Job の共通実行基盤。
-現在は開発サイクルの土台のみで、実装は入っていない。
+Job の登録・監視・キャンセルができる。動かし方は [README](./README.md) を参照。
 
 ## 開発サイクル
 
-このリポジトリは以下のサイクルで進める。Claude はこの手順に従うこと。
+1. **依頼** — 利用者が自然言語で伝える。粒度は問わない
+2. **タスク化** — Claude が実装単位に分解し、**着手前に利用者の合意を取る**。勝手に始めない。
+   粒度は「1 PR で完結し CI が通る」。TaskCreate / TaskUpdate で管理する
+3. **実装** — サブエージェントに 1 タスクずつ渡す。受け入れ条件・触ってよいファイルの範囲・
+   従う規約・**build と test を通すまでがタスク**であることを明記する。
+   並行させるのはファイルが重ならない場合のみ
+4. **PR** — 1 タスク = 1 PR。`.github/pull_request_template.md` を埋める
+5. **CI と修正** — 落ちたら診断して修正を push。放置して次のタスクへ進まない。
+   原因が main 側なら PR にコメントして main を先に直す
+6. **マージ** — ルールセットが CI を必須チェックにしており、auto-merge を有効にした PR は
+   CI 通過後に GitHub が squash merge する
 
-```
-1. 依頼        利用者が「追加したいこと」を言葉で伝える
-2. タスク化    Claude が実装単位に分解し、内容を利用者に確認する
-3. 実装        サブエージェントが 1 タスクを実装する
-4. PR 作成     1 タスク = 1 PR。auto-merge を有効にするかを判断する
-5. CI と修正   CI の結果を見て、失敗なら修正。必要ならレビュー
-6. マージ      CI 通過後、ルールセット + auto-merge で自動マージ
-```
-
-### 1. 依頼
-
-利用者は自然言語で依頼する。粒度は問わない。
-
-### 2. タスク化
-
-Claude が実装単位へ分解する。**分解した時点で一度利用者に見せ、着手前に合意を取る。**
-勝手に実装を始めない。
-
-タスクの粒度は「1 PR で完結し、CI が通る状態になる」こと。
-これより大きいものは分割する。分割できないなら、その理由を述べて相談する。
-
-分解の結果は TaskCreate で管理し、進捗を TaskUpdate で更新する。
-
-### 3. 実装
-
-サブエージェントに 1 タスクずつ渡す。渡すときは以下を明記する。
-
-- 何を作るか（受け入れ条件）
-- 触ってよいファイルの範囲
-- 既存のどの規約に従うか
-- **`dotnet build` と `dotnet test` を通すまでがタスク**であること
-
-複数タスクを並行させるのは、ファイルが重ならない場合のみ。
-
-### 4. PR 作成
-
-1 タスク = 1 PR。`.github/pull_request_template.md` の項目を埋める。
-
-PR を作ったら **auto-merge を有効にするかを判断する**。有効にしてよいのは次をすべて満たす場合。
-
-- 受け入れ条件を満たしている
-- ローカルで `dotnet build` と `dotnet test` が通っている
-- 設計上の判断が含まれない（含むなら有効にせず `needs-review` を付けて人に見せる）
-
-迷ったら有効にしない。人が見て問題なければ後から有効にできるが、
-一度マージされたものは戻せない。非対称なので有効にしない側に倒す。
-
-### 5. CI と修正
-
-CI が落ちたら、Claude が原因を診断して修正を push する。
-CI の失敗を放置して次のタスクへ進まない。
-
-CI が落ちた原因が自分の変更でない（main が壊れている）場合は、
-その旨を PR にコメントして、main の修正を先に行う。
-
-### 6. マージ
-
-リポジトリのルールセットが必須チェックとして CI を要求しており、
-auto-merge を有効にした PR は CI 通過後に GitHub が squash merge する。
-
-Claude 側の操作は `enable_pr_auto_merge`（MCP）または `gh pr merge --auto --squash`。
-CI の完了を待ってから何かをする必要はない。有効にした時点で GitHub に委ねる。
-
-以前は自前のワークフローでマージしていたが、ルールセットで必須チェックを設定した時点で
-ネイティブ auto-merge が CI を待つようになり、二重の仕組みになるため廃止した。
+auto-merge を有効にしてよいのは、受け入れ条件を満たし、ローカルで build / test が通り、
+**設計上の判断を含まない**場合だけ。含むなら有効にせず `needs-review` を付けて人に見せる。
+**迷ったら有効にしない**（マージは戻せない。レビューは後からでもできる）。
 
 ## ビルド
 
 ```bash
 dotnet build
 dotnet test
-dotnet format            # 整形。CI では --verify-no-changes で検査される
+dotnet format            # CI では --verify-no-changes で検査される
 dotnet test -p:CollectCoverage=true   # カバレッジ計測 + 基準判定。CI の Test はこれ
 ```
 
-カバレッジの基準は **行 90% / ブランチ 80%**（全体、マージ後の値）。下回ると CI が落ちる。
-判定は coverlet の `Threshold` に任せており、判定用のスクリプトは持たない。
-設定は `tests/Directory.Build.props`（計測と除外）と `tests/Web/Web.csproj`（基準）にある。
-
-基準を全体に置くのは、テストが層をまたいで書かれているため。Web の結合テストが
-Features のハンドラを、Features のテストが Domain を通す。プロジェクト単位で測ると
-実際には検証されているコードが未カバーに見える（実測: Features 単独 73.7%）。
-
-全プロジェクトの結果を 1 つのファイルにマージし、**最後に走る tests/Web が
-まとめて判定する**。順序は `-m:1`（直列実行）で `.slnx` の並び順に固定してあり、
-tests/Web が最後に来る。並列だと「先に終わった順」でマージされるため、
-どれかのテストが遅くなるだけで順序が入れ替わり、判定が不完全なデータに当たる
-（実際に起きた。値は下がる方向なので CI は赤くなり、黙って通ることはない）。
-
-テストプロジェクトを増やすときは `.slnx` で tests/Web より前に置くこと。
-
-除外は「E2E が実プロセスで検証しているが coverlet が別プロセスを計測できないもの」
-（Razor コンポーネント・実行エンジンの殻）だけ。テストを書けるのに書いていないものを
-除外で隠さないこと。
-
-**.NET 10 SDK が必要。** `global.json` で固定してあるので、
-古い SDK しか無い環境では `dotnet` 実行時に気づける。
-
-ターゲットは `net10.0`、言語バージョンは C# 14。実行にも .NET 10 ランタイムが要る。
+- **.NET 10 SDK が必要**（`global.json` で固定）。ターゲットは `net10.0`、C# 14
+- カバレッジ基準は**行 90% / ブランチ 80%（全体）**。テストが層をまたぐため全体で測る。
+  全プロジェクトの結果を 1 ファイルにマージし、**最後に走る tests/Web が判定する**。
+  順序は `-m:1`（直列）で `.slnx` の並び順に固定してある
+- **テストプロジェクトを増やすときは `.slnx` で tests/Web より前に置くこと**
+- カバレッジの設定は `tests/Directory.Build.props`（計測と除外）と `tests/Web/Web.csproj`（基準）
+- 除外してよいのは「E2E が実プロセスで検証しているが coverlet が計測できないもの」だけ。
+  テストを書けるものを除外で隠さない
 
 ## 構成
 
-```
-Netsoft.Jobs.slnx                ソリューション（新形式）
-global.json                      使用する SDK を固定する
-Directory.Build.props            全プロジェクト共通のビルド設定
-src/Directory.Build.props        src 配下に Netsoft.Jobs. の prefix を付ける
-src/Domain/                      エンティティ・状態遷移 → Netsoft.Jobs.Domain
-tests/Directory.Build.props      tests 配下に Netsoft.Jobs. と .Tests を付ける
-tests/Domain/                    テスト → Netsoft.Jobs.Domain.Tests
-.github/workflows/ci.yml         build / test / format
-```
-
-プロジェクト名は `Domain` のように短く保ち、`Netsoft.Jobs.` の prefix は
-`src` / `tests` 直下の `Directory.Build.props` が付ける。
-prefix を各 csproj に書くと、同名の `Domain.csproj` が 2 つあるため必ず片方がずれる。
-ディレクトリを増やすときも prefix を書かなくてよい。
+- `src/`: `Domain`（依存ゼロ）/ `Contracts`（Domain のみ。プロセスをまたぐ契約）/
+  `Features` / `Infrastructure` / `Web`（API + 実行エンジン）/ `Ui`（画面）
+- `tests/`: src と対応。`E2E` は Playwright で 2 プロセスを実起動する
+- アセンブリ名の `Netsoft.Jobs.` prefix は `src` / `tests` 直下の `Directory.Build.props` が
+  付ける。**各 csproj には書かない**（同名 csproj が複数あるため必ず片方がずれる）
 
 ## 規約
 
-- `TreatWarningsAsErrors` を有効にしている。警告を残さない
+- `TreatWarningsAsErrors`。警告を残さない
 - ファイルスコープ名前空間を使う
 - テストは日本語のメソッド名で「何を保証するか」を書く
 - コメントは「なぜそうしたか」を書く。何をしているかはコードを読めば分かる
 
 ## やらないこと
 
-- デプロイ（未定。CI はビルドとテストのみ）
 - `main` への直接 push。変更は必ず PR を通す（ルールセットで禁止されている）
 - 自前のマージ処理。マージの判断は auto-merge を有効にするかどうかだけ
+- 利用者への通知（send_later 等）。報告はチャットで行う
+- デプロイ（未定。CI はビルドとテストのみ）
