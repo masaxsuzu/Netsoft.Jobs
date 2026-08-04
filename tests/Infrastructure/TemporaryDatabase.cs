@@ -37,7 +37,13 @@ internal sealed class TemporaryDatabase : IDisposable
     {
         // プールが接続を握ったままだとファイルを開いたままになり、
         // Windows では削除に失敗する。閉じてから消す。
-        SqliteConnection.ClearAllPools();
+        // 閉じるのは自分の DB のプールだけ。ClearAllPools はプロセス全域に効き、
+        // 並列で走っている他のテストが使っている最中の接続まで破棄して
+        // ObjectDisposedException のフレークを起こす（実際に起きた）。
+        // 接続文字列は store と同じ組み立て（DataSource のみ）なので、同じプールに当たる。
+        using SqliteConnection connection = new(
+            new SqliteConnectionStringBuilder { DataSource = FilePath }.ToString());
+        SqliteConnection.ClearPool(connection);
 
         try
         {
