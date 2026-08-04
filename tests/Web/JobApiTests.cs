@@ -85,6 +85,35 @@ public sealed class JobApiTests : IDisposable
         Assert.Contains(jobs, job => job.Name == "後の Job");
     }
 
+    /// <summary>
+    /// 画面の選択肢はこの応答だけで作られる。種類が実際に登録されているハンドラ
+    /// （demo / archive）と一致すること、並びが実行ごとに変わらないことを保証する。
+    /// </summary>
+    [Fact]
+    public async Task 種類の一覧は登録済みのハンドラを名前順のオブジェクトで返す()
+    {
+        IReadOnlyList<JobTypeDto>? jobTypes =
+            await _client.GetFromJsonAsync<IReadOnlyList<JobTypeDto>>("/api/jobs/types");
+
+        Assert.NotNull(jobTypes);
+        Assert.Equal([new JobTypeDto("archive"), new JobTypeDto("demo")], jobTypes);
+    }
+
+    /// <summary>
+    /// 応答の要素が文字列ではなくオブジェクト（jobType 1 項目）であること。
+    /// 型付きの読み出しでは "demo" と {"jobType":"demo"} の違いが見えないので、
+    /// 生の JSON で形そのものを見る。将来項目を足すときに応答の形を変えずに済む契約。
+    /// </summary>
+    [Fact]
+    public async Task 種類の一覧の要素はjobTypeを持つオブジェクト()
+    {
+        using JsonDocument body = JsonDocument.Parse(await _client.GetStringAsync("/api/jobs/types"));
+
+        JsonElement first = body.RootElement.EnumerateArray().First();
+        Assert.Equal(JsonValueKind.Object, first.ValueKind);
+        Assert.Equal("archive", first.GetProperty("jobType").GetString());
+    }
+
     [Fact]
     public async Task 存在しないJobの取得は404()
     {

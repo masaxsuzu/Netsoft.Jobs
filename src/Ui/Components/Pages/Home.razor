@@ -26,7 +26,23 @@
         </div>
         <div>
             <label for="job-type">種類</label>
-            <input id="job-type" disabled="@(!_interactive)" @bind="_jobType" placeholder="demo" />
+            @* 選択肢はサーバ（登録済みのハンドラ）から来る。ここに種類名を並べると、
+               ハンドラを足し引きしたときに実行できる種類とずれる。 *@
+            <select id="job-type" disabled="@(!_interactive || !CanRegister)" @bind="_jobType">
+                @* 既定を空にしておく。先頭の種類を勝手に選ぶと、選んだつもりのない
+                   種類のまま登録できてしまう。 *@
+                <option value="">選択してください</option>
+                @foreach (JobTypeDto jobType in _jobTypes)
+                {
+                    <option value="@jobType.JobType">@jobType.JobType</option>
+                }
+            </select>
+            @if (_jobTypesNotice is not null)
+            {
+                @* 一覧の _notice と分けてあるのは、この知らせが「登録できない理由」であり、
+                   一覧の操作（キャンセル）の結果で消えてはいけないため。 *@
+                <p class="notice">@_jobTypesNotice</p>
+            }
             @foreach (string message in ErrorsFor("jobType"))
             {
                 <p class="error">@message</p>
@@ -34,13 +50,15 @@
         </div>
         <div>
             <label for="job-parameters">パラメータ</label>
-            <input id="job-parameters" disabled="@(!_interactive)" @bind="_parameters" placeholder="demo は待ち秒数（例: 10）" />
+            @* 欄はテキスト 1 つのまま（Parameters はハンドラだけが解釈する不透明な文字列）。
+               何を入れるのかの説明だけを、UI 側の対応表から選んだ種類に応じて出す。 *@
+            <input id="job-parameters" disabled="@(!_interactive)" @bind="_parameters" placeholder="@JobParameterHints.For(_jobType)" />
             @foreach (string message in ErrorsFor("parameters"))
             {
                 <p class="error">@message</p>
             }
         </div>
-        <button type="submit" disabled="@(!_interactive)">登録</button>
+        <button type="submit" disabled="@(!_interactive || !CanRegister)">登録</button>
     </form>
 </section>
 
@@ -99,8 +117,14 @@
 
 @code {
     private IReadOnlyList<JobDto> _jobs = [];
+    private IReadOnlyList<JobTypeDto> _jobTypes = [];
     private IDictionary<string, string[]> _registrationErrors = new Dictionary<string, string[]>();
     private string? _notice;
+    private string? _jobTypesNotice;
+
+    // 選べる種類が 1 つも無い状態で登録させない。押しても種類が空で必ず弾かれるだけで、
+    // 利用者にはどうしようもない（種類は自分では入力できない）。
+    private bool CanRegister => _jobTypes.Count > 0;
 
     private string _name = string.Empty;
     private string _jobType = string.Empty;
@@ -126,6 +150,7 @@
         // 読み込みより先に購読する。逆順だと、読み込みと再描画のすき間に起きた変更を取りこぼす。
         ChangeFeed.Changed += HandleChanged;
 
+        await LoadJobTypesAsync();
         await LoadAsync();
     }
 
@@ -155,6 +180,31 @@
 
     private async Task LoadAsync() =>
         _jobs = await Api.ListJobsAsync(CancellationToken.None);
+
+    /// <summary>
+    /// 選択肢に出す種類を取り直す。
+    /// </summary>
+    /// <remarks>
+    /// 失敗しても画面ごと落とさない。種類が取れないのは登録できないというだけで、
+    /// 一覧は見えるべきだし、API が戻れば次の読み込みで選べるようになる。
+    /// 例外の型を絞らないのは、ここで区別しても利用者への伝え方が変わらないため
+    /// （繋がらない・5xx・壊れた応答のいずれも「取得できなかった」に落ちる）。
+    /// </remarks>
+    private async Task LoadJobTypesAsync()
+    {
+        try
+        {
+            _jobTypes = await Api.ListJobTypesAsync(CancellationToken.None);
+            _jobTypesNotice = _jobTypes.Count == 0
+                ? "登録できる Job の種類がありません。"
+                : null;
+        }
+        catch (Exception exception)
+        {
+            _jobTypes = [];
+            _jobTypesNotice = $"Job の種類を取得できませんでした: {exception.Message}";
+        }
+    }
 
     private async Task RegisterAsync()
     {

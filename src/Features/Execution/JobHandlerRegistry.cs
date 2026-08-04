@@ -10,6 +10,7 @@ namespace Netsoft.Jobs.Features.Execution;
 public sealed class JobHandlerRegistry
 {
     private readonly IReadOnlyDictionary<string, IJobHandler> _handlers;
+    private readonly IReadOnlyList<string> _jobTypes;
 
     /// <summary>
     /// 登録されたハンドラから索引を作る。
@@ -37,7 +38,22 @@ public sealed class JobHandlerRegistry
         }
 
         _handlers = index;
+
+        // 名前順に固定する。DI への登録順（AddJobExecution の並び）は実装の都合でしかなく、
+        // 外から見える意味は無い。並びが実行ごとに変わると、これを選択肢として出す側で
+        // 理由もなく順が入れ替わる。大小を無視して並べるのは、引くときと同じ見方に揃えるため。
+        _jobTypes = [.. index.Keys.OrderBy(jobType => jobType, StringComparer.OrdinalIgnoreCase)];
     }
+
+    /// <summary>
+    /// 登録済みの <see cref="IJobHandler.JobType"/> を名前順で返す。
+    /// </summary>
+    /// <remarks>
+    /// 公開するのは「どんな種類が存在するか」という事実だけ。説明文や入力の形は
+    /// ここでは扱わない（それは見せる側の関心で、ハンドラに持たせると
+    /// 実行の口が画面の都合を知ることになる）。
+    /// </remarks>
+    public IReadOnlyList<string> JobTypes => _jobTypes;
 
     /// <summary>
     /// 対応するハンドラを探す。見つからなければ null。

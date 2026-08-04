@@ -57,6 +57,18 @@ public sealed class JobsApiClientTests : IDisposable
         Assert.Empty(await _client.ListJobsAsync(CancellationToken.None));
     }
 
+    /// <summary>
+    /// 画面の選択肢はこの経路でしか作られない。URL や応答の形がサーバとずれると
+    /// ここで空（404 なら例外）になり、種類を選べない画面が出荷されるのを止める。
+    /// </summary>
+    [Fact]
+    public async Task 種類の一覧はAPI経由で登録済みの種類を名前順で返す()
+    {
+        IReadOnlyList<JobTypeDto> jobTypes = await _client.ListJobTypesAsync(CancellationToken.None);
+
+        Assert.Equal([new JobTypeDto("archive"), new JobTypeDto("demo")], jobTypes);
+    }
+
     [Fact]
     public async Task 待機中のJobはキャンセルできCancelledのJobが返る()
     {

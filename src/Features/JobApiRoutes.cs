@@ -38,4 +38,14 @@ public static class JobApiRoutes
     /// 採番される（GuidV7JobIdFactory）ので実際にはぶつからない。
     /// </remarks>
     public const string JobEvents = $"{Jobs}/events";
+
+    /// <summary>
+    /// 登録済みの Job の種類の一覧（GET）。
+    /// </summary>
+    /// <remarks>
+    /// <c>{Jobs}/{{id}}</c> と同じ位置に生えるが、<see cref="JobEvents"/> と同じ理由で
+    /// 衝突しない（リテラルがパラメータより優先される。id は GUID v7 なので
+    /// "types" という id も現れない）。
+    /// </remarks>
+    public const string JobTypes = $"{Jobs}/types";
 }
