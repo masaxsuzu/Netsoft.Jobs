@@ -17,6 +17,9 @@ internal static class JobApiRoutes
     /// <summary>Job の変更通知（SSE）。</summary>
     public const string JobEvents = $"{Jobs}/events";
 
+    /// <summary>登録済みの Job の種類の一覧（GET）。</summary>
+    public const string JobTypes = $"{Jobs}/types";
+
     /// <summary>指定した Job のキャンセル（POST）。</summary>
     public static string CancelFor(string id) => $"{Jobs}/{Uri.EscapeDataString(id)}/cancel";
 }

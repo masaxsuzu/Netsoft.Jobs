@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Netsoft.Jobs.Features.CancelJob;
 using Netsoft.Jobs.Features.Execution;
 using Netsoft.Jobs.Features.QueryJobs;
+using Netsoft.Jobs.Features.QueryJobTypes;
 using Netsoft.Jobs.Features.RegisterJob;
 
 namespace Netsoft.Jobs.Features;
@@ -32,6 +33,10 @@ public static class JobFeaturesServiceCollectionExtensions
         services.AddRegisterJob();
         services.AddJobExecution();
         services.AddQueryJobs();
+
+        // 種類の一覧は実行エンジンの JobHandlerRegistry を使う。上の AddJobExecution が
+        // 入れた実体をそのまま解決させたいので、この順に並べておく。
+        services.AddQueryJobTypes();
 
         // キャンセルは実行エンジンの IRunningJobRegistry を使う。上の AddJobExecution が
         // 入れた実体をそのまま解決させたいので、この順に並べておく。

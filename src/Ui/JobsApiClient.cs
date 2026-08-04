@@ -40,6 +40,16 @@ public sealed class JobsApiClient
     public async Task<IReadOnlyList<JobDto>> ListJobsAsync(CancellationToken cancellationToken) =>
         await _client.GetFromJsonAsync<IReadOnlyList<JobDto>>(JobApiRoutes.Jobs, cancellationToken) ?? [];
 
+    /// <summary>
+    /// 登録されている Job の種類を取得する。並び順はサーバが決めた順（名前順）のまま。
+    /// </summary>
+    /// <remarks>
+    /// 応答が「何を意味するか」だけを写して返す。どう説明して見せるかは画面の関心で、
+    /// ここで文言を足したり並べ替えたりしない。
+    /// </remarks>
+    public async Task<IReadOnlyList<JobTypeDto>> ListJobTypesAsync(CancellationToken cancellationToken) =>
+        await _client.GetFromJsonAsync<IReadOnlyList<JobTypeDto>>(JobApiRoutes.JobTypes, cancellationToken) ?? [];
+
     /// <summary>Job を登録する。検証エラー（400）は結果型の Errors で返す。</summary>
     public async Task<RegisterJobResponse> RegisterJobAsync(
         string name, string jobType, string parameters, CancellationToken cancellationToken)

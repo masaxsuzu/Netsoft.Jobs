@@ -25,7 +25,10 @@ public sealed class HomePageE2ETests
         string name = UniqueJobName("complete");
 
         await page.FillAsync("#job-name", name);
-        await page.FillAsync("#job-type", "demo");
+
+        // 種類は選択式。選べること自体が「選択肢が API から取れている」ことの証拠で、
+        // 取れていなければ demo の option が無く、ここで時間切れになる。
+        await page.SelectOptionAsync("#job-type", "demo");
         await page.FillAsync("#job-parameters", "2");
         await page.ClickAsync("button[type=submit]");
 
@@ -47,7 +50,7 @@ public sealed class HomePageE2ETests
 
         // テストがキャンセルを押すまで確実に実行中でいられるよう、長めに待つ Job にする。
         await page.FillAsync("#job-name", name);
-        await page.FillAsync("#job-type", "demo");
+        await page.SelectOptionAsync("#job-type", "demo");
         await page.FillAsync("#job-parameters", "60");
         await page.ClickAsync("button[type=submit]");
 
