@@ -31,15 +31,8 @@ public sealed class SqliteJobStore : IJobStore
     /// スキーマ作成は <see cref="InitializeAsync"/> で明示的に行う。
     /// </remarks>
     /// <param name="databasePath">DB ファイルのパス。呼び出し側が決める。</param>
-    public SqliteJobStore(string databasePath)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
-
-        _connectionString = new SqliteConnectionStringBuilder
-        {
-            DataSource = databasePath,
-        }.ToString();
-    }
+    public SqliteJobStore(string databasePath) =>
+        _connectionString = SqliteConnections.BuildConnectionString(databasePath);
 
     /// <summary>
     /// テーブルとインデックスを用意する。何度呼んでも同じ結果になる。
@@ -224,21 +217,8 @@ public sealed class SqliteJobStore : IJobStore
         return await ReadAllAsync(command, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken)
-    {
-        SqliteConnection connection = new(_connectionString);
-        try
-        {
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-            return connection;
-        }
-        catch
-        {
-            // 開けなかった接続を握ったまま例外を投げると、プールへ返らずに滞留する。
-            await connection.DisposeAsync().ConfigureAwait(false);
-            throw;
-        }
-    }
+    private Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken) =>
+        SqliteConnections.OpenAsync(_connectionString, cancellationToken);
 
     /// <summary>
     /// 行が在るかだけを見る。更新が 0 行だった理由を切り分けるために使う。

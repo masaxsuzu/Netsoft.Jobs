@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Logging;
-
+using Microsoft.Extensions.Logging.Abstractions;
 using Netsoft.Jobs.Domain;
 using Netsoft.Jobs.Features.CancelJob;
 using Netsoft.Jobs.Features.Execution;
@@ -31,7 +31,7 @@ public sealed class JobExecutionLoggingTests : IDisposable
     private readonly JobExecutionInstrumentation _instrumentation;
 
     public JobExecutionLoggingTests() =>
-        _instrumentation = new JobExecutionInstrumentation(_meterFactory, _store, _timeProvider);
+        _instrumentation = new JobExecutionInstrumentation(_meterFactory, _store, _timeProvider, new NullJobTraceContextStore(), NullLogger<JobExecutionInstrumentation>.Instance);
 
     public void Dispose()
     {
@@ -162,7 +162,6 @@ public sealed class JobExecutionLoggingTests : IDisposable
             _signal,
             _timeProvider,
             _instrumentation,
-            new NullJobTraceContextStore(),
             _logger);
 
     private static ControllableJobHandler Released(ControllableJobHandler handler)

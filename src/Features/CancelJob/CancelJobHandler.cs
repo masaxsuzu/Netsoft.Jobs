@@ -10,7 +10,7 @@ namespace Netsoft.Jobs.Features.CancelJob;
 /// Job のキャンセルを要求する。状態を進めてから、実行中のハンドラへ伝える。
 /// </summary>
 /// <remarks>
-/// HTTP エンドポイントと画面（Blazor）の両方がこのクラスを直接呼ぶ。
+/// 呼び出すのは HTTP エンドポイントだけ。画面は別プロセス（src/Ui）にあり、API 越しに使う。
 /// どの状態でキャンセルできるかは <see cref="JobStateMachine"/> が決めているので、
 /// ここでは状態を見て分岐しない。見て分岐すると仕様が 2 か所に分かれる。
 /// </remarks>

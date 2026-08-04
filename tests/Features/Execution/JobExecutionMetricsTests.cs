@@ -28,7 +28,7 @@ public sealed class JobExecutionMetricsTests : IDisposable
     private readonly JobExecutionInstrumentation _instrumentation;
 
     public JobExecutionMetricsTests() =>
-        _instrumentation = new JobExecutionInstrumentation(_meterFactory, _store, _timeProvider);
+        _instrumentation = new JobExecutionInstrumentation(_meterFactory, _store, _timeProvider, new NullJobTraceContextStore(), NullLogger<JobExecutionInstrumentation>.Instance);
 
     public void Dispose()
     {
@@ -151,7 +151,6 @@ public sealed class JobExecutionMetricsTests : IDisposable
             _signal,
             _timeProvider,
             _instrumentation,
-            new NullJobTraceContextStore(),
             NullLogger<JobExecutionEngine>.Instance);
 
     private async Task<Job> AddQueuedAsync(string id, DateTimeOffset? createdAt = null)

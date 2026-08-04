@@ -12,8 +12,9 @@ namespace Netsoft.Jobs.Features.RegisterJob;
 /// Job を登録する。検証して採番し、待機中の Job を保存する。
 /// </summary>
 /// <remarks>
-/// HTTP エンドポイントと画面（Blazor）の両方がこのクラスを直接呼ぶ。
-/// ロジックをここに集めておかないと、画面から使うたびに HTTP を経由することになる。
+/// 呼び出し元は HTTP エンドポイントだけ（画面は別プロセスの UI ホストになり、HTTP 経由で使う）。
+/// それでもロジックをエンドポイントに書かずここへ集めるのは、HTTP への写像と登録の判断を
+/// 分けておくため。
 /// </remarks>
 public sealed class RegisterJobHandler
 {
@@ -71,10 +72,11 @@ public sealed class RegisterJobHandler
         _logger.LogInformation("Job {JobId} ({JobType}) を登録しました。", job.Id.Value, job.JobType);
 
         // 登録時の trace context を Job に同乗させる（messaging semantic conventions のパターン）。
-        // ASP.NET Core はリクエストごとに Activity を作るので、トレースの購読者がいなくても
-        // ここには本物の traceparent が入る。つまりバックエンドを繋いだその日から、
-        // それ以降に登録された Job で実行スパンからの Link が意味を持つ。
-        if (Activity.Current?.Id is { } traceParent)
+        // 保存するのは Recorded な（サンプリングされた）Activity のときだけ。未サンプリング
+        // （trace-flags 00）の traceparent は、リンク先のスパンがどこにもエクスポートされて
+        // おらず、保存しても Link の張り先が存在しない。トレースの購読者がいない運用では
+        // この分岐が常に偽になり、登録ごとの DB write は Job 本体の 1 回だけに保たれる。
+        if (Activity.Current is { Recorded: true, Id: { } traceParent })
         {
             try
             {

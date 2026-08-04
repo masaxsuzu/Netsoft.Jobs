@@ -17,8 +17,8 @@ namespace Netsoft.Jobs.Features.Execution;
 /// 列を足すと、Domain が観測を知ることになる。
 /// </para>
 /// <para>
-/// 実装（アダプタ）はホストが差し替える（Web の SqliteJobTraceContextStore）。
-/// 差し替えなくても既定の no-op で全機能が動く
+/// 実装はホストが差し替える（Web の JobTraceContextStoreAdapter が Infrastructure の
+/// SqliteJobTraceContextStore へ委譲する）。差し替えなくても既定の no-op で全機能が動く
 /// （<see cref="JobExecutionServiceCollectionExtensions.AddJobExecution"/> を参照）。
 /// </para>
 /// </remarks>

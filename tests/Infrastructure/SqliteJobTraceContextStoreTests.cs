@@ -1,20 +1,15 @@
-using Microsoft.Data.Sqlite;
-using Microsoft.Extensions.DependencyInjection;
-
-using Netsoft.Jobs.Domain;
-using Netsoft.Jobs.Features.Execution;
-
-namespace Netsoft.Jobs.Web.Tests;
+namespace Netsoft.Jobs.Infrastructure.Tests;
 
 /// <summary>
-/// 登録時 trace context の SQLite アダプタのテスト。保存 → 検索の往復と、
-/// ホストが no-op をこの実装で置き換えていることを固定する。
+/// 登録時 trace context の SQLite 置き場のテスト。保存 → 検索の往復を固定する。
+/// port（IJobTraceContextStore）への結線は Web のアダプタの領分
+/// （tests/Web の JobTraceContextStoreAdapterTests）。
 /// </summary>
 public sealed class SqliteJobTraceContextStoreTests : IDisposable
 {
     private const string TraceParent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
 
-    private readonly string _directory;
+    private readonly TemporaryDatabase _database = new();
     private readonly SqliteJobTraceContextStore _store;
 
     /// <remarks>
@@ -23,28 +18,11 @@ public sealed class SqliteJobTraceContextStoreTests : IDisposable
     /// </remarks>
     public SqliteJobTraceContextStoreTests()
     {
-        // テストは並行して走るので、ディレクトリごと分けて衝突を避ける。
-        _directory = Path.Combine(Path.GetTempPath(), "netsoft-jobs-web-tests", Path.GetRandomFileName());
-        Directory.CreateDirectory(_directory);
-
-        _store = new SqliteJobTraceContextStore(Path.Combine(_directory, "jobs.db"));
+        _store = new SqliteJobTraceContextStore(_database.FilePath);
         _store.InitializeAsync(CancellationToken.None).GetAwaiter().GetResult();
     }
 
-    public void Dispose()
-    {
-        // プールが接続を握ったままだとファイルが開きっぱなしになり、削除に失敗しうる。閉じてから消す。
-        SqliteConnection.ClearAllPools();
-
-        try
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
-        catch (IOException)
-        {
-            // 後始末の失敗でテストの結果を変えたくない。一時ディレクトリはいずれ OS が回収する。
-        }
-    }
+    public void Dispose() => _database.Dispose();
 
     [Fact]
     public async Task 保存したTraceParentを検索できる()
@@ -83,15 +61,5 @@ public sealed class SqliteJobTraceContextStoreTests : IDisposable
         await _store.InitializeAsync(CancellationToken.None);
 
         Assert.Equal(TraceParent, await _store.FindAsync(JobId.From("job-1"), CancellationToken.None));
-    }
-
-    [Fact]
-    public void ホストは既定のNoOpをSQLiteの実装で置き換える()
-    {
-        // Features の既定（no-op）のままだと、保存が黙って捨てられて Link が永遠に付かない。
-        // 置き換えの登録が消えても、ここで気づける。
-        using JobsWebApplicationFactory factory = new();
-
-        Assert.IsType<SqliteJobTraceContextStore>(factory.Services.GetRequiredService<IJobTraceContextStore>());
     }
 }

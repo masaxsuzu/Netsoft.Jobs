@@ -53,7 +53,6 @@ public sealed class JobExecutionEngine
     private readonly JobQueueSignal _signal;
     private readonly TimeProvider _timeProvider;
     private readonly JobExecutionInstrumentation _instrumentation;
-    private readonly IJobTraceContextStore _traceContexts;
     private readonly ILogger<JobExecutionEngine> _logger;
 
     // 起動時復旧が済んだか。インスタンスごとに持つので、エンジンを複数立てれば
@@ -69,7 +68,6 @@ public sealed class JobExecutionEngine
         JobQueueSignal signal,
         TimeProvider timeProvider,
         JobExecutionInstrumentation instrumentation,
-        IJobTraceContextStore traceContexts,
         ILogger<JobExecutionEngine> logger)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -78,7 +76,6 @@ public sealed class JobExecutionEngine
         ArgumentNullException.ThrowIfNull(signal);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(instrumentation);
-        ArgumentNullException.ThrowIfNull(traceContexts);
         ArgumentNullException.ThrowIfNull(logger);
 
         _store = store;
@@ -87,7 +84,6 @@ public sealed class JobExecutionEngine
         _signal = signal;
         _timeProvider = timeProvider;
         _instrumentation = instrumentation;
-        _traceContexts = traceContexts;
         _logger = logger;
     }
 
@@ -281,8 +277,12 @@ public sealed class JobExecutionEngine
         using IDisposable? scope = _logger.BeginScope("Job {JobId} ({JobType})", job.Id.Value, job.JobType);
 
         // 購読者がいなければ null が返り、以降の activity?. はすべて no-op になる。
-        // つまり購読者ゼロのときは挙動が一切変わらない。
-        using Activity? activity = await StartExecuteActivityAsync(job);
+        // つまり購読者ゼロのときは挙動が一切変わらない。スパンの開始（機構）は
+        // instrumentation の仕事で、エンジンが持つのは結末に応じた終わり方の判断だけ。
+        // トークンを渡さないのは FinishAsync と同じ理由で、プロセス停止は
+        // 利用者のキャンセル要求ではないから。
+        using Activity? activity =
+            await _instrumentation.StartExecuteActivityAsync(job, CancellationToken.None);
 
         // Running を書き戻せた直後、つまりこの Job を実行すると確定した点の記録。
         _logger.LogInformation("Job {JobId} ({JobType}) の実行を開始します。", job.Id.Value, job.JobType);
@@ -338,59 +338,6 @@ public sealed class JobExecutionEngine
         {
             activity?.SetTag("job.status", status.ToString());
         }
-    }
-
-    /// <summary>
-    /// job.execute スパンを開始する。購読者がいなければ何もせず null。
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// 登録時に保存された trace context への Link は <see cref="ActivitySource.StartActivity(string, ActivityKind, ActivityContext, IEnumerable{KeyValuePair{string, object?}}?, IEnumerable{ActivityLink}?, DateTimeOffset)"/>
-    /// の引数で渡す。開始後の Activity には Link を足せないため、読み出しは開始より前に行う。
-    /// </para>
-    /// <para>
-    /// <see cref="ActivitySource.HasListeners"/> を先に見るのは、購読者がいないとき
-    /// （StartActivity が null を返す構成のとき）に <see cref="IJobTraceContextStore.FindAsync"/> の
-    /// I/O まで足さないため。観測がゼロなら追加コストもゼロにする。
-    /// </para>
-    /// </remarks>
-    private async Task<Activity?> StartExecuteActivityAsync(Job job)
-    {
-        ActivitySource source = _instrumentation.ActivitySource;
-        if (!source.HasListeners())
-        {
-            return null;
-        }
-
-        IEnumerable<ActivityLink>? links = null;
-        try
-        {
-            // 登録トレースは別プロセス（別リクエスト）のものなので isRemote。
-            // 解釈できない・無い場合は Link なしで開始する。
-            string? traceParent = await _traceContexts.FindAsync(job.Id, CancellationToken.None);
-            if (traceParent is not null
-                && ActivityContext.TryParse(traceParent, traceState: null, isRemote: true, out ActivityContext registered))
-            {
-                links = [new ActivityLink(registered)];
-            }
-        }
-        catch (Exception exception)
-        {
-            // 観測の失敗で実行を妨げない。欠けるのは登録トレースへの Link だけ。
-            _logger.LogWarning(
-                exception,
-                "Job {JobId} の登録時 trace context を読めませんでした。Link なしで実行します。",
-                job.Id.Value);
-        }
-
-        // スパン属性は系列を作らないので、メトリクスと違い JobId のような
-        // 高カーディナリティの値を持たせてよい。個々の実行を追うのはここの仕事。
-        return source.StartActivity(
-            "job.execute",
-            ActivityKind.Internal,
-            parentContext: default,
-            tags: [new("job.id", job.Id.Value), new("job.type", job.JobType)],
-            links: links);
     }
 
     /// <summary>

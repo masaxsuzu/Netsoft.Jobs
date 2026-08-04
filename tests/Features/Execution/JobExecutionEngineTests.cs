@@ -38,7 +38,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     public JobExecutionEngineTests()
     {
         _engineStore = new InterferingJobStore(_store);
-        _instrumentation = new JobExecutionInstrumentation(_meterFactory, _store, _timeProvider);
+        _instrumentation = new JobExecutionInstrumentation(_meterFactory, _store, _timeProvider, new NullJobTraceContextStore(), NullLogger<JobExecutionInstrumentation>.Instance);
     }
 
     public void Dispose()
@@ -534,7 +534,6 @@ public sealed class JobExecutionEngineTests : IDisposable
             _signal,
             _timeProvider,
             _instrumentation,
-            new NullJobTraceContextStore(),
             NullLogger<JobExecutionEngine>.Instance);
 
     private static ControllableJobHandler Released(ControllableJobHandler handler)

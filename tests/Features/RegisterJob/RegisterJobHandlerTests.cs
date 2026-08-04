@@ -209,8 +209,7 @@ public sealed class RegisterJobHandlerTests : IDisposable
     {
         RegisterJobHandler handler = CreateHandler("job-1");
 
-        // ASP.NET Core がリクエストごとに作る Activity を、ここでは手で立てて演じる。
-        using Activity activity = new Activity("登録リクエスト").Start();
+        using Activity activity = StartRecordedActivity();
 
         Result<JobDto> result = await handler.HandleAsync(
             new RegisterJobCommand("毎晩の集計", "Demo", "{}"),
@@ -218,6 +217,26 @@ public sealed class RegisterJobHandlerTests : IDisposable
 
         Assert.True(result.IsSuccess);
         Assert.Equal(activity.Id, _traceContexts.Saved[JobId.From("job-1")]);
+    }
+
+    /// <summary>
+    /// サンプリングされていない Activity の traceparent は flags=00 で、リンク先のスパンが
+    /// どこにもエクスポートされていない。保存しても後から辿れないので、書かない。
+    /// </summary>
+    [Fact]
+    public async Task サンプリングされていないActivityではTraceContextは保存されない()
+    {
+        RegisterJobHandler handler = CreateHandler("job-1");
+
+        using Activity activity = new Activity("登録リクエスト").Start();
+
+        Result<JobDto> result = await handler.HandleAsync(
+            new RegisterJobCommand("毎晩の集計", "Demo", "{}"),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(activity.Recorded);
+        Assert.Empty(_traceContexts.Saved);
     }
 
     [Fact]
@@ -241,7 +260,7 @@ public sealed class RegisterJobHandlerTests : IDisposable
         _traceContexts.SaveFailure = new IOException("観測の置き場が壊れています。");
         RegisterJobHandler handler = CreateHandler("job-1");
 
-        using Activity activity = new Activity("登録リクエスト").Start();
+        using Activity activity = StartRecordedActivity();
 
         Result<JobDto> result = await handler.HandleAsync(
             new RegisterJobCommand("毎晩の集計", "Demo", "{}"),
@@ -276,4 +295,20 @@ public sealed class RegisterJobHandlerTests : IDisposable
         new(_store, new StubJobIdFactory(ids), _timeProvider, _traceContexts, _logger);
 
     private Task<IReadOnlyList<Job>> ListAsync() => _store.ListAsync(CancellationToken.None);
+
+    /// <summary>
+    /// ASP.NET Core がリクエストごとに作る、サンプリング済みの Activity を演じる。
+    /// </summary>
+    /// <remarks>
+    /// Recorded を立てるのは、ハンドラがそれを保存の条件にしているから。
+    /// 素の <see cref="Activity"/> は flags=00（未サンプリング）で始まるので、
+    /// 立てないと「保存されない」側のテストになってしまう。
+    /// </remarks>
+    private static Activity StartRecordedActivity()
+    {
+        Activity activity = new Activity("登録リクエスト").Start();
+        activity.ActivityTraceFlags = ActivityTraceFlags.Recorded;
+
+        return activity;
+    }
 }
