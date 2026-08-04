@@ -23,6 +23,10 @@ public sealed class JobExecutionEngineTests : IDisposable
     private readonly FixedTimeProvider _timeProvider = new(Now);
     private readonly RunningJobRegistry _runningJobs = new();
 
+    // 本番ではホストの結線（store の書き込み → Set）が鳴らすが、ここでは
+    // テスト自身が Set を呼んで「書き込みの合図」を演じる。
+    private readonly JobQueueSignal _signal = new();
+
     // エンジンには割り込み用のデコレータ越しに store を渡す。割り込みを仕掛けなければ素通しなので、
     // 競合を扱わないテストの見え方は変わらない。テスト自身は _store を直に使い、
     // 「他所からの書き込み」をエンジンの経路とは別に起こす。
@@ -331,8 +335,7 @@ public sealed class JobExecutionEngineTests : IDisposable
 
         using CancellationTokenSource stop = new();
 
-        // 待機の間隔は十分に長くしておく。ここで待つ設計になっていたらテストが終わらない。
-        Task loop = engine.RunAsync(TimeSpan.FromHours(1), stop.Token);
+        Task loop = engine.RunAsync(stop.Token);
 
         await second.Entered;
         Assert.Equal(JobStatus.Completed, (await FindAsync("job-1")).Status);
@@ -342,6 +345,111 @@ public sealed class JobExecutionEngineTests : IDisposable
         await loop;
 
         Assert.Equal(JobStatus.Completed, (await FindAsync("job-2")).Status);
+    }
+
+    [Fact]
+    public async Task 登録の合図で待ちから起きてJobが実行される()
+    {
+        ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
+        JobExecutionEngine engine = CreateEngine(handler);
+
+        // 起動時スキャンが「候補なし」を見たことを確定させてから登録する。
+        // 先に登録が滑り込むと、起動時スキャンが拾ってしまい合図の検証にならない。
+        TaskCompletionSource sawEmpty = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _engineStore.OnNextEmptyFind = () =>
+        {
+            sawEmpty.TrySetResult();
+            return Task.CompletedTask;
+        };
+
+        using CancellationTokenSource stop = new();
+        Task loop = engine.RunAsync(stop.Token);
+
+        await sawEmpty.Task;
+        await AddQueuedAsync("job-1");
+        _signal.Set();
+
+        // ポーリングは無いので、ここまで進めるのは合図が待ちを起こしたから。
+        await handler.Entered;
+
+        await stop.CancelAsync();
+        await loop;
+
+        Assert.Equal(JobStatus.Completed, (await FindAsync("job-1")).Status);
+    }
+
+    /// <summary>
+    /// エンジンが「候補なし (null)」を見た直後、待ちに入る前に登録と合図が済んだ状況。
+    /// SSE のような best-effort の push ならここが取りこぼしの窓になるが、
+    /// 合図はトークンとして箱に残るので、直後の待ちが即座に返って拾えるはず。
+    /// </summary>
+    [Fact]
+    public async Task 待ちに入る前に鳴った合図も取りこぼさない()
+    {
+        ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
+        JobExecutionEngine engine = CreateEngine(handler);
+
+        _engineStore.OnNextEmptyFind = async () =>
+        {
+            await AddQueuedAsync("job-1");
+            _signal.Set();
+        };
+
+        using CancellationTokenSource stop = new();
+        Task loop = engine.RunAsync(stop.Token);
+
+        // ここまで進むのは、null の直後に鳴った合図が待ちを通したから。
+        await handler.Entered;
+
+        await stop.CancelAsync();
+        await loop;
+
+        Assert.Equal(JobStatus.Completed, (await FindAsync("job-1")).Status);
+    }
+
+    [Fact]
+    public async Task 合図を連打しても実行はJobの数だけ()
+    {
+        ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
+        JobExecutionEngine engine = CreateEngine(handler);
+
+        using CancellationTokenSource stop = new();
+        Task loop = engine.RunAsync(stop.Token);
+
+        await AddQueuedAsync("job-1");
+        for (int i = 0; i < 10; i++)
+        {
+            _signal.Set();
+        }
+
+        await handler.Entered;
+        await stop.CancelAsync();
+        await loop;
+
+        // 合図は容量 1 の箱で合体するので、10 回鳴らしても増えるのは空スキャンだけ。
+        // Job が 2 回実行されないことは、ハンドラに渡った回数で確かめる。
+        Assert.Equal(JobStatus.Completed, (await FindAsync("job-1")).Status);
+        Assert.Single(handler.Executions);
+    }
+
+    [Fact]
+    public async Task 合図を待っている最中の停止要求でループが終わる()
+    {
+        JobExecutionEngine engine = CreateEngine();
+
+        // 復旧を先に済ませておく。RunAsync 先頭の復旧は停止要求で守っていないので、
+        // ここで済ませないと停止の速さ次第で復旧の中から例外が漏れて結果が揺れる。
+        await engine.EnsureRecoveredAsync(CancellationToken.None);
+
+        using CancellationTokenSource stop = new();
+        Task loop = engine.RunAsync(stop.Token);
+
+        await stop.CancelAsync();
+        await loop;
+
+        // 完了した（ハングも例外も無い）こと自体が保証。実行対象は無いので何も書かれていない。
+        Assert.True(loop.IsCompletedSuccessfully);
+        Assert.Empty(await _store.ListAsync(CancellationToken.None));
     }
 
     [Theory]
@@ -411,6 +519,7 @@ public sealed class JobExecutionEngineTests : IDisposable
             _engineStore,
             new JobHandlerRegistry(handlers),
             _runningJobs,
+            _signal,
             _timeProvider,
             NullLogger<JobExecutionEngine>.Instance);
 

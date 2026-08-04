@@ -5,13 +5,15 @@ using Microsoft.Data.Sqlite;
 namespace Netsoft.Jobs.Web.Tests;
 
 /// <summary>
-/// テスト用のホスト。DB を使い捨ての一時ファイルへ差し替え、実行エンジンを止める。
+/// テスト用のホスト。DB を使い捨ての一時ファイルへ差し替え、既定では実行エンジンを止める。
 /// </summary>
 /// <remarks>
 /// <para>
 /// エンジンを止めるのは設定（<c>Jobs:RunExecutionEngine</c>）で行う。Program が
 /// この設定を見て HostedService を登録しないので、テスト側でサービスを抜き取る細工が要らない。
 /// 止めないと「待機中のまま」を前提にした検証をエンジンが勝手に進めて、結果が時間に左右される。
+/// 逆に、書き込みの合図がエンジンを起こす結線そのものを確かめるテストだけは
+/// <c>runExecutionEngine</c> を true にして本物の流れを通す。
 /// </para>
 /// <para>
 /// DI の検証（ValidateOnBuild / ValidateScopes）はここで常に有効にする。
@@ -21,9 +23,12 @@ namespace Netsoft.Jobs.Web.Tests;
 internal sealed class JobsWebApplicationFactory : WebApplicationFactory<Program>
 {
     private readonly string _directory;
+    private readonly bool _runExecutionEngine;
 
-    public JobsWebApplicationFactory()
+    public JobsWebApplicationFactory(bool runExecutionEngine = false)
     {
+        _runExecutionEngine = runExecutionEngine;
+
         // テストは並行して走るので、ディレクトリごと分けて衝突を避ける。
         _directory = Path.Combine(Path.GetTempPath(), "netsoft-jobs-web-tests", Path.GetRandomFileName());
         Directory.CreateDirectory(_directory);
@@ -37,7 +42,7 @@ internal sealed class JobsWebApplicationFactory : WebApplicationFactory<Program>
         builder.UseEnvironment("Production");
 
         builder.UseSetting("Jobs:DatabasePath", Path.Combine(_directory, "jobs.db"));
-        builder.UseSetting("Jobs:RunExecutionEngine", "false");
+        builder.UseSetting("Jobs:RunExecutionEngine", _runExecutionEngine ? "true" : "false");
 
         builder.UseDefaultServiceProvider(options =>
         {

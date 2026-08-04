@@ -36,6 +36,10 @@ public static class JobExecutionServiceCollectionExtensions
 
         services.TryAddSingleton<JobHandlerRegistry>();
         services.TryAddSingleton<RunningJobRegistry>();
+
+        // 合図はエンジンが待つものと書き込み側（ホストの結線）が鳴らすものが
+        // 同じ 1 つでなければ意味を成さないので、これも Singleton。
+        services.TryAddSingleton<JobQueueSignal>();
         services.TryAddSingleton<IRunningJobRegistry>(provider => provider.GetRequiredService<RunningJobRegistry>());
         services.TryAddSingleton<JobExecutionEngine>();
 
