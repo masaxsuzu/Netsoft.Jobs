@@ -9,7 +9,7 @@ namespace Netsoft.Jobs.Features.Execution;
 public static class JobExecutionServiceCollectionExtensions
 {
     /// <summary>
-    /// 実行エンジンとデモ Job を登録する。
+    /// 実行エンジンと、標準で用意している Job のハンドラを登録する。
     /// </summary>
     /// <remarks>
     /// <para>
@@ -32,6 +32,7 @@ public static class JobExecutionServiceCollectionExtensions
         // Job の種類を増やすときは、この形で IJobHandler を 1 行足す。
         // TryAddEnumerable にしているのは、同じハンドラを二重に登録しても増えないようにするため。
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IJobHandler, DemoJobHandler>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IJobHandler, ArchiveJobHandler>());
 
         services.TryAddSingleton<JobHandlerRegistry>();
         services.TryAddSingleton<RunningJobRegistry>();
