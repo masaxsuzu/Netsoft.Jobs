@@ -67,7 +67,11 @@ public sealed class JobLifecycleStressTests : IDisposable
             await engine.EnsureRecoveredAsync(CancellationToken.None);
         }
 
-        CancelJobHandler cancelling = new(store, new CompositeRunningJobRegistry(registries), timeProvider);
+        CancelJobHandler cancelling = new(
+            store,
+            new CompositeRunningJobRegistry(registries),
+            timeProvider,
+            NullLogger<CancelJobHandler>.Instance);
 
         List<JobId> ids = [];
         for (int i = 0; i < Jobs; i++)

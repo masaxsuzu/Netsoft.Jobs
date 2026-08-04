@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 using Netsoft.Jobs.Contracts;
 using Netsoft.Jobs.Domain;
 
@@ -15,16 +17,23 @@ public sealed class RegisterJobHandler
     private readonly IJobStore _store;
     private readonly IJobIdFactory _idFactory;
     private readonly TimeProvider _timeProvider;
+    private readonly ILogger<RegisterJobHandler> _logger;
 
-    public RegisterJobHandler(IJobStore store, IJobIdFactory idFactory, TimeProvider timeProvider)
+    public RegisterJobHandler(
+        IJobStore store,
+        IJobIdFactory idFactory,
+        TimeProvider timeProvider,
+        ILogger<RegisterJobHandler> logger)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(idFactory);
         ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(logger);
 
         _store = store;
         _idFactory = idFactory;
         _timeProvider = timeProvider;
+        _logger = logger;
     }
 
     /// <summary>
@@ -49,6 +58,10 @@ public sealed class RegisterJobHandler
             _timeProvider.GetUtcNow());
 
         await _store.AddAsync(job, cancellationToken);
+
+        // JobId で絞ったタイムラインの先頭になる記録。検証エラーはログしない。
+        // 400 として応答に出るもので、JobId も採番されていないので絞り込みようがない。
+        _logger.LogInformation("Job {JobId} ({JobType}) を登録しました。", job.Id.Value, job.JobType);
 
         return Result<JobDto>.Success(JobDto.From(job));
     }

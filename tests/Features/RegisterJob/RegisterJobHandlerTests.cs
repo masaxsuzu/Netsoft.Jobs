@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 using Netsoft.Jobs.Contracts;
 using Netsoft.Jobs.Domain;
 using Netsoft.Jobs.Features.RegisterJob;
@@ -11,6 +13,7 @@ public sealed class RegisterJobHandlerTests : IDisposable
 
     private readonly TemporaryJobStore _store = new();
     private readonly FixedTimeProvider _timeProvider = new(Now);
+    private readonly RecordingLogger<RegisterJobHandler> _logger = new();
 
     public void Dispose() => _store.Dispose();
 
@@ -168,10 +171,41 @@ public sealed class RegisterJobHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task 登録に成功するとJobId付きのログが残る()
+    {
+        RegisterJobHandler handler = CreateHandler("job-1");
+
+        await handler.HandleAsync(
+            new RegisterJobCommand("毎晩の集計", "Demo", "{}"),
+            CancellationToken.None);
+
+        // 名前付きの値で残ることまで確かめる。構造化コレクタは JobId というパラメータ名で絞る。
+        RecordedLog entry = Assert.Single(_logger.Entries);
+        Assert.Equal(LogLevel.Information, entry.Level);
+        Assert.Equal("job-1", entry.State["JobId"]);
+        Assert.Equal("Demo", entry.State["JobType"]);
+        Assert.Contains("job-1", entry.Message);
+    }
+
+    [Fact]
+    public async Task 検証エラーではログを残さない()
+    {
+        // 400 として応答に出るもので、JobId も採番されていない。ログに書いてもノイズになる。
+        RegisterJobHandler handler = CreateHandler("job-1");
+
+        Result<JobDto> result = await handler.HandleAsync(
+            new RegisterJobCommand(" ", " ", "{}"),
+            CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Empty(_logger.Entries);
+    }
+
+    [Fact]
     public async Task 連続して登録しても識別子が重複しない()
     {
         // 既定の採番器（UUID v7）をそのまま使う。偽物では重複しないことの確認にならない。
-        RegisterJobHandler handler = new(_store, new GuidV7JobIdFactory(), _timeProvider);
+        RegisterJobHandler handler = new(_store, new GuidV7JobIdFactory(), _timeProvider, _logger);
 
         for (int i = 0; i < 100; i++)
         {
@@ -186,7 +220,7 @@ public sealed class RegisterJobHandlerTests : IDisposable
     }
 
     private RegisterJobHandler CreateHandler(params string[] ids) =>
-        new(_store, new StubJobIdFactory(ids), _timeProvider);
+        new(_store, new StubJobIdFactory(ids), _timeProvider, _logger);
 
     private Task<IReadOnlyList<Job>> ListAsync() => _store.ListAsync(CancellationToken.None);
 }

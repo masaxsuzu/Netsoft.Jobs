@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging.Abstractions;
+
 using Netsoft.Jobs.Domain;
 using Netsoft.Jobs.Features.CancelJob;
 using Netsoft.Jobs.Features.Execution;
@@ -31,7 +33,11 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
             CancellationToken.None);
 
         RelentlessJobStore hostile = new(_store, Now) { Interfering = true };
-        CancelJobHandler handler = new(hostile, new RunningJobRegistry(), new FixedTimeProvider(Now));
+        CancelJobHandler handler = new(
+            hostile,
+            new RunningJobRegistry(),
+            new FixedTimeProvider(Now),
+            NullLogger<CancelJobHandler>.Instance);
 
         CancelJobResult result = await handler.HandleAsync("job-1", CancellationToken.None).WaitAsync(HangGuard);
 
@@ -61,7 +67,11 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
         Assert.True(await _store.UpdateAsync(job, JobStatus.Queued, CancellationToken.None));
 
         InterferingJobStore interfering = new(_store);
-        CancelJobHandler handler = new(interfering, new RunningJobRegistry(), new FixedTimeProvider(Now));
+        CancelJobHandler handler = new(
+            interfering,
+            new RunningJobRegistry(),
+            new FixedTimeProvider(Now),
+            NullLogger<CancelJobHandler>.Instance);
 
         // 読み出しの後、書き戻しの直前にエンジンが完了を書き込む。
         interfering.BeforeNextUpdate = async () =>

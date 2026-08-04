@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 using Netsoft.Jobs.Domain;
 using Netsoft.Jobs.Features.CancelJob;
 using Netsoft.Jobs.Features.Tests.Fakes;
@@ -17,6 +19,7 @@ public sealed class CancelJobHandlerTests : IDisposable
     private readonly CallLoggingJobStore _store;
     private readonly RecordingRunningJobRegistry _runningJobs;
     private readonly FixedTimeProvider _timeProvider = new(Requested);
+    private readonly RecordingLogger<CancelJobHandler> _logger = new();
     private readonly CancelJobHandler _handler;
 
     public CancelJobHandlerTests()
@@ -25,7 +28,7 @@ public sealed class CancelJobHandlerTests : IDisposable
         _interference = new InterferingJobStore(_jobs);
         _store = new CallLoggingJobStore(_interference, _log);
         _runningJobs = new RecordingRunningJobRegistry(_log);
-        _handler = new CancelJobHandler(_store, _runningJobs, _timeProvider);
+        _handler = new CancelJobHandler(_store, _runningJobs, _timeProvider, _logger);
     }
 
     public void Dispose() => _jobs.Dispose();
@@ -287,6 +290,59 @@ public sealed class CancelJobHandlerTests : IDisposable
 
         Assert.Equal(JobStatus.Queued, (await SavedAsync("job-1")).Status);
         Assert.Equal(JobStatus.Cancelling, (await SavedAsync("job-2")).Status);
+    }
+
+    [Fact]
+    public async Task 実行中へのキャンセル要求の受理はJobId付きでログに残る()
+    {
+        // Job 行に Cancelling の時刻列は無い。要求が受理された時刻はこのログだけが持つ。
+        await AddAsync(Running("job-1"));
+
+        await CancelAsync("job-1");
+
+        RecordedLog entry = Assert.Single(_logger.Entries);
+        Assert.Equal(LogLevel.Information, entry.Level);
+        Assert.Equal("job-1", entry.State["JobId"]);
+        Assert.Equal(JobStatus.Cancelling, entry.State["Status"]);
+        Assert.Contains("受理", entry.Message);
+    }
+
+    [Fact]
+    public async Task 待機中へのキャンセル要求はCancelledへ直行したことがログで分かる()
+    {
+        await AddAsync(Queued("job-1"));
+
+        await CancelAsync("job-1");
+
+        RecordedLog entry = Assert.Single(_logger.Entries);
+        Assert.Equal("job-1", entry.State["JobId"]);
+        Assert.Equal(JobStatus.Cancelled, entry.State["Status"]);
+        Assert.Contains("受理", entry.Message);
+    }
+
+    [Fact]
+    public async Task キャンセル要求の拒否はJobIdと理由付きでログに残る()
+    {
+        await AddAsync(Terminal("job-1", nameof(JobStatus.Completed)));
+
+        await CancelAsync("job-1");
+
+        RecordedLog entry = Assert.Single(_logger.Entries);
+
+        // 終わった Job へのキャンセルは利用者の操作として普通に起きること。Warning にしない。
+        Assert.Equal(LogLevel.Information, entry.Level);
+        Assert.Equal("job-1", entry.State["JobId"]);
+        Assert.Equal(JobTransitionRejection.JobAlreadyFinished, entry.State["Rejection"]);
+    }
+
+    [Fact]
+    public async Task 対象が見つからないキャンセル要求はログを残さない()
+    {
+        // 存在しない・識別子の形にならない、はノイズになるだけなので書かない。
+        await CancelAsync("job-1");
+        await _handler.HandleAsync(" ", CancellationToken.None);
+
+        Assert.Empty(_logger.Entries);
     }
 
     private Task<CancelJobResult> CancelAsync(string id) => _handler.HandleAsync(id, CancellationToken.None);

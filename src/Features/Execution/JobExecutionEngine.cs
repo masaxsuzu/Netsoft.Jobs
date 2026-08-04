@@ -262,6 +262,14 @@ public sealed class JobExecutionEngine
     /// </summary>
     private async Task RunHandlerAsync(Job job)
     {
+        // ハンドラは parameters しか受け取らず、自分がどの Job かを知らない（意図的な設計）。
+        // スコープに積んでおけば、ハンドラや await の継続が将来書くログ行すべてに
+        // JobId と JobType が自動で付き、JobId で絞れば Job の一生が並ぶ。
+        using IDisposable? scope = _logger.BeginScope("Job {JobId} ({JobType})", job.Id.Value, job.JobType);
+
+        // Running を書き戻せた直後、つまりこの Job を実行すると確定した点の記録。
+        _logger.LogInformation("Job {JobId} ({JobType}) の実行を開始します。", job.Id.Value, job.JobType);
+
         // ループの停止トークンとは繋がない。上の RunAsync の注記のとおり、
         // プロセス停止はキャンセル要求ではない。ここが発火するのは利用者のキャンセルだけ。
         using CancellationTokenSource cancellation = new();
@@ -357,6 +365,26 @@ public sealed class JobExecutionEngine
             // 期待状態は同じ。どちらの経路でも result.Previous が読み出したときの状態を指す。
             if (await _store.UpdateAsync(job, result.Previous, CancellationToken.None))
             {
+                // Cancelling からの完走は、Job 行からキャンセル要求の痕跡が消える唯一のケース
+                // （Cancelling の時刻はどの列にも残らない）。「要求はあったが完走が勝った」ことの
+                // 記録はこのログだけになるので、文言で区別できるようにする。
+                if (result.Previous == JobStatus.Cancelling && job.Status == JobStatus.Completed)
+                {
+                    _logger.LogInformation(
+                        "Job {JobId} はキャンセル要求より完走が勝ち、{Status} で終了しました。契機は {Trigger} です。",
+                        id.Value,
+                        job.Status,
+                        trigger);
+                }
+                else
+                {
+                    _logger.LogInformation(
+                        "Job {JobId} は {Status} で終了しました。契機は {Trigger} です。",
+                        id.Value,
+                        job.Status,
+                        trigger);
+                }
+
                 return;
             }
 
