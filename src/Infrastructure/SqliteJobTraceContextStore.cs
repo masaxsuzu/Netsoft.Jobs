@@ -1,19 +1,18 @@
 using Microsoft.Data.Sqlite;
 
 using Netsoft.Jobs.Domain;
-using Netsoft.Jobs.Features.Execution;
 
-namespace Netsoft.Jobs.Web;
+namespace Netsoft.Jobs.Infrastructure;
 
 /// <summary>
-/// SQLite による <see cref="IJobTraceContextStore"/> の実装。Jobs と同じ DB ファイルの別表に置く。
+/// 登録時 trace context（W3C traceparent）の SQLite 置き場。Jobs と同じ DB ファイルの別表に置く。
 /// </summary>
 /// <remarks>
 /// <para>
-/// port（<see cref="IJobTraceContextStore"/>）は Features にあり、Infrastructure は Features を
-/// 参照できない（参照すると ASP.NET Core の FrameworkReference まで引きずる）。観測の結線は
-/// ホストの関心なので、<see cref="NotifyingJobStore"/> と同じく Web のアダプタとして置く。
-/// Microsoft.Data.Sqlite は Infrastructure から推移的に見えるので、参照の追加は要らない。
+/// port（Features の <c>IJobTraceContextStore</c>）は実装しない素のクラスである。
+/// Infrastructure が Features を参照すると ASP.NET Core の FrameworkReference まで
+/// 引きずってしまうため、interface への結線は両方を参照できる Web のアダプタ
+/// （<c>JobTraceContextStoreAdapter</c>）が担う。ここにあるのは純粋な永続化だけ。
 /// </para>
 /// <para>
 /// Jobs 行に traceparent の列を足さず別表にするのは、Domain（Job と IJobStore）に観測を
@@ -25,34 +24,28 @@ namespace Netsoft.Jobs.Web;
 /// </para>
 /// <para>
 /// 接続の作法（呼び出しごとに開く・パラメータバインド・ConfigureAwait(false)）は
-/// <see cref="Infrastructure.SqliteJobStore"/> に倣う。
+/// <see cref="SqliteJobStore"/> と同じで、共通部分は <see cref="SqliteConnections"/> に括ってある。
 /// </para>
 /// </remarks>
-public sealed class SqliteJobTraceContextStore : IJobTraceContextStore
+public sealed class SqliteJobTraceContextStore
 {
     private readonly string _connectionString;
 
     /// <param name="databasePath">DB ファイルのパス。Jobs と同じファイルを渡す。</param>
-    public SqliteJobTraceContextStore(string databasePath)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
-
-        _connectionString = new SqliteConnectionStringBuilder
-        {
-            DataSource = databasePath,
-        }.ToString();
-    }
+    public SqliteJobTraceContextStore(string databasePath) =>
+        _connectionString = SqliteConnections.BuildConnectionString(databasePath);
 
     /// <summary>
     /// テーブルを用意する。何度呼んでも同じ結果になる。
     /// </summary>
     /// <remarks>
-    /// <see cref="Infrastructure.SqliteJobStore.InitializeAsync"/> と同じく起動時に呼ばれる想定。
+    /// <see cref="SqliteJobStore.InitializeAsync"/> と同じく起動時に呼ばれる想定。
     /// journal_mode は DB ファイル自体に記録されるため、Jobs 側の初期化で設定した WAL がここにも効く。
     /// </remarks>
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using SqliteConnection connection =
+            await SqliteConnections.OpenAsync(_connectionString, cancellationToken).ConfigureAwait(false);
         await using SqliteCommand command = connection.CreateCommand();
 
         command.CommandText =
@@ -66,12 +59,13 @@ public sealed class SqliteJobTraceContextStore : IJobTraceContextStore
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    /// <inheritdoc />
+    /// <summary>Job の登録時の traceparent を保存する。</summary>
     public async Task SaveAsync(JobId id, string traceParent, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(traceParent);
 
-        await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using SqliteConnection connection =
+            await SqliteConnections.OpenAsync(_connectionString, cancellationToken).ConfigureAwait(false);
         await using SqliteCommand command = connection.CreateCommand();
 
         // 登録は Job ごとに 1 回だが、観測の保存が一意制約で例外を出しても誰も得をしないので
@@ -88,31 +82,16 @@ public sealed class SqliteJobTraceContextStore : IJobTraceContextStore
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    /// <inheritdoc />
+    /// <summary>保存済みの traceparent を取得する。無ければ null。</summary>
     public async Task<string?> FindAsync(JobId id, CancellationToken cancellationToken)
     {
-        await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using SqliteConnection connection =
+            await SqliteConnections.OpenAsync(_connectionString, cancellationToken).ConfigureAwait(false);
         await using SqliteCommand command = connection.CreateCommand();
 
         command.CommandText = "SELECT TraceParent FROM JobTraceContexts WHERE JobId = $id;";
         command.Parameters.AddWithValue("$id", id.Value);
 
         return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as string;
-    }
-
-    private async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken)
-    {
-        SqliteConnection connection = new(_connectionString);
-        try
-        {
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-            return connection;
-        }
-        catch
-        {
-            // 開けなかった接続を握ったまま例外を投げると、プールへ返らずに滞留する。
-            await connection.DisposeAsync().ConfigureAwait(false);
-            throw;
-        }
     }
 }

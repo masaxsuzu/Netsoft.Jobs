@@ -30,10 +30,11 @@ builder.Services.AddSingleton<IJobStore>(provider => new NotifyingJobStore(
 
 // 登録時 trace context の置き場。AddJobFeatures が TryAdd した no-op より後に登録するので、
 // 単一解決はこちら（最後の登録）が勝つ。Jobs と同じ DB ファイルの別表を使う。
-// 具象型も登録しておくのは、起動時初期化が InitializeAsync を具象型でしか呼べないため。
+// 具象型（Infrastructure）も登録しておくのは、起動時初期化が InitializeAsync を
+// 具象型でしか呼べないため。port への結線はアダプタが担う。
 builder.Services.AddSingleton(new SqliteJobTraceContextStore(databasePath));
 builder.Services.AddSingleton<IJobTraceContextStore>(
-    provider => provider.GetRequiredService<SqliteJobTraceContextStore>());
+    provider => new JobTraceContextStoreAdapter(provider.GetRequiredService<SqliteJobTraceContextStore>()));
 
 // 設定で止められるようにしてある。テストがエンジンを止めて、
 // 「待機中のまま」のような状態を前提にした検証を安定して行うため。

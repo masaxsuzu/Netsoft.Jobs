@@ -32,7 +32,7 @@ public sealed class JobExecutionTracingTests : IDisposable
     private readonly JobExecutionInstrumentation _instrumentation;
 
     public JobExecutionTracingTests() =>
-        _instrumentation = new JobExecutionInstrumentation(_meterFactory, _store, _timeProvider);
+        _instrumentation = new JobExecutionInstrumentation(_meterFactory, _store, _timeProvider, _traceContexts, NullLogger<JobExecutionInstrumentation>.Instance);
 
     public void Dispose()
     {
@@ -188,7 +188,6 @@ public sealed class JobExecutionTracingTests : IDisposable
             _signal,
             _timeProvider,
             _instrumentation,
-            _traceContexts,
             NullLogger<JobExecutionEngine>.Instance);
 
     private static ControllableJobHandler Released(ControllableJobHandler handler)

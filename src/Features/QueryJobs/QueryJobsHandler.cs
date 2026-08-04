@@ -8,7 +8,7 @@ namespace Netsoft.Jobs.Features.QueryJobs;
 /// </summary>
 /// <remarks>
 /// <para>
-/// HTTP エンドポイントと画面（Blazor）の両方がこのクラスを直接呼ぶ。
+/// 呼び出すのは HTTP エンドポイントだけ。画面は別プロセス（src/Ui）にあり、API 越しに使う。
 /// 一覧と詳細を 1 つのクラスにまとめているのは、どちらも「保存されているものをそのまま写す」
 /// だけで、分けても片方に何も書くことが無いため。
 /// </para>

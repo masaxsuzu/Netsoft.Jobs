@@ -7,7 +7,8 @@ namespace Netsoft.Jobs.Features;
 /// 入力の不正を例外にしないのは、それが想定内の分岐だから。例外にすると
 /// 呼び出し側が catch で握りつぶしやすく、どの項目が悪いのかも型から読み取れない。
 /// Domain の <see cref="Domain.JobTransitionResult"/> が遷移の拒否を結果で返すのと同じ考え方で、
-/// この型は登録以降の機能（実行・一覧・キャンセル）でも共通に使う。
+/// 今これを使うのは登録だけ。一覧は結果を持たず（null で「無い」を表す）、
+/// キャンセルは拒否の理由を運ぶ専用の型を持っている。
 /// </remarks>
 /// <typeparam name="T">成功したときに返す値の型。</typeparam>
 public sealed class Result<T>

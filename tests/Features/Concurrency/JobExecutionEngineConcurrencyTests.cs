@@ -29,7 +29,7 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
     private readonly JobExecutionInstrumentation _instrumentation;
 
     public JobExecutionEngineConcurrencyTests() =>
-        _instrumentation = new JobExecutionInstrumentation(_meterFactory, _store, _timeProvider);
+        _instrumentation = new JobExecutionInstrumentation(_meterFactory, _store, _timeProvider, new NullJobTraceContextStore(), NullLogger<JobExecutionInstrumentation>.Instance);
 
     public void Dispose()
     {
@@ -213,7 +213,6 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
             new JobQueueSignal(),
             _timeProvider,
             _instrumentation,
-            new NullJobTraceContextStore(),
             NullLogger<JobExecutionEngine>.Instance);
 
     private async Task AddQueuedAsync(

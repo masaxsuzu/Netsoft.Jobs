@@ -93,9 +93,9 @@ public static class JobEventsEndpoint
 
                 try
                 {
-                    // 戻り値は見ない。false は書き手の完了だが、書き手（event の購読）は
-                    // この接続が生きている間は完了させない。
-                    _ = await signals.Reader.WaitToReadAsync(waiting.Token);
+                    // 値は見ない。合図は「変更があった」以上の情報を運ばない
+                    // （JobQueueSignal と同じ契約）。待って消費するまでを 1 回で済ませる。
+                    _ = await signals.Reader.ReadAsync(waiting.Token);
                 }
                 catch (OperationCanceledException) when (!disconnected.IsCancellationRequested)
                 {
@@ -106,10 +106,6 @@ public static class JobEventsEndpoint
                     await context.Response.Body.FlushAsync(disconnected);
                     continue;
                 }
-
-                // 読めなくても event を流してよい。余分な合図は読み直しが 1 回増えるだけで、
-                // 合図だけの契約では誤りにならない。
-                signals.Reader.TryRead(out _);
 
                 await context.Response.WriteAsync("data: changed\n\n", disconnected);
                 await context.Response.Body.FlushAsync(disconnected);

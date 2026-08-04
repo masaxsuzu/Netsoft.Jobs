@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 
+using Microsoft.Extensions.Logging;
+
 using Netsoft.Jobs.Domain;
 
 namespace Netsoft.Jobs.Features.Execution;
@@ -31,18 +33,29 @@ public sealed class JobExecutionInstrumentation : IDisposable
 
     private readonly IJobStore _store;
     private readonly TimeProvider _timeProvider;
+    private readonly IJobTraceContextStore _traceContexts;
+    private readonly ILogger<JobExecutionInstrumentation> _logger;
     private readonly Histogram<double> _queueWait;
     private readonly Histogram<double> _executionDuration;
     private readonly Counter<long> _finished;
 
-    public JobExecutionInstrumentation(IMeterFactory meterFactory, IJobStore store, TimeProvider timeProvider)
+    public JobExecutionInstrumentation(
+        IMeterFactory meterFactory,
+        IJobStore store,
+        TimeProvider timeProvider,
+        IJobTraceContextStore traceContexts,
+        ILogger<JobExecutionInstrumentation> logger)
     {
         ArgumentNullException.ThrowIfNull(meterFactory);
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(traceContexts);
+        ArgumentNullException.ThrowIfNull(logger);
 
         _store = store;
         _timeProvider = timeProvider;
+        _traceContexts = traceContexts;
+        _logger = logger;
 
         Meter meter = meterFactory.Create(Name);
 
@@ -83,6 +96,65 @@ public sealed class JobExecutionInstrumentation : IDisposable
     /// 別のテストの「購読者がいない」検証を壊す。インスタンスなら参照一致で購読を絞れる。
     /// </remarks>
     public ActivitySource ActivitySource { get; }
+
+    /// <summary>
+    /// job.execute スパンを開始する。購読者がいなければ何もせず null。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// スパンの開始（context の読み出し・Link と属性の組み立て）は観測の機構であって
+    /// 実行の判断を含まないので、エンジンではなくここに置く。エンジンに残るのは
+    /// スパンの終わり方（結末に応じた SetStatus / SetTag）だけ。
+    /// </para>
+    /// <para>
+    /// 登録時に保存された trace context への Link は <see cref="ActivitySource.StartActivity(string, ActivityKind, ActivityContext, IEnumerable{KeyValuePair{string, object?}}?, IEnumerable{ActivityLink}?, DateTimeOffset)"/>
+    /// の引数で渡す。開始後の Activity には Link を足せないため、読み出しは開始より前に行う。
+    /// </para>
+    /// <para>
+    /// <see cref="ActivitySource.HasListeners"/> を先に見るのは、購読者がいないとき
+    /// （StartActivity が null を返す構成のとき）に <see cref="IJobTraceContextStore.FindAsync"/> の
+    /// I/O まで足さないため。観測がゼロなら追加コストもゼロにする。
+    /// </para>
+    /// </remarks>
+    public async Task<Activity?> StartExecuteActivityAsync(Job job, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+
+        if (!ActivitySource.HasListeners())
+        {
+            return null;
+        }
+
+        IEnumerable<ActivityLink>? links = null;
+        try
+        {
+            // 登録トレースは別プロセス（別リクエスト）のものなので isRemote。
+            // 解釈できない・無い場合は Link なしで開始する。
+            string? traceParent = await _traceContexts.FindAsync(job.Id, cancellationToken);
+            if (traceParent is not null
+                && ActivityContext.TryParse(traceParent, traceState: null, isRemote: true, out ActivityContext registered))
+            {
+                links = [new ActivityLink(registered)];
+            }
+        }
+        catch (Exception exception)
+        {
+            // 観測の失敗で実行を妨げない。欠けるのは登録トレースへの Link だけ。
+            _logger.LogWarning(
+                exception,
+                "Job {JobId} の登録時 trace context を読めませんでした。Link なしで実行します。",
+                job.Id.Value);
+        }
+
+        // スパン属性は系列を作らないので、メトリクスと違い JobId のような
+        // 高カーディナリティの値を持たせてよい。個々の実行を追うのはここの仕事。
+        return ActivitySource.StartActivity(
+            "job.execute",
+            ActivityKind.Internal,
+            parentContext: default,
+            tags: [new("job.id", job.Id.Value), new("job.type", job.JobType)],
+            links: links);
+    }
 
     /// <summary>
     /// Running が確定した（開始の書き戻しに成功した）Job の待ち時間を記録する。

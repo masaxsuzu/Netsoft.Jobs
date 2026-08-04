@@ -54,7 +54,7 @@ public sealed class JobLifecycleStressTests : IDisposable
         CountingJobHandler handler = new(HandledJobType) { Yields = 3 };
 
         using JobExecutionInstrumentation instrumentation =
-            new(_meterFactory, store, timeProvider);
+            new(_meterFactory, store, timeProvider, new NullJobTraceContextStore(), NullLogger<JobExecutionInstrumentation>.Instance);
 
         RunningJobRegistry[] registries = [.. Enumerable.Range(0, Engines).Select(_ => new RunningJobRegistry())];
         JobExecutionEngine[] engines =
@@ -66,7 +66,6 @@ public sealed class JobLifecycleStressTests : IDisposable
                 new JobQueueSignal(),
                 timeProvider,
                 instrumentation,
-                new NullJobTraceContextStore(),
                 NullLogger<JobExecutionEngine>.Instance)),
         ];
 
