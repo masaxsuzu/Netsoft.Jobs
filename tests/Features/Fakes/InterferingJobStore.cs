@@ -28,6 +28,14 @@ internal sealed class InterferingJobStore : IJobStore
     /// </summary>
     public Func<Task>? BeforeNextUpdate { get; set; }
 
+    /// <summary>
+    /// 次に <see cref="FindOldestQueuedAsync"/> が「候補なし (null)」を返す直前に
+    /// 1 度だけ実行する処理。呼び出し側から見ると「null を見た直後、
+    /// それを受けて動く前」に他所の書き込みが割り込んだ状況になる。
+    /// 合図待ちの取りこぼし窓（null 確認と待機開始の間）を決定的に作るのに使う。
+    /// </summary>
+    public Func<Task>? OnNextEmptyFind { get; set; }
+
     /// <summary>書き戻しが試みられた回数。やり直しが起きたことを確かめるのに使う。</summary>
     public int UpdateAttempts { get; private set; }
 
@@ -59,8 +67,22 @@ internal sealed class InterferingJobStore : IJobStore
         _inner.ListAsync(cancellationToken);
 
     /// <inheritdoc />
-    public Task<Job?> FindOldestQueuedAsync(CancellationToken cancellationToken) =>
-        _inner.FindOldestQueuedAsync(cancellationToken);
+    public async Task<Job?> FindOldestQueuedAsync(CancellationToken cancellationToken)
+    {
+        Job? job = await _inner.FindOldestQueuedAsync(cancellationToken);
+
+        if (job is null && OnNextEmptyFind is { } interference)
+        {
+            // 先に外してから呼ぶ理由は BeforeNextUpdate と同じ。割り込みの中で
+            // この store を読む余地を残すと、自分自身を再帰的に呼び出してしまう。
+            OnNextEmptyFind = null;
+            await interference();
+        }
+
+        // 割り込みが Job を足していても null を返す。読み出しは割り込みの前に済んでおり、
+        // 「見た結果は候補なしだったが、直後にはもう存在する」を作るのが目的だから。
+        return job;
+    }
 
     /// <inheritdoc />
     public Task<IReadOnlyList<Job>> ListByStatusAsync(JobStatus status, CancellationToken cancellationToken) =>

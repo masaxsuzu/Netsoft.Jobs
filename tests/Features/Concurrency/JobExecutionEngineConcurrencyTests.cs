@@ -200,6 +200,7 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
             store,
             new JobHandlerRegistry(handlers),
             new RunningJobRegistry(),
+            new JobQueueSignal(),
             _timeProvider,
             NullLogger<JobExecutionEngine>.Instance);
 

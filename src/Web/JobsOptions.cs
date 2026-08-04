@@ -30,7 +30,4 @@ public sealed class JobsOptions
     /// 「待機中の Job をキャンセルできる」のような状態を前提にしたテストが不安定になる。
     /// </remarks>
     public bool RunExecutionEngine { get; set; } = true;
-
-    /// <summary>待機中の Job が無いときに次を探すまでの間隔。</summary>
-    public TimeSpan IdleInterval { get; set; } = TimeSpan.FromSeconds(1);
 }

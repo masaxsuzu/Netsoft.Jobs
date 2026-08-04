@@ -55,6 +55,7 @@ public sealed class JobLifecycleStressTests : IDisposable
                 store,
                 new JobHandlerRegistry([handler]),
                 registry,
+                new JobQueueSignal(),
                 timeProvider,
                 NullLogger<JobExecutionEngine>.Instance)),
         ];

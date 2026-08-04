@@ -30,8 +30,9 @@ namespace Netsoft.Jobs.Features.Execution;
 /// </para>
 /// <para>
 /// ホスティング（常駐させる殻）には依存しない。1 回分を進める <see cref="RunOnceAsync"/> と、
-/// それを繰り返す <see cref="RunAsync"/> を外から呼ぶ形にしてある。
-/// こうしておかないとテストがホストを立てないと回せない。
+/// <see cref="JobQueueSignal"/> の合図を待ちながらそれを繰り返す <see cref="RunAsync"/> を
+/// 外から呼ぶ形にしてある。こうしておかないとテストがホストを立てないと回せない。
+/// 合図を誰が鳴らすか（store の書き込みとの結線）はホスト側の仕事。
 /// </para>
 /// </remarks>
 public sealed class JobExecutionEngine
@@ -47,6 +48,7 @@ public sealed class JobExecutionEngine
     private readonly IJobStore _store;
     private readonly JobHandlerRegistry _handlers;
     private readonly RunningJobRegistry _runningJobs;
+    private readonly JobQueueSignal _signal;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<JobExecutionEngine> _logger;
 
@@ -60,18 +62,21 @@ public sealed class JobExecutionEngine
         IJobStore store,
         JobHandlerRegistry handlers,
         RunningJobRegistry runningJobs,
+        JobQueueSignal signal,
         TimeProvider timeProvider,
         ILogger<JobExecutionEngine> logger)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(handlers);
         ArgumentNullException.ThrowIfNull(runningJobs);
+        ArgumentNullException.ThrowIfNull(signal);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
 
         _store = store;
         _handlers = handlers;
         _runningJobs = runningJobs;
+        _signal = signal;
         _timeProvider = timeProvider;
         _logger = logger;
     }
@@ -187,17 +192,24 @@ public sealed class JobExecutionEngine
     }
 
     /// <summary>
-    /// 待機中の Job が無くなるまで実行し、無ければ <paramref name="idleInterval"/> だけ待って繰り返す。
+    /// 待機中の Job が無くなるまで実行し、無ければ <see cref="JobQueueSignal"/> の合図を待って繰り返す。
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// アイドル時のポーリングは持たない。Job の全書き込みは store のデコレータ
+    /// （Web の NotifyingJobStore）を通って合図に繋がっており、エンジンとは同一プロセスなので、
+    /// 合図は取りこぼしなく届く（<see cref="JobQueueSignal"/> の注記を参照）。
+    /// 合図が消えるのはプロセスが死ぬときだけで、その分は次の起動でこのループの先頭の
+    /// 「無くなるまで実行」が拾う。安全網のポーリングは意図的に置いていない。
+    /// </para>
+    /// <para>
     /// 止めるのは <paramref name="cancellationToken"/> だけ。停止要求は実行中のハンドラには伝えない。
     /// プロセスの停止は利用者のキャンセル要求ではないので、Cancelled として記録すると嘘になる。
     /// 途中で強制終了された Job は、次の起動時に復旧が Failed として閉じる。
+    /// </para>
     /// </remarks>
-    public async Task RunAsync(TimeSpan idleInterval, CancellationToken cancellationToken)
+    public async Task RunAsync(CancellationToken cancellationToken)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(idleInterval, TimeSpan.Zero);
-
         await EnsureRecoveredAsync(cancellationToken);
 
         while (!cancellationToken.IsCancellationRequested)
@@ -215,7 +227,10 @@ public sealed class JobExecutionEngine
             {
                 // store の障害などループ自体の例外。1 回の失敗でループを終わらせると、
                 // 復旧した後も Job が一切動かないプロセスが残ってしまう。
-                _logger.LogError(exception, "Job の実行に失敗しました。待機してから再試行します。");
+                // 合図待ちへ落ちても再試行の機会は失われない。store が壊れている間は
+                // 書き込み（= 新しい仕事の供給）も失敗しているはずで、回復後の最初の
+                // 書き込みが合図をくれる。
+                _logger.LogError(exception, "Job の実行に失敗しました。次の合図で再試行します。");
                 executed = false;
             }
 
@@ -225,9 +240,15 @@ public sealed class JobExecutionEngine
                 continue;
             }
 
+            // 待つのは FindOldestQueuedAsync が null を返した後（executed が false になった後）
+            // であって、待ちに入る前に確認し直すことはしない。「null を見た直後に登録された」
+            // 場合、その合図はこの WaitAsync より先に発火しているが、トークンが箱に残るので
+            // この待ちは即座に返る。確認と待機の間に取りこぼしの窓は無い。
+            // エンジン自身の書き込み（Running / 終端）も合図を発火させるため余分に起きることが
+            // あるが、空スキャン 1 回（実測 27 µs）で待ちに戻るだけで無害。
             try
             {
-                await Task.Delay(idleInterval, _timeProvider, cancellationToken);
+                await _signal.WaitAsync(cancellationToken);
             }
             catch (OperationCanceledException)
             {

@@ -93,7 +93,7 @@ public sealed class E2EFixture : IAsyncLifetime
             ExecutablePath = ResolveChromiumExecutable(),
         });
 
-        // Job の実行（デモの待ち秒数 + エンジンの取得周期）と CI の遅さを見込み、
+        // Job の実行（デモの待ち秒数）と CI の遅さを見込み、
         // Expect 系アサーションの再試行上限を既定の 5 秒から引き上げる。
         SetDefaultExpectTimeout(30_000);
     }
