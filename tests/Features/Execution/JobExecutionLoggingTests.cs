@@ -27,7 +27,18 @@ public sealed class JobExecutionLoggingTests : IDisposable
     private readonly JobQueueSignal _signal = new();
     private readonly RecordingLogger<JobExecutionEngine> _logger = new();
 
-    public void Dispose() => _store.Dispose();
+    private readonly TestMeterFactory _meterFactory = new();
+    private readonly JobExecutionInstrumentation _instrumentation;
+
+    public JobExecutionLoggingTests() =>
+        _instrumentation = new JobExecutionInstrumentation(_meterFactory, _store, _timeProvider);
+
+    public void Dispose()
+    {
+        _instrumentation.Dispose();
+        _meterFactory.Dispose();
+        _store.Dispose();
+    }
 
     [Fact]
     public async Task 実行開始のログにJobIdとJobTypeが残る()
@@ -150,6 +161,8 @@ public sealed class JobExecutionLoggingTests : IDisposable
             _runningJobs,
             _signal,
             _timeProvider,
+            _instrumentation,
+            new NullJobTraceContextStore(),
             _logger);
 
     private static ControllableJobHandler Released(ControllableJobHandler handler)

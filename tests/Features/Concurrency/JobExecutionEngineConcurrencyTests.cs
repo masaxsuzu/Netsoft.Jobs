@@ -25,8 +25,18 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
 
     private readonly TemporaryJobStore _store = new();
     private readonly FixedTimeProvider _timeProvider = new(Now);
+    private readonly TestMeterFactory _meterFactory = new();
+    private readonly JobExecutionInstrumentation _instrumentation;
 
-    public void Dispose() => _store.Dispose();
+    public JobExecutionEngineConcurrencyTests() =>
+        _instrumentation = new JobExecutionInstrumentation(_meterFactory, _store, _timeProvider);
+
+    public void Dispose()
+    {
+        _instrumentation.Dispose();
+        _meterFactory.Dispose();
+        _store.Dispose();
+    }
 
     /// <summary>
     /// エンジンを 3 つ同じ DB へ向けて同時に回し、同じ Job のハンドラが 2 回起動しないこと。
@@ -202,6 +212,8 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
             new RunningJobRegistry(),
             new JobQueueSignal(),
             _timeProvider,
+            _instrumentation,
+            new NullJobTraceContextStore(),
             NullLogger<JobExecutionEngine>.Instance);
 
     private async Task AddQueuedAsync(

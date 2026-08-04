@@ -32,9 +32,21 @@ public sealed class JobExecutionEngineTests : IDisposable
     // 「他所からの書き込み」をエンジンの経路とは別に起こす。
     private readonly InterferingJobStore _engineStore;
 
-    public JobExecutionEngineTests() => _engineStore = new InterferingJobStore(_store);
+    private readonly TestMeterFactory _meterFactory = new();
+    private readonly JobExecutionInstrumentation _instrumentation;
 
-    public void Dispose() => _store.Dispose();
+    public JobExecutionEngineTests()
+    {
+        _engineStore = new InterferingJobStore(_store);
+        _instrumentation = new JobExecutionInstrumentation(_meterFactory, _store, _timeProvider);
+    }
+
+    public void Dispose()
+    {
+        _instrumentation.Dispose();
+        _meterFactory.Dispose();
+        _store.Dispose();
+    }
 
     [Fact]
     public async Task 待機中のJobが実行されて完了になる()
@@ -521,6 +533,8 @@ public sealed class JobExecutionEngineTests : IDisposable
             _runningJobs,
             _signal,
             _timeProvider,
+            _instrumentation,
+            new NullJobTraceContextStore(),
             NullLogger<JobExecutionEngine>.Instance);
 
     private static ControllableJobHandler Released(ControllableJobHandler handler)

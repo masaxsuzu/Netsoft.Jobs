@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 using Microsoft.Extensions.Logging;
 
 using Netsoft.Jobs.Domain;
@@ -50,6 +52,8 @@ public sealed class JobExecutionEngine
     private readonly RunningJobRegistry _runningJobs;
     private readonly JobQueueSignal _signal;
     private readonly TimeProvider _timeProvider;
+    private readonly JobExecutionInstrumentation _instrumentation;
+    private readonly IJobTraceContextStore _traceContexts;
     private readonly ILogger<JobExecutionEngine> _logger;
 
     // 起動時復旧が済んだか。インスタンスごとに持つので、エンジンを複数立てれば
@@ -64,6 +68,8 @@ public sealed class JobExecutionEngine
         RunningJobRegistry runningJobs,
         JobQueueSignal signal,
         TimeProvider timeProvider,
+        JobExecutionInstrumentation instrumentation,
+        IJobTraceContextStore traceContexts,
         ILogger<JobExecutionEngine> logger)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -71,6 +77,8 @@ public sealed class JobExecutionEngine
         ArgumentNullException.ThrowIfNull(runningJobs);
         ArgumentNullException.ThrowIfNull(signal);
         ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(instrumentation);
+        ArgumentNullException.ThrowIfNull(traceContexts);
         ArgumentNullException.ThrowIfNull(logger);
 
         _store = store;
@@ -78,6 +86,8 @@ public sealed class JobExecutionEngine
         _runningJobs = runningJobs;
         _signal = signal;
         _timeProvider = timeProvider;
+        _instrumentation = instrumentation;
+        _traceContexts = traceContexts;
         _logger = logger;
     }
 
@@ -186,6 +196,9 @@ public sealed class JobExecutionEngine
                 continue;
             }
 
+            // Running の確定＝待ち行列を抜けた点。待ち時間はここで確定する。
+            _instrumentation.RecordStarted(job);
+
             await RunHandlerAsync(job);
             return true;
         }
@@ -267,6 +280,10 @@ public sealed class JobExecutionEngine
         // JobId と JobType が自動で付き、JobId で絞れば Job の一生が並ぶ。
         using IDisposable? scope = _logger.BeginScope("Job {JobId} ({JobType})", job.Id.Value, job.JobType);
 
+        // 購読者がいなければ null が返り、以降の activity?. はすべて no-op になる。
+        // つまり購読者ゼロのときは挙動が一切変わらない。
+        using Activity? activity = await StartExecuteActivityAsync(job);
+
         // Running を書き戻せた直後、つまりこの Job を実行すると確定した点の記録。
         _logger.LogInformation("Job {JobId} ({JobType}) の実行を開始します。", job.Id.Value, job.JobType);
 
@@ -309,11 +326,75 @@ public sealed class JobExecutionEngine
             failureMessage = Describe(exception);
         }
 
-        await FinishAsync(job.Id, trigger, failureMessage);
+        // Error にするのはハンドラの失敗（ハンドラ不在を含む）だけ。キャンセルは利用者が
+        // 意図した結末であって失敗ではないので、Error にすると誤検知の山になる。
+        if (trigger == JobTrigger.Fail)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, failureMessage);
+        }
+
+        JobStatus? finished = await FinishAsync(job.Id, trigger, failureMessage);
+        if (finished is { } status)
+        {
+            activity?.SetTag("job.status", status.ToString());
+        }
     }
 
     /// <summary>
-    /// 実行の結末を保存する。
+    /// job.execute スパンを開始する。購読者がいなければ何もせず null。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 登録時に保存された trace context への Link は <see cref="ActivitySource.StartActivity(string, ActivityKind, ActivityContext, IEnumerable{KeyValuePair{string, object?}}?, IEnumerable{ActivityLink}?, DateTimeOffset)"/>
+    /// の引数で渡す。開始後の Activity には Link を足せないため、読み出しは開始より前に行う。
+    /// </para>
+    /// <para>
+    /// <see cref="ActivitySource.HasListeners"/> を先に見るのは、購読者がいないとき
+    /// （StartActivity が null を返す構成のとき）に <see cref="IJobTraceContextStore.FindAsync"/> の
+    /// I/O まで足さないため。観測がゼロなら追加コストもゼロにする。
+    /// </para>
+    /// </remarks>
+    private async Task<Activity?> StartExecuteActivityAsync(Job job)
+    {
+        ActivitySource source = _instrumentation.ActivitySource;
+        if (!source.HasListeners())
+        {
+            return null;
+        }
+
+        IEnumerable<ActivityLink>? links = null;
+        try
+        {
+            // 登録トレースは別プロセス（別リクエスト）のものなので isRemote。
+            // 解釈できない・無い場合は Link なしで開始する。
+            string? traceParent = await _traceContexts.FindAsync(job.Id, CancellationToken.None);
+            if (traceParent is not null
+                && ActivityContext.TryParse(traceParent, traceState: null, isRemote: true, out ActivityContext registered))
+            {
+                links = [new ActivityLink(registered)];
+            }
+        }
+        catch (Exception exception)
+        {
+            // 観測の失敗で実行を妨げない。欠けるのは登録トレースへの Link だけ。
+            _logger.LogWarning(
+                exception,
+                "Job {JobId} の登録時 trace context を読めませんでした。Link なしで実行します。",
+                job.Id.Value);
+        }
+
+        // スパン属性は系列を作らないので、メトリクスと違い JobId のような
+        // 高カーディナリティの値を持たせてよい。個々の実行を追うのはここの仕事。
+        return source.StartActivity(
+            "job.execute",
+            ActivityKind.Internal,
+            parentContext: default,
+            tags: [new("job.id", job.Id.Value), new("job.type", job.JobType)],
+            links: links);
+    }
+
+    /// <summary>
+    /// 実行の結末を保存する。確定した終端の状態を返す。Job が見つからなければ null。
     /// </summary>
     /// <remarks>
     /// <para>
@@ -332,7 +413,7 @@ public sealed class JobExecutionEngine
     /// 終端に達すれば以後は動かず、そこでは遷移が拒否されて抜けるので、やり直しは必ず有限で止まる。
     /// </para>
     /// </remarks>
-    private async Task FinishAsync(JobId id, JobTrigger trigger, string? failureMessage)
+    private async Task<JobStatus?> FinishAsync(JobId id, JobTrigger trigger, string? failureMessage)
     {
         while (true)
         {
@@ -340,7 +421,7 @@ public sealed class JobExecutionEngine
             if (job is null)
             {
                 _logger.LogWarning("Job {JobId} は実行後に見つかりませんでした。結末を記録できません。", id.Value);
-                return;
+                return null;
             }
 
             DateTimeOffset now = _timeProvider.GetUtcNow();
@@ -352,7 +433,9 @@ public sealed class JobExecutionEngine
                 // 誰も動かしていないのに Running のまま残るので、失敗として閉じる。
                 if (job.Status.IsTerminal())
                 {
-                    return;
+                    // 終端は他所（別プロセスの復旧など）が書いた。こちらは何も記録していないので
+                    // メトリクスにも数えない。書いた側が自分の分を数える。
+                    return job.Status;
                 }
 
                 job.Apply(
@@ -365,6 +448,12 @@ public sealed class JobExecutionEngine
             // 期待状態は同じ。どちらの経路でも result.Previous が読み出したときの状態を指す。
             if (await _store.UpdateAsync(job, result.Previous, CancellationToken.None))
             {
+                // 結末の確定＝終端の書き戻しに成功した点。所要時間と終端到達数はここで確定する。
+                // 起動時復旧（EnsureRecoveredAsync）が閉じる残骸はここを通らないので数えない。
+                // 残骸の FinishedAt - StartedAt は前回プロセスの停止時間を含み、所要時間として
+                // 意味を成さないため。
+                _instrumentation.RecordFinished(job);
+
                 // Cancelling からの完走は、Job 行からキャンセル要求の痕跡が消える唯一のケース
                 // （Cancelling の時刻はどの列にも残らない）。「要求はあったが完走が勝った」ことの
                 // 記録はこのログだけになるので、文言で区別できるようにする。
@@ -385,7 +474,7 @@ public sealed class JobExecutionEngine
                         trigger);
                 }
 
-                return;
+                return job.Status;
             }
 
             _logger.LogInformation("Job {JobId} の状態が書き換わっていました。読み直して記録し直します。", id.Value);

@@ -1,7 +1,10 @@
+using System.Diagnostics;
+
 using Microsoft.Extensions.Logging;
 
 using Netsoft.Jobs.Contracts;
 using Netsoft.Jobs.Domain;
+using Netsoft.Jobs.Features.Execution;
 
 namespace Netsoft.Jobs.Features.RegisterJob;
 
@@ -17,22 +20,26 @@ public sealed class RegisterJobHandler
     private readonly IJobStore _store;
     private readonly IJobIdFactory _idFactory;
     private readonly TimeProvider _timeProvider;
+    private readonly IJobTraceContextStore _traceContexts;
     private readonly ILogger<RegisterJobHandler> _logger;
 
     public RegisterJobHandler(
         IJobStore store,
         IJobIdFactory idFactory,
         TimeProvider timeProvider,
+        IJobTraceContextStore traceContexts,
         ILogger<RegisterJobHandler> logger)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(idFactory);
         ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(traceContexts);
         ArgumentNullException.ThrowIfNull(logger);
 
         _store = store;
         _idFactory = idFactory;
         _timeProvider = timeProvider;
+        _traceContexts = traceContexts;
         _logger = logger;
     }
 
@@ -62,6 +69,27 @@ public sealed class RegisterJobHandler
         // JobId で絞ったタイムラインの先頭になる記録。検証エラーはログしない。
         // 400 として応答に出るもので、JobId も採番されていないので絞り込みようがない。
         _logger.LogInformation("Job {JobId} ({JobType}) を登録しました。", job.Id.Value, job.JobType);
+
+        // 登録時の trace context を Job に同乗させる（messaging semantic conventions のパターン）。
+        // ASP.NET Core はリクエストごとに Activity を作るので、トレースの購読者がいなくても
+        // ここには本物の traceparent が入る。つまりバックエンドを繋いだその日から、
+        // それ以降に登録された Job で実行スパンからの Link が意味を持つ。
+        if (Activity.Current?.Id is { } traceParent)
+        {
+            try
+            {
+                await _traceContexts.SaveAsync(job.Id, traceParent, cancellationToken);
+            }
+            catch (Exception exception)
+            {
+                // 観測の失敗で登録を失敗させない。Job は保存済みで、
+                // 欠けるのは実行スパンから登録トレースへの Link だけ。
+                _logger.LogWarning(
+                    exception,
+                    "Job {JobId} の trace context を保存できませんでした。実行スパンに Link は付きません。",
+                    job.Id.Value);
+            }
+        }
 
         return Result<JobDto>.Success(JobDto.From(job));
     }

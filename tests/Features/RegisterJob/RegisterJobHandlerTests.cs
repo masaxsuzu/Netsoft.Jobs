@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 using Microsoft.Extensions.Logging;
 
 using Netsoft.Jobs.Contracts;
@@ -13,6 +15,7 @@ public sealed class RegisterJobHandlerTests : IDisposable
 
     private readonly TemporaryJobStore _store = new();
     private readonly FixedTimeProvider _timeProvider = new(Now);
+    private readonly RecordingJobTraceContextStore _traceContexts = new();
     private readonly RecordingLogger<RegisterJobHandler> _logger = new();
 
     public void Dispose() => _store.Dispose();
@@ -202,10 +205,60 @@ public sealed class RegisterJobHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task 登録時のActivityのTraceparentが保存される()
+    {
+        RegisterJobHandler handler = CreateHandler("job-1");
+
+        // ASP.NET Core がリクエストごとに作る Activity を、ここでは手で立てて演じる。
+        using Activity activity = new Activity("登録リクエスト").Start();
+
+        Result<JobDto> result = await handler.HandleAsync(
+            new RegisterJobCommand("毎晩の集計", "Demo", "{}"),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(activity.Id, _traceContexts.Saved[JobId.From("job-1")]);
+    }
+
+    [Fact]
+    public async Task Activityが無ければTraceContextは保存されない()
+    {
+        RegisterJobHandler handler = CreateHandler("job-1");
+
+        Result<JobDto> result = await handler.HandleAsync(
+            new RegisterJobCommand("毎晩の集計", "Demo", "{}"),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(_traceContexts.Saved);
+    }
+
+    [Fact]
+    public async Task TraceContextの保存が失敗しても登録は成功する()
+    {
+        // 観測は本体の妨げにならない。保存の失敗は Warning のログに落ちるだけで、
+        // Job そのものは登録されている。
+        _traceContexts.SaveFailure = new IOException("観測の置き場が壊れています。");
+        RegisterJobHandler handler = CreateHandler("job-1");
+
+        using Activity activity = new Activity("登録リクエスト").Start();
+
+        Result<JobDto> result = await handler.HandleAsync(
+            new RegisterJobCommand("毎晩の集計", "Demo", "{}"),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(await ListAsync());
+
+        RecordedLog warning = Assert.Single(_logger.Entries, entry => entry.Level == LogLevel.Warning);
+        Assert.Equal("job-1", warning.State["JobId"]);
+    }
+
+    [Fact]
     public async Task 連続して登録しても識別子が重複しない()
     {
         // 既定の採番器（UUID v7）をそのまま使う。偽物では重複しないことの確認にならない。
-        RegisterJobHandler handler = new(_store, new GuidV7JobIdFactory(), _timeProvider, _logger);
+        RegisterJobHandler handler = new(_store, new GuidV7JobIdFactory(), _timeProvider, _traceContexts, _logger);
 
         for (int i = 0; i < 100; i++)
         {
@@ -220,7 +273,7 @@ public sealed class RegisterJobHandlerTests : IDisposable
     }
 
     private RegisterJobHandler CreateHandler(params string[] ids) =>
-        new(_store, new StubJobIdFactory(ids), _timeProvider, _logger);
+        new(_store, new StubJobIdFactory(ids), _timeProvider, _traceContexts, _logger);
 
     private Task<IReadOnlyList<Job>> ListAsync() => _store.ListAsync(CancellationToken.None);
 }
