@@ -53,13 +53,11 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
         const int Jobs = 40;
 
         CountingJobHandler handler = new(HandledJobType);
-        JobExecutionEngine[] engines =
-            [.. Enumerable.Range(0, Engines).Select(_ => CreateEngine(_store, handler))];
 
-        foreach (JobExecutionEngine engine in engines)
-        {
-            await engine.EnsureRecoveredAsync(CancellationToken.None);
-        }
+        // 立ち上げの時点で各エンジンの復旧は済んでいる。Job を入れるのはその後なので、
+        // 復旧が実行中の Job を見ることはない。
+        JobExecutionEngine[] engines = await Task.WhenAll(
+            Enumerable.Range(0, Engines).Select(_ => CreateEngineAsync(_store, handler)));
 
         for (int i = 0; i < Jobs; i++)
         {
@@ -106,7 +104,7 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
         await AddQueuedAsync("job-1");
 
         RelentlessJobStore hostile = new(_store, Now);
-        JobExecutionEngine engine = CreateEngine(hostile, handler);
+        JobExecutionEngine engine = await CreateEngineAsync(hostile, handler);
 
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
         await handler.Entered;
@@ -143,7 +141,7 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
         }
 
         RelentlessJobStore hostile = new(_store, Now) { Interfering = true };
-        JobExecutionEngine engine = CreateEngine(hostile, handler);
+        JobExecutionEngine engine = await CreateEngineAsync(hostile, handler);
 
         // どの候補も書き戻す直前に奪われるので、実行できるものは 1 件も無い。
         Assert.False(await engine.RunOnceAsync(CancellationToken.None).WaitAsync(HangGuard));
@@ -153,67 +151,90 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
     }
 
     /// <summary>
-    /// 起動時復旧と実行を同じエンジンに並行して呼ぶと、走り出した Job が
-    /// もう一方の復旧に「前回の残骸」とみなされて Failed で閉じられる。
+    /// エンジンが立った後は何度実行しても起動時復旧が走らないこと。走行中の Job が
+    /// 「前回の残骸」とみなされて閉じられる余地が無いことを、呼ばれていない事実で示す。
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>これは実装の不具合を再現するテストであり、直っていないので Skip してある。</b>
-    /// <see cref="JobExecutionEngine"/> の <c>_recovered</c> は排他で守られておらず、
-    /// 「重なっても条件付き更新があるから壊れない」という注記が付いている。
-    /// その注記が守っているのは復旧どうしの重なりだけで、復旧とこのプロセス自身の実行が
-    /// 重なる場合は守られない。復旧は Running / Cancelling をすべて残骸とみなすので、
-    /// 直前に自分が Running にした Job まで Failed にしてしまう。
+    /// かつてここには不具合の再現テストがあり、Skip してあった。復旧の完了は
+    /// <c>_recovered</c> という bool で表され、実行の入口で毎回それを見ていた。
+    /// bool では「まだ」と「走っている最中」を区別できないので、復旧の最中に実行が入ると
+    /// 二重に復旧が走り、片方が Running にした Job をもう片方が残骸として Failed で閉じた。
+    /// 条件付き更新では防げない。期待した状態（Running）は合っていて、間違っているのは
+    /// 「Running ＝ 残骸」という見立ての方だから。
     /// </para>
     /// <para>
-    /// 直し方には <c>SemaphoreSlim</c> で復旧を直列化して二重に走らせない案があるが、
-    /// 「守らない」という判断が注記として明示されているので、勝手に覆さずに報告する。
+    /// いまは <see cref="JobExecutionEngine.StartAsync"/> が復旧をやり切ってから
+    /// インスタンスを返すので、その重なりは書けない。復旧中はエンジンが存在せず、
+    /// 存在してからは復旧を呼ぶ口が無い。<b>再現テストは書けないので消してある。</b>
+    /// 代わりに、消えた経路が本当に消えていることをここで押さえる。
+    /// </para>
+    /// <para>
+    /// <see cref="GatedJobStore.ListByStatusCalls"/> を数えるのは、状態で絞った読み出しを
+    /// するのが復旧だけだから。実行をどれだけ回してもこの数が動かないことが、
+    /// 実行の入口から復旧へ辿れないことの証拠になる。
+    /// </para>
+    /// <para>
+    /// 実行は逐次に回す。1 インスタンスの同時実行数は 1 という契約で、
+    /// 並行して呼ぶと <see cref="RunningJobRegistry"/> が二重登録で例外を投げる。
+    /// ここで見たいのは復旧が呼ばれないことなので、契約の内側で足りる。
     /// </para>
     /// </remarks>
-    [Fact(Skip = "未修正の不具合の再現。_recovered が排他で守られていないため、"
-        + "復旧と実行を並行させると走行中の Job が Failed で閉じられる。")]
-    public async Task 復旧と実行を並行させると走行中のJobがFailedにされる()
+    [Fact]
+    public async Task 起動後は何度実行しても起動時復旧は走らない()
     {
-        ControllableJobHandler handler = new(HandledJobType);
-        await AddQueuedAsync("job-1");
-
+        CountingJobHandler handler = new(HandledJobType);
         GatedJobStore gated = new(_store, JobStatus.Running);
-        JobExecutionEngine engine = CreateEngine(gated, handler);
 
-        // 1 本目の復旧を Running の読み出しの手前で止める。
-        Task recovering = engine.EnsureRecoveredAsync(CancellationToken.None);
-        await gated.Entered;
-
-        // 同じエンジンに実行を頼む。_recovered はまだ立っていないので復旧がもう一度走り、
-        // 素通しで終わったあと job-1 を Running にして実行を始める。
-        Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
-        await handler.Entered;
-        Assert.Equal(JobStatus.Running, (await FindAsync("job-1")).Status);
-
-        // 止めていた 1 本目を進ませる。いま Running なのは自分のプロセスが動かしている Job。
+        // 復旧はここで済む。gate は最初の 1 回だけ止めるが、誰も待っていないので素通しでよい。
         gated.Release();
-        await recovering.WaitAsync(HangGuard);
+        JobExecutionEngine engine = await CreateEngineAsync(gated, handler);
 
-        // 走っている最中の Job が終端で閉じられている。
+        int afterStartup = gated.ListByStatusCalls;
+        Assert.NotEqual(0, afterStartup);
+
+        // エンジンが立った後に現れた Running。誰かが今まさに動かしている、という想定。
+        await AddRunningAsync("job-1");
+        await AddQueuedAsync("job-2", createdAt: Now.AddSeconds(1));
+
+        // 同じエンジンに何度も実行を頼む。以前は実行の入口が毎回復旧を通っていたので、
+        // ここが復旧を呼び直す経路になっていた。
+        for (int i = 0; i < 4; i++)
+        {
+            await engine.RunOnceAsync(CancellationToken.None).WaitAsync(HangGuard);
+        }
+
+        // 復旧は 1 度も追加で走っていない。
+        Assert.Equal(afterStartup, gated.ListByStatusCalls);
+
+        // 走行中とみなした Job は触られず、待機中の Job だけが実行された。
         Assert.Equal(JobStatus.Running, (await FindAsync("job-1")).Status);
-
-        handler.Release();
-        await running.WaitAsync(HangGuard);
-
-        // ハンドラは完走したのに、記録は完了になっていない。
-        Assert.Equal(JobStatus.Completed, (await FindAsync("job-1")).Status);
-        Assert.Single(handler.Executions);
+        Assert.Equal(JobStatus.Completed, (await FindAsync("job-2")).Status);
     }
 
-    private JobExecutionEngine CreateEngine(IJobStore store, params IJobHandler[] handlers) =>
-        new(
+    // 起動時復旧を済ませたエンジンを起こす。復旧を経ないと手に入らないので await が要る。
+    private Task<JobExecutionEngine> CreateEngineAsync(IJobStore store, params IJobHandler[] handlers) =>
+        JobExecutionEngine.StartAsync(
             store,
             new JobHandlerRegistry(handlers),
             new RunningJobRegistry(),
             new JobQueueSignal(),
             _timeProvider,
             _instrumentation,
-            NullLogger<JobExecutionEngine>.Instance);
+            NullLogger<JobExecutionEngine>.Instance,
+            CancellationToken.None);
+
+    /// <summary>
+    /// 実行中に見える Job を直に置く。エンジンが立った後に他所が動かし始めた状況を作る。
+    /// </summary>
+    private async Task AddRunningAsync(string id)
+    {
+        Job job = Job.Create(JobId.From(id), $"Job {id}", HandledJobType, string.Empty, Now);
+        await _store.AddAsync(job, CancellationToken.None);
+
+        Assert.True(job.Apply(JobTrigger.Start, Now).IsAllowed);
+        Assert.True(await _store.UpdateAsync(job, JobStatus.Queued, CancellationToken.None));
+    }
 
     private async Task AddQueuedAsync(
         string id,

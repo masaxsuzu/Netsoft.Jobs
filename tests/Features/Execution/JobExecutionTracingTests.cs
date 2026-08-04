@@ -48,7 +48,7 @@ public sealed class JobExecutionTracingTests : IDisposable
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
         await AddQueuedAsync("job-1");
 
-        Assert.True(await CreateEngine(handler).RunOnceAsync(CancellationToken.None));
+        Assert.True(await (await CreateEngineAsync(handler)).RunOnceAsync(CancellationToken.None));
 
         Activity span = Assert.Single(activities.Stopped);
         Assert.Equal("job.execute", span.OperationName);
@@ -66,7 +66,7 @@ public sealed class JobExecutionTracingTests : IDisposable
         handler.Throw(new InvalidOperationException("集計元のファイルがありません。"));
         await AddQueuedAsync("job-1");
 
-        Assert.True(await CreateEngine(handler).RunOnceAsync(CancellationToken.None));
+        Assert.True(await (await CreateEngineAsync(handler)).RunOnceAsync(CancellationToken.None));
 
         Activity span = Assert.Single(activities.Stopped);
         Assert.Equal(ActivityStatusCode.Error, span.Status);
@@ -81,7 +81,7 @@ public sealed class JobExecutionTracingTests : IDisposable
         using RecordedActivities activities = new(_instrumentation.ActivitySource);
         ControllableJobHandler handler = new(HandledJobType);
         await AddQueuedAsync("job-1");
-        JobExecutionEngine engine = CreateEngine(handler);
+        JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
         await handler.Entered;
@@ -110,7 +110,7 @@ public sealed class JobExecutionTracingTests : IDisposable
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
         await AddQueuedAsync("job-1");
 
-        Assert.True(await CreateEngine(handler).RunOnceAsync(CancellationToken.None));
+        Assert.True(await (await CreateEngineAsync(handler)).RunOnceAsync(CancellationToken.None));
 
         Activity span = Assert.Single(activities.Stopped);
         ActivityLink link = Assert.Single(span.Links);
@@ -128,7 +128,7 @@ public sealed class JobExecutionTracingTests : IDisposable
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
         await AddQueuedAsync("job-1");
 
-        Assert.True(await CreateEngine(handler).RunOnceAsync(CancellationToken.None));
+        Assert.True(await (await CreateEngineAsync(handler)).RunOnceAsync(CancellationToken.None));
 
         Activity span = Assert.Single(activities.Stopped);
         Assert.Empty(span.Links);
@@ -143,7 +143,7 @@ public sealed class JobExecutionTracingTests : IDisposable
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
         await AddQueuedAsync("job-1");
 
-        Assert.True(await CreateEngine(handler).RunOnceAsync(CancellationToken.None));
+        Assert.True(await (await CreateEngineAsync(handler)).RunOnceAsync(CancellationToken.None));
 
         Activity span = Assert.Single(activities.Stopped);
         Assert.Empty(span.Links);
@@ -160,7 +160,7 @@ public sealed class JobExecutionTracingTests : IDisposable
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
         await AddQueuedAsync("job-1");
 
-        Assert.True(await CreateEngine(handler).RunOnceAsync(CancellationToken.None));
+        Assert.True(await (await CreateEngineAsync(handler)).RunOnceAsync(CancellationToken.None));
 
         Activity span = Assert.Single(activities.Stopped);
         Assert.Empty(span.Links);
@@ -174,21 +174,23 @@ public sealed class JobExecutionTracingTests : IDisposable
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
         await AddQueuedAsync("job-1");
 
-        Assert.True(await CreateEngine(handler).RunOnceAsync(CancellationToken.None));
+        Assert.True(await (await CreateEngineAsync(handler)).RunOnceAsync(CancellationToken.None));
 
         Assert.Equal(JobStatus.Completed, (await FindAsync("job-1")).Status);
         Assert.Equal(0, _traceContexts.FindCalls);
     }
 
-    private JobExecutionEngine CreateEngine(params IJobHandler[] handlers) =>
-        new(
+    // 起動時復旧を済ませたエンジンを起こす。復旧を経ないと手に入らないので await が要る。
+    private Task<JobExecutionEngine> CreateEngineAsync(params IJobHandler[] handlers) =>
+        JobExecutionEngine.StartAsync(
             _store,
             new JobHandlerRegistry(handlers),
             _runningJobs,
             _signal,
             _timeProvider,
             _instrumentation,
-            NullLogger<JobExecutionEngine>.Instance);
+            NullLogger<JobExecutionEngine>.Instance,
+            CancellationToken.None);
 
     private static ControllableJobHandler Released(ControllableJobHandler handler)
     {

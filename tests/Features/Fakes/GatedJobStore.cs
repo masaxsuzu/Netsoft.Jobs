@@ -26,6 +26,7 @@ internal sealed class GatedJobStore : IJobStore
     private readonly JobStatus _gatedStatus;
 
     private int _gateUsed;
+    private int _listByStatusCalls;
 
     public GatedJobStore(IJobStore inner, JobStatus gatedStatus)
     {
@@ -39,9 +40,20 @@ internal sealed class GatedJobStore : IJobStore
     /// <summary>止めていた読み出しを進ませる。</summary>
     public void Release() => _released.TrySetResult();
 
+    /// <summary>
+    /// 状態で絞った読み出しの回数。
+    /// </summary>
+    /// <remarks>
+    /// この読み出しをするのは起動時復旧だけなので、実質「復旧が走った回数」になる。
+    /// 復旧が実行の入口から辿れないことを、呼ばれていない事実で示すのに使う。
+    /// </remarks>
+    public int ListByStatusCalls => Volatile.Read(ref _listByStatusCalls);
+
     /// <inheritdoc />
     public async Task<IReadOnlyList<Job>> ListByStatusAsync(JobStatus status, CancellationToken cancellationToken)
     {
+        Interlocked.Increment(ref _listByStatusCalls);
+
         if (status == _gatedStatus && Interlocked.Exchange(ref _gateUsed, 1) == 0)
         {
             // 読み出しの「前」で止める。後で止めると、止めている間に他所が書いた変更が

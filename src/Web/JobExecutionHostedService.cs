@@ -22,17 +22,25 @@ namespace Netsoft.Jobs.Web;
 /// </remarks>
 public sealed class JobExecutionHostedService : BackgroundService
 {
-    private readonly JobExecutionEngine _engine;
+    private readonly JobExecutionEngineFactory _engines;
     private readonly JobQueueSignal _signal;
     private readonly JobChangeFeed _feed;
 
-    public JobExecutionHostedService(JobExecutionEngine engine, JobQueueSignal signal, JobChangeFeed feed)
+    /// <remarks>
+    /// エンジンではなくファクトリを受け取る。エンジンは起動時復旧を済ませてからでないと
+    /// 手に入らず、生成に await が要るので DI から直接は解決できない
+    /// （<see cref="JobExecutionEngineFactory"/> の注記を参照）。
+    /// </remarks>
+    public JobExecutionHostedService(
+        JobExecutionEngineFactory engines,
+        JobQueueSignal signal,
+        JobChangeFeed feed)
     {
-        ArgumentNullException.ThrowIfNull(engine);
+        ArgumentNullException.ThrowIfNull(engines);
         ArgumentNullException.ThrowIfNull(signal);
         ArgumentNullException.ThrowIfNull(feed);
 
-        _engine = engine;
+        _engines = engines;
         _signal = signal;
         _feed = feed;
     }
@@ -40,17 +48,20 @@ public sealed class JobExecutionHostedService : BackgroundService
     /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // StartAsync は ExecuteAsync が最初に譲るまで同期実行される。
+        // BackgroundService の StartAsync は ExecuteAsync が最初に譲るまで同期実行される。
         // 起動時復旧や溜まっていた Job の実行でホストの起動（HTTP の受付開始）を
         // 待たせないよう、先にスレッドを返す。
         await Task.Yield();
 
         // 購読はエンジンを走らせる前に済ませる。逆順だと、起動時スキャンが null を見てから
         // 購読が繋がるまでの書き込みを誰も合図にできず、その Job は次の書き込みまで止まる。
+        // 復旧より前に繋ぐのは、復旧の最中に届いた書き込みも取りこぼさないため。
+        // 合図は溜め込まずに 1 つだけ保つので、早く繋いで損はない。
         _feed.Changed += _signal.Set;
         try
         {
-            await _engine.RunAsync(stoppingToken);
+            JobExecutionEngine engine = await _engines.StartAsync(stoppingToken);
+            await engine.RunAsync(stoppingToken);
         }
         finally
         {

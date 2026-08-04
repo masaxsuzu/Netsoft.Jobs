@@ -51,7 +51,9 @@ public static class JobExecutionServiceCollectionExtensions
         // 同じ 1 つでなければ意味を成さないので、これも Singleton。
         services.TryAddSingleton<JobQueueSignal>();
         services.TryAddSingleton<IRunningJobRegistry>(provider => provider.GetRequiredService<RunningJobRegistry>());
-        services.TryAddSingleton<JobExecutionEngine>();
+        // エンジンそのものは登録しない。生成に await（起動時復旧）が要るのに対して
+        // GetRequiredService は同期なので、サービスにできるのはファクトリまで。
+        services.TryAddSingleton<JobExecutionEngineFactory>();
 
         return services;
     }

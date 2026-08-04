@@ -57,24 +57,20 @@ public sealed class JobLifecycleStressTests : IDisposable
             new(_meterFactory, store, timeProvider, new NullJobTraceContextStore(), NullLogger<JobExecutionInstrumentation>.Instance);
 
         RunningJobRegistry[] registries = [.. Enumerable.Range(0, Engines).Select(_ => new RunningJobRegistry())];
-        JobExecutionEngine[] engines =
-        [
-            .. registries.Select(registry => new JobExecutionEngine(
+
+        // 立ち上げの時点で復旧は済んでいる。Job を入れるのはこの後なので、
+        // 走行中の Job を復旧が見ることはない（走行中に立ち上げる状況は別の話で、
+        // そちらは JobExecutionEngineConcurrencyTests に置いてある）。
+        JobExecutionEngine[] engines = await Task.WhenAll(
+            registries.Select(registry => JobExecutionEngine.StartAsync(
                 store,
                 new JobHandlerRegistry([handler]),
                 registry,
                 new JobQueueSignal(),
                 timeProvider,
                 instrumentation,
-                NullLogger<JobExecutionEngine>.Instance)),
-        ];
-
-        // 復旧は Job を入れる前に済ませる。走行中に立ち上げる状況は別の話（そちらは
-        // JobExecutionEngineConcurrencyTests に置いてある）。
-        foreach (JobExecutionEngine engine in engines)
-        {
-            await engine.EnsureRecoveredAsync(CancellationToken.None);
-        }
+                NullLogger<JobExecutionEngine>.Instance,
+                CancellationToken.None)));
 
         CancelJobHandler cancelling = new(
             store,
