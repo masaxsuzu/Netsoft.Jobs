@@ -169,7 +169,12 @@ public sealed class JobApiTests : IDisposable
     {
         // ファクトリが ValidateOnBuild / ValidateScopes を有効にしてホストを組んでいる。
         // Services に触れた時点でコンテナが構築されるので、登録漏れがあればここで落ちる。
-        Assert.NotNull(_factory.Services.GetRequiredService<JobExecutionEngine>());
+        //
+        // 解決するのはエンジンではなくファクトリ。エンジンは起動時復旧を済ませてからでないと
+        // 手に入らず、生成に await が要るので DI には載せられない
+        // （JobExecutionEngineFactory の注記を参照）。エンジンの依存が揃っているかは、
+        // ファクトリが同じものを受け取っているのでここで一緒に検証される。
+        Assert.NotNull(_factory.Services.GetRequiredService<JobExecutionEngineFactory>());
     }
 
     private async Task<JobDto> RegisterAsync(string name)

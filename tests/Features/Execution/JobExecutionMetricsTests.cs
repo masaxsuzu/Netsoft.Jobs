@@ -49,7 +49,7 @@ public sealed class JobExecutionMetricsTests : IDisposable
         // 登録は 45 秒前、実行は 180 秒かかったことにする。どの時間差がどの計器に
         // 入るのかを、値そのもので区別できるようにする。
         await AddQueuedAsync("job-1", createdAt: Now.AddSeconds(-45));
-        JobExecutionEngine engine = CreateEngine(handler);
+        JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
         await handler.Entered;
@@ -84,7 +84,7 @@ public sealed class JobExecutionMetricsTests : IDisposable
         handler.Throw(new InvalidOperationException("集計元のファイルがありません。"));
         await AddQueuedAsync("job-1");
 
-        Assert.True(await CreateEngine(handler).RunOnceAsync(CancellationToken.None));
+        Assert.True(await (await CreateEngineAsync(handler)).RunOnceAsync(CancellationToken.None));
 
         CollectedMeasurement<long> count = Assert.Single(finished.GetMeasurementSnapshot());
         Assert.Equal(1, count.Value);
@@ -98,7 +98,7 @@ public sealed class JobExecutionMetricsTests : IDisposable
 
         ControllableJobHandler handler = new(HandledJobType);
         await AddQueuedAsync("job-1");
-        JobExecutionEngine engine = CreateEngine(handler);
+        JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
         await handler.Entered;
@@ -143,15 +143,17 @@ public sealed class JobExecutionMetricsTests : IDisposable
         where T : struct =>
         new(_meterFactory, JobExecutionInstrumentation.Name, instrumentName);
 
-    private JobExecutionEngine CreateEngine(params IJobHandler[] handlers) =>
-        new(
+    // 起動時復旧を済ませたエンジンを起こす。復旧を経ないと手に入らないので await が要る。
+    private Task<JobExecutionEngine> CreateEngineAsync(params IJobHandler[] handlers) =>
+        JobExecutionEngine.StartAsync(
             _store,
             new JobHandlerRegistry(handlers),
             _runningJobs,
             _signal,
             _timeProvider,
             _instrumentation,
-            NullLogger<JobExecutionEngine>.Instance);
+            NullLogger<JobExecutionEngine>.Instance,
+            CancellationToken.None);
 
     private async Task<Job> AddQueuedAsync(string id, DateTimeOffset? createdAt = null)
     {

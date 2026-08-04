@@ -16,15 +16,39 @@ public sealed class JobExecutionServiceCollectionExtensionsTests : IDisposable
 
     public void Dispose() => _store.Dispose();
 
+    /// <summary>
+    /// エンジンではなくファクトリが解決できること。
+    /// </summary>
+    /// <remarks>
+    /// エンジンは起動時復旧をやり切ってからでないと手に入らず、生成に await が要る。
+    /// <c>GetRequiredService</c> は同期なので、サービスにできるのはファクトリまで
+    /// （<see cref="JobExecutionEngineFactory"/> の注記を参照）。
+    /// </remarks>
     [Fact]
-    public void 実行エンジンをDIから解決できる()
+    public void 実行エンジンのファクトリをDIから解決できる()
     {
         using ServiceProvider provider = BuildProvider();
 
-        JobExecutionEngine engine = provider.GetRequiredService<JobExecutionEngine>();
+        JobExecutionEngineFactory factory = provider.GetRequiredService<JobExecutionEngineFactory>();
 
-        // 起動時復旧を済ませたかどうかを覚えているので、毎回作られては困る。
-        Assert.Same(engine, provider.GetRequiredService<JobExecutionEngine>());
+        // 依存はエンジンと同じ実体を指す必要があるので、毎回作られては困る。
+        Assert.Same(factory, provider.GetRequiredService<JobExecutionEngineFactory>());
+    }
+
+    [Fact]
+    public async Task ファクトリが起こしたエンジンは復旧を済ませている()
+    {
+        Job leftover = Job.Create(JobId.From("job-1"), "残骸", "demo", string.Empty, DateTimeOffset.UnixEpoch);
+        await _store.AddAsync(leftover, CancellationToken.None);
+        Assert.True(leftover.Apply(JobTrigger.Start, DateTimeOffset.UnixEpoch).IsAllowed);
+        Assert.True(await _store.UpdateAsync(leftover, JobStatus.Queued, CancellationToken.None));
+
+        using ServiceProvider provider = BuildProvider();
+
+        _ = await provider.GetRequiredService<JobExecutionEngineFactory>().StartAsync(CancellationToken.None);
+
+        Job? job = await _store.FindAsync(JobId.From("job-1"), CancellationToken.None);
+        Assert.Equal(JobStatus.Failed, job?.Status);
     }
 
     [Fact]

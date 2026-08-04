@@ -53,7 +53,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     {
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
         await AddQueuedAsync("job-1", parameters: "10");
-        JobExecutionEngine engine = CreateEngine(handler);
+        JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         bool executed = await engine.RunOnceAsync(CancellationToken.None);
 
@@ -67,7 +67,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     {
         ControllableJobHandler handler = new(HandledJobType);
         await AddQueuedAsync("job-1");
-        JobExecutionEngine engine = CreateEngine(handler);
+        JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
         await handler.Entered;
@@ -88,7 +88,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     {
         ControllableJobHandler handler = new(HandledJobType);
         await AddQueuedAsync("job-1");
-        JobExecutionEngine engine = CreateEngine(handler);
+        JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
 
@@ -107,7 +107,7 @@ public sealed class JobExecutionEngineTests : IDisposable
         ControllableJobHandler handler = new(HandledJobType);
         handler.Throw(new InvalidOperationException("集計元のファイルがありません。"));
         await AddQueuedAsync("job-1");
-        JobExecutionEngine engine = CreateEngine(handler);
+        JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         bool executed = await engine.RunOnceAsync(CancellationToken.None);
 
@@ -123,7 +123,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     {
         ControllableJobHandler handler = new(HandledJobType);
         await AddQueuedAsync("job-1");
-        JobExecutionEngine engine = CreateEngine(handler);
+        JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
         await handler.Entered;
@@ -147,7 +147,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     {
         ControllableJobHandler handler = new(HandledJobType);
         await AddQueuedAsync("job-1");
-        JobExecutionEngine engine = CreateEngine(handler);
+        JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
         await handler.Entered;
@@ -178,7 +178,7 @@ public sealed class JobExecutionEngineTests : IDisposable
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
         await AddQueuedAsync("job-1", jobType: "誰も知らない種類");
         await AddQueuedAsync("job-2", createdAt: Now.AddSeconds(1));
-        JobExecutionEngine engine = CreateEngine(handler);
+        JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Assert.True(await engine.RunOnceAsync(CancellationToken.None));
         Assert.True(await engine.RunOnceAsync(CancellationToken.None));
@@ -199,7 +199,7 @@ public sealed class JobExecutionEngineTests : IDisposable
 
         await AddQueuedAsync("job-1", jobType: "failing");
         await AddQueuedAsync("job-2", createdAt: Now.AddSeconds(1));
-        JobExecutionEngine engine = CreateEngine(failing, succeeding);
+        JobExecutionEngine engine = await CreateEngineAsync(failing, succeeding);
 
         Assert.True(await engine.RunOnceAsync(CancellationToken.None));
         Assert.True(await engine.RunOnceAsync(CancellationToken.None));
@@ -211,7 +211,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     [Fact]
     public async Task 実行対象が無いときは何もせずに返る()
     {
-        JobExecutionEngine engine = CreateEngine(Released(new ControllableJobHandler(HandledJobType)));
+        JobExecutionEngine engine = await CreateEngineAsync(Released(new ControllableJobHandler(HandledJobType)));
 
         Assert.False(await engine.RunOnceAsync(CancellationToken.None));
         Assert.Empty(await _store.ListAsync(CancellationToken.None));
@@ -226,7 +226,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     {
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
         await AddQueuedAsync("job-1");
-        JobExecutionEngine engine = CreateEngine(handler);
+        JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         _engineStore.BeforeNextUpdate = () => StealAsync("job-1");
 
@@ -244,7 +244,7 @@ public sealed class JobExecutionEngineTests : IDisposable
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
         await AddQueuedAsync("job-1", parameters: "他に取られる", createdAt: Now);
         await AddQueuedAsync("job-2", parameters: "実行される", createdAt: Now.AddSeconds(1));
-        JobExecutionEngine engine = CreateEngine(handler);
+        JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         _engineStore.BeforeNextUpdate = () => StealAsync("job-1");
 
@@ -264,7 +264,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     {
         ControllableJobHandler handler = new(HandledJobType);
         await AddQueuedAsync("job-1");
-        JobExecutionEngine engine = CreateEngine(handler);
+        JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
         await handler.Entered;
@@ -294,7 +294,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     {
         ControllableJobHandler handler = new(HandledJobType);
         await AddQueuedAsync("job-1");
-        JobExecutionEngine engine = CreateEngine(handler);
+        JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
         await handler.Entered;
@@ -323,7 +323,7 @@ public sealed class JobExecutionEngineTests : IDisposable
         await AddQueuedAsync("job-3", parameters: "1 番目", createdAt: Now);
         await AddQueuedAsync("job-1", parameters: "3 番目", createdAt: Now.AddSeconds(2));
         await AddQueuedAsync("job-2", parameters: "2 番目", createdAt: Now.AddSeconds(1));
-        JobExecutionEngine engine = CreateEngine(handler);
+        JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         for (int i = 0; i < 3; i++)
         {
@@ -343,7 +343,7 @@ public sealed class JobExecutionEngineTests : IDisposable
         ControllableJobHandler second = new("second");
         await AddQueuedAsync("job-1", createdAt: Now);
         await AddQueuedAsync("job-2", jobType: "second", createdAt: Now.AddSeconds(1));
-        JobExecutionEngine engine = CreateEngine(first, second);
+        JobExecutionEngine engine = await CreateEngineAsync(first, second);
 
         using CancellationTokenSource stop = new();
 
@@ -363,7 +363,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     public async Task 登録の合図で待ちから起きてJobが実行される()
     {
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
-        JobExecutionEngine engine = CreateEngine(handler);
+        JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         // 起動時スキャンが「候補なし」を見たことを確定させてから登録する。
         // 先に登録が滑り込むと、起動時スキャンが拾ってしまい合図の検証にならない。
@@ -399,7 +399,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     public async Task 待ちに入る前に鳴った合図も取りこぼさない()
     {
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
-        JobExecutionEngine engine = CreateEngine(handler);
+        JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         _engineStore.OnNextEmptyFind = async () =>
         {
@@ -423,7 +423,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     public async Task 合図を連打しても実行はJobの数だけ()
     {
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
-        JobExecutionEngine engine = CreateEngine(handler);
+        JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         using CancellationTokenSource stop = new();
         Task loop = engine.RunAsync(stop.Token);
@@ -447,11 +447,10 @@ public sealed class JobExecutionEngineTests : IDisposable
     [Fact]
     public async Task 合図を待っている最中の停止要求でループが終わる()
     {
-        JobExecutionEngine engine = CreateEngine();
-
-        // 復旧を先に済ませておく。RunAsync 先頭の復旧は停止要求で守っていないので、
-        // ここで済ませないと停止の速さ次第で復旧の中から例外が漏れて結果が揺れる。
-        await engine.EnsureRecoveredAsync(CancellationToken.None);
+        // 復旧は StartAsync が済ませている。以前はここで明示的に復旧を呼んでいた
+        // （RunAsync 先頭の復旧が停止要求で守られておらず、停止の速さ次第で
+        // 例外が漏れて結果が揺れたため）。その小細工は要らなくなった。
+        JobExecutionEngine engine = await CreateEngineAsync();
 
         using CancellationTokenSource stop = new();
         Task loop = engine.RunAsync(stop.Token);
@@ -470,9 +469,9 @@ public sealed class JobExecutionEngineTests : IDisposable
     public async Task 起動時復旧で前回の残骸はFailedになる(JobStatus status)
     {
         await AddLeftoverAsync("job-1", status);
-        JobExecutionEngine engine = CreateEngine();
 
-        await engine.EnsureRecoveredAsync(CancellationToken.None);
+        // エンジンが手に入った時点で復旧は済んでいる。
+        _ = await CreateEngineAsync();
 
         Job job = await FindAsync("job-1");
         Assert.Equal(JobStatus.Failed, job.Status);
@@ -485,9 +484,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     {
         // Queued はハンドラを起動していないので副作用が無い。このプロセスがそのまま実行する。
         await AddQueuedAsync("job-1");
-        JobExecutionEngine engine = CreateEngine();
-
-        await engine.EnsureRecoveredAsync(CancellationToken.None);
+        _ = await CreateEngineAsync();
 
         Job job = await FindAsync("job-1");
         Assert.Equal(JobStatus.Queued, job.Status);
@@ -496,14 +493,15 @@ public sealed class JobExecutionEngineTests : IDisposable
     }
 
     [Fact]
-    public async Task 起動時復旧は実行より先に走る()
+    public async Task 起動時復旧の後に待機中のJobがそのまま実行される()
     {
-        // 復旧を明示的に呼ばずに実行を始めても、残骸が Failed になっていること。
-        // 順序が逆だと、このプロセスが Running にした Job を復旧が Failed で上書きしうる。
+        // 復旧が残骸だけを閉じ、待機中の Job には手を出さずに実行へ渡すこと。
+        // 「復旧が実行より先」であること自体はもう型が保証している（エンジンが在る
+        // ＝復旧は済んだ）ので、ここで確かめるのは残す側と閉じる側の選り分け。
         await AddLeftoverAsync("job-1", JobStatus.Running);
         await AddQueuedAsync("job-2", createdAt: Now.AddSeconds(1));
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
-        JobExecutionEngine engine = CreateEngine(handler);
+        JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Assert.True(await engine.RunOnceAsync(CancellationToken.None));
 
@@ -512,29 +510,32 @@ public sealed class JobExecutionEngineTests : IDisposable
     }
 
     [Fact]
-    public async Task 起動時復旧は2回目以降は何もしない()
+    public async Task 起動後にRunningになったJobは復旧に閉じられない()
     {
-        JobExecutionEngine engine = CreateEngine();
-        await engine.EnsureRecoveredAsync(CancellationToken.None);
+        JobExecutionEngine engine = await CreateEngineAsync();
 
-        // 1 回目の後に残った Running は、このプロセスが実行している最中のもの。
-        // ここで復旧が走ると、動いている Job を勝手に Failed にしてしまう。
+        // エンジンが立った後に現れた Running は、誰かが今まさに動かしているもの。
+        // ここで復旧がもう一度走ると、動いている Job を勝手に Failed にしてしまう。
         await AddLeftoverAsync("job-1", JobStatus.Running);
 
-        await engine.EnsureRecoveredAsync(CancellationToken.None);
+        // 何度実行しても復旧は走らない。復旧は StartAsync の中だけにあり、
+        // 実行の入口から辿れる場所には無い。
+        Assert.False(await engine.RunOnceAsync(CancellationToken.None));
 
         Assert.Equal(JobStatus.Running, (await FindAsync("job-1")).Status);
     }
 
-    private JobExecutionEngine CreateEngine(params IJobHandler[] handlers) =>
-        new(
+    // 起動時復旧を済ませたエンジンを起こす。復旧を経ないと手に入らないので await が要る。
+    private Task<JobExecutionEngine> CreateEngineAsync(params IJobHandler[] handlers) =>
+        JobExecutionEngine.StartAsync(
             _engineStore,
             new JobHandlerRegistry(handlers),
             _runningJobs,
             _signal,
             _timeProvider,
             _instrumentation,
-            NullLogger<JobExecutionEngine>.Instance);
+            NullLogger<JobExecutionEngine>.Instance,
+            CancellationToken.None);
 
     private static ControllableJobHandler Released(ControllableJobHandler handler)
     {

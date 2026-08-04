@@ -43,7 +43,7 @@ public sealed class JobExecutionLoggingTests : IDisposable
     [Fact]
     public async Task 実行開始のログにJobIdとJobTypeが残る()
     {
-        JobExecutionEngine engine = CreateEngine(Released(new ControllableJobHandler(HandledJobType)));
+        JobExecutionEngine engine = await CreateEngineAsync(Released(new ControllableJobHandler(HandledJobType)));
         await AddQueuedAsync("job-1");
 
         await engine.RunOnceAsync(CancellationToken.None);
@@ -57,7 +57,7 @@ public sealed class JobExecutionLoggingTests : IDisposable
     [Fact]
     public async Task 結末のログにJobIdと確定した状態が残る()
     {
-        JobExecutionEngine engine = CreateEngine(Released(new ControllableJobHandler(HandledJobType)));
+        JobExecutionEngine engine = await CreateEngineAsync(Released(new ControllableJobHandler(HandledJobType)));
         await AddQueuedAsync("job-1");
 
         await engine.RunOnceAsync(CancellationToken.None);
@@ -74,7 +74,7 @@ public sealed class JobExecutionLoggingTests : IDisposable
     {
         ControllableJobHandler handler = new(HandledJobType);
         handler.Throw(new InvalidOperationException("集計元のファイルがありません。"));
-        JobExecutionEngine engine = CreateEngine(handler);
+        JobExecutionEngine engine = await CreateEngineAsync(handler);
         await AddQueuedAsync("job-1");
 
         await engine.RunOnceAsync(CancellationToken.None);
@@ -92,7 +92,7 @@ public sealed class JobExecutionLoggingTests : IDisposable
         // それでもハンドラや await の継続が書くログ行に JobId が付くのは、
         // RunHandlerAsync のスコープに積んであるから。エンジン自身がスコープの中で書く
         // 開始・結末の行で、スコープの中身を確かめる。
-        JobExecutionEngine engine = CreateEngine(Released(new ControllableJobHandler(HandledJobType)));
+        JobExecutionEngine engine = await CreateEngineAsync(Released(new ControllableJobHandler(HandledJobType)));
         await AddQueuedAsync("job-1");
 
         await engine.RunOnceAsync(CancellationToken.None);
@@ -116,7 +116,7 @@ public sealed class JobExecutionLoggingTests : IDisposable
     public async Task キャンセル要求より完走が勝ったとき要求と結末の両方のログが残る()
     {
         ControllableJobHandler handler = new(HandledJobType);
-        JobExecutionEngine engine = CreateEngine(handler);
+        JobExecutionEngine engine = await CreateEngineAsync(handler);
         await AddQueuedAsync("job-1");
 
         // 伝達は記録用に差し替える。本物の registry に伝えるとトークンが発火してハンドラが
@@ -154,15 +154,17 @@ public sealed class JobExecutionLoggingTests : IDisposable
         Assert.Equal(JobTrigger.Complete, finished.State["Trigger"]);
     }
 
-    private JobExecutionEngine CreateEngine(params IJobHandler[] handlers) =>
-        new(
+    // 起動時復旧を済ませたエンジンを起こす。復旧を経ないと手に入らないので await が要る。
+    private Task<JobExecutionEngine> CreateEngineAsync(params IJobHandler[] handlers) =>
+        JobExecutionEngine.StartAsync(
             _store,
             new JobHandlerRegistry(handlers),
             _runningJobs,
             _signal,
             _timeProvider,
             _instrumentation,
-            _logger);
+            _logger,
+            CancellationToken.None);
 
     private static ControllableJobHandler Released(ControllableJobHandler handler)
     {

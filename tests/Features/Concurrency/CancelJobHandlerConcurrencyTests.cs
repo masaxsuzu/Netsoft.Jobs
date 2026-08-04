@@ -138,14 +138,15 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
             new NullJobTraceContextStore(),
             NullLogger<JobExecutionInstrumentation>.Instance);
 
-        JobExecutionEngine engine = new(
+        JobExecutionEngine engine = await JobExecutionEngine.StartAsync(
             interfering,
             new JobHandlerRegistry([handler]),
             runningJobs,
             new JobQueueSignal(),
             new FixedTimeProvider(Now),
             instrumentation,
-            NullLogger<JobExecutionEngine>.Instance);
+            NullLogger<JobExecutionEngine>.Instance,
+            CancellationToken.None);
 
         // Running が保存された瞬間＝画面がキャンセルを受け付けられるようになった瞬間に要求する。
         interfering.AfterNextUpdate = async () =>
