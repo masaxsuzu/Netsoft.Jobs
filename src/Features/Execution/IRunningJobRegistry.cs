@@ -22,6 +22,14 @@ public interface IRunningJobRegistry
     /// 実行中でなければ false。false は失敗ではない（まだ Queued、既に終わった、
     /// 別プロセスが実行している、のいずれか）ので、呼び出し側はこれを理由に
     /// 状態遷移を巻き戻さないこと。
+    /// <para>
+    /// 「これから走るがまだ登録されていない」は<b>この 3 つに含まれない</b>。
+    /// エンジンが Running を書き戻す前に登録を済ませるので、状態が Running に
+    /// 見えている間は必ず登録済みで、その状況自体が起きない
+    /// （<see cref="JobExecutionEngine.RunOnceAsync"/> の注記を参照）。
+    /// もし登録を書き戻しより後ろへ動かすと、false の意味に
+    /// 「やることが有るのに今は不可能」が混ざり、この戻り値では区別できなくなる。
+    /// </para>
     /// </returns>
     bool TryRequestCancel(JobId id);
 }

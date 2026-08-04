@@ -88,6 +88,73 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
         Assert.Equal(JobStatus.Completed, (await FindAsync("job-1")).Status);
     }
 
+    /// <summary>
+    /// エンジンが Running を書き戻した直後、まだハンドラを起動していない時点で
+    /// キャンセルが来ても、トークンが発火して Job が Cancelled で終わること。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 状態を公開してから受け口（<see cref="RunningJobRegistry"/> への登録）を用意するまでに
+    /// 窓があると、要求は受理されて Cancelling が書けるのに
+    /// <see cref="IRunningJobRegistry.TryRequestCancel"/> が false を返し、
+    /// トークンが永久に発火しない。状態は壊れないが、キャンセルが黙って効かない
+    /// Job ができる（E2E が 30 秒待たされる形で実際に踏んだ）。
+    /// </para>
+    /// <para>
+    /// 登録を書き戻しより前に済ませていれば、窓は構造的に開かない。
+    /// このテストはその順序が保たれていることを、最悪の瞬間を決定的に作って固定する。
+    /// 順序を戻すと <see cref="HangGuard"/> で落ちる。トークンが発火しないので
+    /// ハンドラは待ち続け、Completed にすらならない――現物で踏んだのと同じ症状になる。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task 実行開始の直後に届いたキャンセルもハンドラに伝わる()
+    {
+        await _store.AddAsync(
+            Job.Create(JobId.From("job-1"), "窓", "test-job", string.Empty, Now),
+            CancellationToken.None);
+
+        RunningJobRegistry runningJobs = new();
+        InterferingJobStore interfering = new(_store);
+        ControllableJobHandler handler = new("test-job");
+
+        CancelJobHandler cancel = new(
+            _store,
+            runningJobs,
+            new FixedTimeProvider(Now),
+            NullLogger<CancelJobHandler>.Instance);
+
+        using TestMeterFactory meterFactory = new();
+        using JobExecutionInstrumentation instrumentation = new(
+            meterFactory,
+            _store,
+            new FixedTimeProvider(Now),
+            new NullJobTraceContextStore(),
+            NullLogger<JobExecutionInstrumentation>.Instance);
+
+        JobExecutionEngine engine = new(
+            interfering,
+            new JobHandlerRegistry([handler]),
+            runningJobs,
+            new JobQueueSignal(),
+            new FixedTimeProvider(Now),
+            instrumentation,
+            NullLogger<JobExecutionEngine>.Instance);
+
+        // Running が保存された瞬間＝画面がキャンセルを受け付けられるようになった瞬間に要求する。
+        interfering.AfterNextUpdate = async () =>
+        {
+            CancelJobResult result = await cancel.HandleAsync("job-1", CancellationToken.None);
+            Assert.True(result.IsSuccess);
+        };
+
+        Assert.True(await engine.RunOnceAsync(CancellationToken.None).WaitAsync(HangGuard));
+
+        // ハンドラは最後まで走らずキャンセルを観測した。効かなければ Completed になる。
+        Assert.Equal(JobStatus.Cancelled, (await FindAsync("job-1")).Status);
+        Assert.True(handler.CancellationObserved);
+    }
+
     private async Task<Job> FindAsync(string id) =>
         await _store.FindAsync(JobId.From(id), CancellationToken.None)
         ?? throw new InvalidOperationException($"Job {id} が保存されていません。");

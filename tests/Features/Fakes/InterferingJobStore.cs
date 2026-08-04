@@ -36,6 +36,11 @@ internal sealed class InterferingJobStore : IJobStore
     /// </summary>
     public Func<Task>? OnNextEmptyFind { get; set; }
 
+    /// <summary>
+    /// 次の書き戻しが<b>成立した直後</b>に 1 度だけ実行する処理。
+    /// </summary>
+    public Func<Task>? AfterNextUpdate { get; set; }
+
     /// <summary>書き戻しが試みられた回数。やり直しが起きたことを確かめるのに使う。</summary>
     public int UpdateAttempts { get; private set; }
 
@@ -55,7 +60,18 @@ internal sealed class InterferingJobStore : IJobStore
         }
 
         UpdateAttempts++;
-        return await _inner.UpdateAsync(job, expectedStatus, cancellationToken);
+        bool updated = await _inner.UpdateAsync(job, expectedStatus, cancellationToken);
+
+        if (updated && AfterNextUpdate is { } after)
+        {
+            // 書き戻しが成立した「直後」。呼び出し側から見ると、新しい状態が他所に
+            // 見えるようになった瞬間にまだ次の行へ進んでいない状況になる。
+            // 事実を公開してから受け口を用意するまでの窓を、決定的に作るのに使う。
+            AfterNextUpdate = null;
+            await after();
+        }
+
+        return updated;
     }
 
     /// <inheritdoc />

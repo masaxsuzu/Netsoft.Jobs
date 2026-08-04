@@ -185,18 +185,36 @@ public sealed class JobExecutionEngine
                 return false;
             }
 
-            // ここで書き戻せた 1 つだけがこの Job を実行する。
-            if (!await _store.UpdateAsync(job, started.Previous, cancellationToken))
+            // キャンセルの受け口は Running を書き戻すより前に用意する。順序が逆だと、
+            // 「DB は Running（＝画面はキャンセルを受け付ける）なのに、まだ登録されていない」
+            // 窓ができる。その窓に要求が届くと Cancelling は書けてしまうのに
+            // TryRequestCancel が false を返し、トークンが永久に発火しない。
+            // 状態は壊れないが、キャンセルが黙って効かない Job ができる。
+            //
+            // この順序なら窓は構造的に開かない。要求が来られるのは Running が見えてからで、
+            // Running が見えるのは書き戻しの後、登録はその前に済んでいる。
+            // 間に何を挟んでも（観測の記録など）壊れないのが、隣接を約束で守るより強い。
+            //
+            // このトークンはループの停止トークンとは繋がない。上の RunAsync の注記のとおり、
+            // プロセス停止はキャンセル要求ではない。ここが発火するのは利用者のキャンセルだけ。
+            using CancellationTokenSource cancellation = new();
+            using (_runningJobs.Track(job.Id, cancellation))
             {
-                _logger.LogInformation("Job {JobId} は他から開始されました。次の候補を探します。", job.Id.Value);
-                continue;
+                // ここで書き戻せた 1 つだけがこの Job を実行する。
+                // 負けた場合は using が登録を外すので、他が実行する Job に
+                // こちらのトークンが残ることはない。
+                if (!await _store.UpdateAsync(job, started.Previous, cancellationToken))
+                {
+                    _logger.LogInformation("Job {JobId} は他から開始されました。次の候補を探します。", job.Id.Value);
+                    continue;
+                }
+
+                // Running の確定＝待ち行列を抜けた点。待ち時間はここで確定する。
+                _instrumentation.RecordStarted(job);
+
+                await RunHandlerAsync(job, cancellation);
+                return true;
             }
-
-            // Running の確定＝待ち行列を抜けた点。待ち時間はここで確定する。
-            _instrumentation.RecordStarted(job);
-
-            await RunHandlerAsync(job);
-            return true;
         }
     }
 
@@ -269,7 +287,13 @@ public sealed class JobExecutionEngine
     /// <summary>
     /// ハンドラを呼び、その結末を状態遷移として記録する。
     /// </summary>
-    private async Task RunHandlerAsync(Job job)
+    /// <param name="job">Running を書き戻せた Job。</param>
+    /// <param name="cancellation">
+    /// キャンセル要求の受け口。呼び出し側が Running を書き戻す<b>前</b>に作って
+    /// <see cref="RunningJobRegistry"/> へ登録済みのもの（理由は <see cref="RunOnceAsync"/> に）。
+    /// 登録の解除も呼び出し側が持つので、結末を書き終えるまで受け口は生きている。
+    /// </param>
+    private async Task RunHandlerAsync(Job job, CancellationTokenSource cancellation)
     {
         // ハンドラは parameters しか受け取らず、自分がどの Job かを知らない（意図的な設計）。
         // スコープに積んでおけば、ハンドラや await の継続が将来書くログ行すべてに
@@ -287,10 +311,6 @@ public sealed class JobExecutionEngine
         // Running を書き戻せた直後、つまりこの Job を実行すると確定した点の記録。
         _logger.LogInformation("Job {JobId} ({JobType}) の実行を開始します。", job.Id.Value, job.JobType);
 
-        // ループの停止トークンとは繋がない。上の RunAsync の注記のとおり、
-        // プロセス停止はキャンセル要求ではない。ここが発火するのは利用者のキャンセルだけ。
-        using CancellationTokenSource cancellation = new();
-
         JobTrigger trigger;
         string? failureMessage = null;
 
@@ -306,10 +326,7 @@ public sealed class JobExecutionEngine
             }
             else
             {
-                using (_runningJobs.Track(job.Id, cancellation))
-                {
-                    await handler.ExecuteAsync(job.Parameters, cancellation.Token);
-                }
+                await handler.ExecuteAsync(job.Parameters, cancellation.Token);
 
                 trigger = JobTrigger.Complete;
             }
