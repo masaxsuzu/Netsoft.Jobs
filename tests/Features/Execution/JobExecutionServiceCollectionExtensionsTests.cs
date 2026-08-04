@@ -39,6 +39,30 @@ public sealed class JobExecutionServiceCollectionExtensionsTests : IDisposable
     }
 
     [Fact]
+    public void 計装をDIから解決できる()
+    {
+        using ServiceProvider provider = BuildProvider();
+
+        JobExecutionInstrumentation instrumentation = provider.GetRequiredService<JobExecutionInstrumentation>();
+
+        // Meter と ActivitySource がプロセスに 1 組であってほしいので Singleton。
+        Assert.Same(instrumentation, provider.GetRequiredService<JobExecutionInstrumentation>());
+    }
+
+    [Fact]
+    public async Task 既定のTraceContextの置き場は保存を捨て検索はNullを返す()
+    {
+        // ホスト（Web）が差し替えなくても登録と実行が動くための no-op。
+        using ServiceProvider provider = BuildProvider();
+
+        IJobTraceContextStore traceContexts = provider.GetRequiredService<IJobTraceContextStore>();
+        Assert.IsType<NullJobTraceContextStore>(traceContexts);
+
+        await traceContexts.SaveAsync(JobId.From("job-1"), "00-traceparent", CancellationToken.None);
+        Assert.Null(await traceContexts.FindAsync(JobId.From("job-1"), CancellationToken.None));
+    }
+
+    [Fact]
     public void デモJobのハンドラが登録される()
     {
         using ServiceProvider provider = BuildProvider();

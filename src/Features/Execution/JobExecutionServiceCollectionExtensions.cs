@@ -29,6 +29,16 @@ public static class JobExecutionServiceCollectionExtensions
 
         services.TryAddSingleton(TimeProvider.System);
 
+        // 計装が使う IMeterFactory の供給元。AddMetrics は TryAdd の集まりなので、
+        // ホスト（WebApplicationBuilder）が既に入れていても二重にならない。
+        services.AddMetrics();
+        services.TryAddSingleton<JobExecutionInstrumentation>();
+
+        // 登録時 trace context の置き場は no-op を既定にする。観測は任意の関心で、
+        // 必須依存にしない。ホストが差し替えなくても（保存は捨てる・検索は null のまま）
+        // 全機能が動く。Web は SQLite のアダプタでこの登録を置き換える。
+        services.TryAddSingleton<IJobTraceContextStore, NullJobTraceContextStore>();
+
         // Job の種類を増やすときは、この形で IJobHandler を 1 行足す。
         // TryAddEnumerable にしているのは、同じハンドラを二重に登録しても増えないようにするため。
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IJobHandler, DemoJobHandler>());

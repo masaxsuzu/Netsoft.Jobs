@@ -1,5 +1,6 @@
 using Netsoft.Jobs.Domain;
 using Netsoft.Jobs.Features;
+using Netsoft.Jobs.Features.Execution;
 using Netsoft.Jobs.Infrastructure;
 using Netsoft.Jobs.Web;
 
@@ -27,6 +28,13 @@ builder.Services.AddSingleton<IJobStore>(provider => new NotifyingJobStore(
     provider.GetRequiredService<SqliteJobStore>(),
     provider.GetRequiredService<JobChangeFeed>()));
 
+// 登録時 trace context の置き場。AddJobFeatures が TryAdd した no-op より後に登録するので、
+// 単一解決はこちら（最後の登録）が勝つ。Jobs と同じ DB ファイルの別表を使う。
+// 具象型も登録しておくのは、起動時初期化が InitializeAsync を具象型でしか呼べないため。
+builder.Services.AddSingleton(new SqliteJobTraceContextStore(databasePath));
+builder.Services.AddSingleton<IJobTraceContextStore>(
+    provider => provider.GetRequiredService<SqliteJobTraceContextStore>());
+
 // 設定で止められるようにしてある。テストがエンジンを止めて、
 // 「待機中のまま」のような状態を前提にした検証を安定して行うため。
 if (options.RunExecutionEngine)
@@ -44,6 +52,7 @@ app.MapJobEvents();
 // スキーマの用意はホストの起動（= 実行エンジンの開始）より前に済ませる。
 // エンジンは起動時復旧で store を読むので、逆順だとテーブルが無いまま読みに行く。
 await app.Services.GetRequiredService<SqliteJobStore>().InitializeAsync(CancellationToken.None);
+await app.Services.GetRequiredService<SqliteJobTraceContextStore>().InitializeAsync(CancellationToken.None);
 
 await app.RunAsync();
 

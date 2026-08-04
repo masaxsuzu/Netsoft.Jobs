@@ -33,8 +33,13 @@ public sealed class JobLifecycleStressTests : IDisposable
     private static readonly DateTimeOffset Origin = new(2026, 8, 3, 9, 0, 0, TimeSpan.Zero);
 
     private readonly TemporaryJobStore _store = new();
+    private readonly TestMeterFactory _meterFactory = new();
 
-    public void Dispose() => _store.Dispose();
+    public void Dispose()
+    {
+        _meterFactory.Dispose();
+        _store.Dispose();
+    }
 
     [Fact]
     public async Task 実行とキャンセルと読み取りを同時に走らせても状態が壊れない()
@@ -48,6 +53,9 @@ public sealed class JobLifecycleStressTests : IDisposable
 
         CountingJobHandler handler = new(HandledJobType) { Yields = 3 };
 
+        using JobExecutionInstrumentation instrumentation =
+            new(_meterFactory, store, timeProvider);
+
         RunningJobRegistry[] registries = [.. Enumerable.Range(0, Engines).Select(_ => new RunningJobRegistry())];
         JobExecutionEngine[] engines =
         [
@@ -57,6 +65,8 @@ public sealed class JobLifecycleStressTests : IDisposable
                 registry,
                 new JobQueueSignal(),
                 timeProvider,
+                instrumentation,
+                new NullJobTraceContextStore(),
                 NullLogger<JobExecutionEngine>.Instance)),
         ];
 
