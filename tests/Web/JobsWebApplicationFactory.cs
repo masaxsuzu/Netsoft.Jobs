@@ -61,7 +61,12 @@ internal sealed class JobsWebApplicationFactory : WebApplicationFactory<Program>
         }
 
         // プールが接続を握ったままだとファイルが開きっぱなしになり、削除に失敗しうる。
-        SqliteConnection.ClearAllPools();
+        // 閉じるのは自分の DB のプールだけ。ClearAllPools はプロセス全域に効き、
+        // 並列で走っている他のテストの接続まで破棄してフレークを起こす（実際に起きた）。
+        // Jobs と JobTraceContexts は同じ DB ファイルを使うので、この 1 回で両方のプールに当たる。
+        using SqliteConnection connection = new(
+            new SqliteConnectionStringBuilder { DataSource = Path.Combine(_directory, "jobs.db") }.ToString());
+        SqliteConnection.ClearPool(connection);
 
         try
         {
