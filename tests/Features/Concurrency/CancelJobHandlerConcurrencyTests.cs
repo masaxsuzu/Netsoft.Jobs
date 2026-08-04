@@ -103,8 +103,14 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
     /// <para>
     /// 登録を書き戻しより前に済ませていれば、窓は構造的に開かない。
     /// このテストはその順序が保たれていることを、最悪の瞬間を決定的に作って固定する。
-    /// 順序を戻すと <see cref="HangGuard"/> で落ちる。トークンが発火しないので
-    /// ハンドラは待ち続け、Completed にすらならない――現物で踏んだのと同じ症状になる。
+    /// </para>
+    /// <para>
+    /// 判定は結末（Cancelled で終わったか）ではなく<b>不変条件そのもの</b>で行う。
+    /// 「Running が見えた瞬間に受け口が在る」を割り込みの中で直接見る。結末だけを見ると、
+    /// 順序を戻したときの症状が「ハンドラが永久に待つ」＝<see cref="HangGuard"/> での
+    /// タイムアウトになり、原因を何も言わないメッセージが 30 秒かけて出る。
+    /// 原因の側で落とせば即座に、しかも名指しで落ちる。
+    /// 結末の確認は不変条件が守られた結果として後ろに残してある。
     /// </para>
     /// </remarks>
     [Fact]
@@ -145,7 +151,18 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
         interfering.AfterNextUpdate = async () =>
         {
             CancelJobResult result = await cancel.HandleAsync("job-1", CancellationToken.None);
+
+            // ここは順序が壊れていても通る。CancelJobHandler は TryRequestCancel の戻り値を
+            // 見ない（見ないのが正しい）ので、受け口が無くても状態は Cancelling まで進む。
             Assert.True(result.IsSuccess);
+
+            // 守りたい不変条件はこちら。状態が Running として公開されたこの瞬間に、
+            // 受け口が既に在ること。既にキャンセル済みの CTS でも true が返るので、
+            // 上の要求と二重になっても壊れない。
+            Assert.True(
+                runningJobs.TryRequestCancel(JobId.From("job-1")),
+                "Running が見えているのに RunningJobRegistry に登録が無い。"
+                    + "Track が書き戻しより後ろに戻っている（JobExecutionEngine.RunOnceAsync の注記を参照）。");
         };
 
         Assert.True(await engine.RunOnceAsync(CancellationToken.None).WaitAsync(HangGuard));
