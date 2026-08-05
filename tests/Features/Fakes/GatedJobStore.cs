@@ -70,8 +70,8 @@ internal sealed class GatedJobStore : IJobStore
         _inner.AddAsync(job, cancellationToken);
 
     /// <inheritdoc />
-    public Task<bool> UpdateAsync(Job job, JobStatus expectedStatus, CancellationToken cancellationToken) =>
-        _inner.UpdateAsync(job, expectedStatus, cancellationToken);
+    public Task<bool> UpdateAsync(Job job, CancellationToken cancellationToken) =>
+        _inner.UpdateAsync(job, cancellationToken);
 
     /// <inheritdoc />
     public Task<Job?> FindAsync(JobId id, CancellationToken cancellationToken) =>

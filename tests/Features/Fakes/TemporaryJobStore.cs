@@ -38,8 +38,8 @@ public sealed class TemporaryJobStore : IJobStore, IDisposable
         _store.AddAsync(job, cancellationToken);
 
     /// <inheritdoc />
-    public Task<bool> UpdateAsync(Job job, JobStatus expectedStatus, CancellationToken cancellationToken) =>
-        _store.UpdateAsync(job, expectedStatus, cancellationToken);
+    public Task<bool> UpdateAsync(Job job, CancellationToken cancellationToken) =>
+        _store.UpdateAsync(job, cancellationToken);
 
     /// <inheritdoc />
     public Task<Job?> FindAsync(JobId id, CancellationToken cancellationToken) =>

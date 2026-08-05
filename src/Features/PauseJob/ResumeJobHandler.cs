@@ -63,7 +63,7 @@ public sealed class ResumeJobHandler
                 return JobControlResult.Rejected(JobDto.From(job), rejection);
             }
 
-            if (!await _store.UpdateAsync(job, transition.Previous, cancellationToken))
+            if (!await _store.UpdateAsync(job, cancellationToken))
             {
                 continue;
             }

@@ -164,7 +164,7 @@ public sealed class JobExecutionEngine
 
                 // 書き戻せなかったのは他が先にこの Job を処理したということなので、
                 // 復旧の対象ではなくなっている。読み直して試し直さずに次へ進む。
-                if (await store.UpdateAsync(job, result.Previous, cancellationToken))
+                if (await store.UpdateAsync(job, cancellationToken))
                 {
                     logger.LogWarning("Job {JobId} を前回プロセスの異常終了として Failed にしました。", job.Id.Value);
                 }
@@ -194,14 +194,22 @@ public sealed class JobExecutionEngine
         // 起動時復旧の呼び出しはここに無い。StartAsync が済ませてからでないと
         // このインスタンスが存在しないので、呼び忘れも重なりも起こりえない。
         //
-        // 取れる候補が無くなるまで繰り返す。書き戻せなかったということは、
-        // その Job は他によって Queued から先へ進められたということなので、
-        // 次の FindOldestQueuedAsync はもう同じ Job を返さない。
-        // Queued へ戻る道は一時停止からの再開（Paused + Resume）だけで、そこへ行くには
-        // どこかのエンジンが実行し、利用者が停止と再開を要求する必要がある。
-        // 負けた候補がこの周回中に戻ってくるとしたら、それは新しい仕事が届いたのと
-        // 同じことで、空転ではない。同一プロセスでは Running を作るのは自分だけなので、
-        // 自分が負けた候補が自分の周回中に Queued へ戻ることも無い。
+        // 取れる候補が無くなるまで繰り返す。書き戻せなかったということは、読み出しから
+        // 書き込みまでの間に誰かが書いたということで、行き先は 2 つしかない。
+        //
+        // 1. 状態が Queued から先へ進んだ（他のエンジンが取った・利用者が中止した）。
+        //    次の FindOldestQueuedAsync はもう同じ Job を返さない。Queued へ戻る道は
+        //    一時停止からの再開（Paused + Resume）だけで、そこへ行くにはどこかのエンジンが
+        //    実行し、利用者が停止と再開を要求する必要がある。戻ってきたなら、それは
+        //    新しい仕事が届いたのと同じことで空転ではない。同一プロセスでは Running を
+        //    作るのは自分だけなので、自分が負けた候補が自分の周回中に Queued へ戻ることも無い。
+        //
+        // 2. 状態は Queued のまま、内容だけが書き換わった（利用者の編集）。この場合は
+        //    同じ Job がもう一度返ってくる。空転に見えるが、読み直した手元の内容は
+        //    編集後のもので、次の書き戻しは（さらに編集が重ならない限り）成立する。
+        //    繰り返す回数は利用者が編集した回数までで、こちらの都合では増えない。
+        //    版で守るようになって現れた経路で、状態だけを見ていたころは編集が
+        //    黙って巻き戻ることでこの周回が「成功」していた（IJobStore.UpdateAsync の注記）。
         while (true)
         {
             Job? job = await _store.FindOldestQueuedAsync(cancellationToken);
@@ -237,7 +245,7 @@ public sealed class JobExecutionEngine
                 // ここで書き戻せた 1 つだけがこの Job を実行する。
                 // 負けた場合は using が登録を外すので、他が実行する Job に
                 // こちらのトークンが残ることはない。
-                if (!await _store.UpdateAsync(job, started.Previous, cancellationToken))
+                if (!await _store.UpdateAsync(job, cancellationToken))
                 {
                     _logger.LogInformation("Job {JobId} は他から開始されました。次の候補を探します。", job.Id.Value);
                     continue;
@@ -469,7 +477,7 @@ public sealed class JobExecutionEngine
                 return (Rerun: false, Settled: job.Status);
             }
 
-            if (await _store.UpdateAsync(job, result.Previous, CancellationToken.None))
+            if (await _store.UpdateAsync(job, CancellationToken.None))
             {
                 // Paused の時刻列は無い。受理の事実と時刻はこのログだけが持つ。
                 _logger.LogInformation("Job {JobId} は一時停止しました。", id.Value);
@@ -535,7 +543,7 @@ public sealed class JobExecutionEngine
 
             // 拒否されて Fail を再適用した場合も、状態は 1 回目の拒否で変わっていないので
             // 期待状態は同じ。どちらの経路でも result.Previous が読み出したときの状態を指す。
-            if (await _store.UpdateAsync(job, result.Previous, CancellationToken.None))
+            if (await _store.UpdateAsync(job, CancellationToken.None))
             {
                 // 結末の確定＝終端の書き戻しに成功した点。所要時間と終端到達数はここで確定する。
                 // 起動時復旧（StartAsync）が閉じる残骸はここを通らないので数えない。

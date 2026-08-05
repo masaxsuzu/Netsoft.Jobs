@@ -34,7 +34,7 @@ public sealed class NotifyingJobStoreTests
     [Fact]
     public async Task 更新が成功すると通知される()
     {
-        Assert.True(await _store.UpdateAsync(CreateJob(), JobStatus.Queued, CancellationToken.None));
+        Assert.True(await _store.UpdateAsync(CreateJob(), CancellationToken.None));
 
         Assert.Equal(1, _published);
         Assert.Equal(["Update"], _inner.Calls);
@@ -49,7 +49,7 @@ public sealed class NotifyingJobStoreTests
     {
         _inner.UpdateResult = false;
 
-        Assert.False(await _store.UpdateAsync(CreateJob(), JobStatus.Queued, CancellationToken.None));
+        Assert.False(await _store.UpdateAsync(CreateJob(), CancellationToken.None));
 
         Assert.Equal(0, _published);
         Assert.Equal(["Update"], _inner.Calls);
@@ -76,7 +76,7 @@ public sealed class NotifyingJobStoreTests
         _inner.FailWrites = true;
 
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => _store.UpdateAsync(CreateJob(), JobStatus.Queued, CancellationToken.None));
+            () => _store.UpdateAsync(CreateJob(), CancellationToken.None));
 
         Assert.Equal(0, _published);
     }
@@ -116,7 +116,7 @@ public sealed class NotifyingJobStoreTests
             return Task.CompletedTask;
         }
 
-        public Task<bool> UpdateAsync(Job job, JobStatus expectedStatus, CancellationToken cancellationToken)
+        public Task<bool> UpdateAsync(Job job, CancellationToken cancellationToken)
         {
             ThrowIfWriteShouldFail();
             Calls.Add("Update");

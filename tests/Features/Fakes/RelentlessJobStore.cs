@@ -35,7 +35,7 @@ internal sealed class RelentlessJobStore : IJobStore
     public int UpdateAttempts { get; private set; }
 
     /// <inheritdoc />
-    public async Task<bool> UpdateAsync(Job job, JobStatus expectedStatus, CancellationToken cancellationToken)
+    public async Task<bool> UpdateAsync(Job job, CancellationToken cancellationToken)
     {
         if (Interfering)
         {
@@ -43,7 +43,7 @@ internal sealed class RelentlessJobStore : IJobStore
         }
 
         UpdateAttempts++;
-        return await _inner.UpdateAsync(job, expectedStatus, cancellationToken);
+        return await _inner.UpdateAsync(job, cancellationToken);
     }
 
     /// <summary>
@@ -74,7 +74,7 @@ internal sealed class RelentlessJobStore : IJobStore
         }
 
         current.Apply(advance, _at, $"割り込みの {advance}");
-        await _inner.UpdateAsync(current, expected, cancellationToken);
+        await _inner.UpdateAsync(current, cancellationToken);
     }
 
     /// <inheritdoc />

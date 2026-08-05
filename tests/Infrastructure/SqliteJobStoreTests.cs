@@ -187,7 +187,7 @@ public sealed class SqliteJobStoreTests
         job.Apply(JobTrigger.Complete, BaseTime.AddMinutes(2));
 
         // 読み出したときの状態は Queued。DB もまだ Queued なので書き戻せる。
-        Assert.True(await store.UpdateAsync(job, JobStatus.Queued, None));
+        Assert.True(await store.UpdateAsync(job, None));
 
         Job? loaded = await store.FindAsync(job.Id, None);
 
@@ -215,17 +215,78 @@ public sealed class SqliteJobStoreTests
         // 他所が先に Completed まで進めた状況。
         Job other = await LoadAsync(store, "job-1");
         other.Apply(JobTrigger.Complete, BaseTime.AddMinutes(2));
-        Assert.True(await store.UpdateAsync(other, JobStatus.Running, None));
+        Assert.True(await store.UpdateAsync(other, None));
 
         // こちらは Running のつもりで Cancelling を書こうとしている。
         job.Apply(JobTrigger.RequestCancel, BaseTime.AddMinutes(3));
 
-        Assert.False(await store.UpdateAsync(job, JobStatus.Running, None));
+        Assert.False(await store.UpdateAsync(job, None));
 
         // 読み直して、1 バイトも変わっていないことを確かめる。
         Job reloaded = await LoadAsync(store, "job-1");
         Assert.Equal(JobStatus.Completed, reloaded.Status);
         Assert.Equal(BaseTime.AddMinutes(2), reloaded.FinishedAt);
+    }
+
+    /// <summary>
+    /// 状態を変えない書き込み（編集）も、書き戻しの前提を崩す。
+    /// </summary>
+    /// <remarks>
+    /// 期待値が状態だったころ、この筋で編集が黙って消えていた。編集は遷移ではないので
+    /// 状態が動かず、状態を見るだけの条件付き更新は素通りする。書き戻しは全列を書くので、
+    /// 素通りした先で古い parameters が勝つ。版で守るとここが閉じる。
+    /// </remarks>
+    [Fact]
+    public async Task UpdateAsyncは状態が同じでも間に編集が入っていれば書き戻さない()
+    {
+        using TemporaryDatabase database = new();
+        SqliteJobStore store = await database.OpenStoreAsync();
+
+        Job job = Job.Create(JobId.From("job-1"), "編集競合", "subtasks", "3 1", BaseTime);
+        await store.AddAsync(job, None);
+
+        // エンジンが読んだ手元の Job（parameters は "3 1"）。まだ書き戻していない。
+        Job claimed = await LoadAsync(store, "job-1");
+
+        // その隙に利用者が編集する。Queued のままなので状態は 1 ミリも動かない。
+        Job editing = await LoadAsync(store, "job-1");
+        editing.ChangeParameters("9 9");
+        Assert.True(await store.UpdateAsync(editing, None));
+
+        // エンジンが Start を書き戻そうとする。状態の期待（Queued）は今も満たされているが、
+        // 読んでからの書き込みがあるので通してはいけない。
+        claimed.Apply(JobTrigger.Start, BaseTime.AddMinutes(1));
+        Assert.False(await store.UpdateAsync(claimed, None));
+
+        Job reloaded = await LoadAsync(store, "job-1");
+        Assert.Equal("9 9", reloaded.Parameters);
+        Assert.Equal(JobStatus.Queued, reloaded.Status);
+    }
+
+    /// <summary>
+    /// 書き戻せたインスタンスはその瞬間に古くなる（版が進むのは DB 側だけ）。
+    /// 続けて書きたければ読み直す、という契約。
+    /// </summary>
+    [Fact]
+    public async Task 書き戻したインスタンスで続けて書くことはできない()
+    {
+        using TemporaryDatabase database = new();
+        SqliteJobStore store = await database.OpenStoreAsync();
+
+        Job job = JobAt("job-1", BaseTime);
+        await store.AddAsync(job, None);
+
+        job.Apply(JobTrigger.Start, BaseTime.AddMinutes(1));
+        Assert.True(await store.UpdateAsync(job, None));
+
+        job.Apply(JobTrigger.Complete, BaseTime.AddMinutes(2));
+        Assert.False(await store.UpdateAsync(job, None));
+
+        // 読み直せば続けられる。再試行ループがもともとこの形になっている。
+        Job fresh = await LoadAsync(store, "job-1");
+        fresh.Apply(JobTrigger.Complete, BaseTime.AddMinutes(2));
+        Assert.True(await store.UpdateAsync(fresh, None));
+        Assert.Equal(JobStatus.Completed, (await LoadAsync(store, "job-1")).Status);
     }
 
     [Fact]
@@ -240,7 +301,7 @@ public sealed class SqliteJobStoreTests
         Job job = JobAt("居ない", BaseTime);
 
         JobNotFoundException error = await Assert.ThrowsAsync<JobNotFoundException>(
-            () => store.UpdateAsync(job, JobStatus.Queued, None));
+            () => store.UpdateAsync(job, None));
 
         Assert.Equal(job.Id, error.Id);
         Assert.Empty(await store.ListAsync(None));

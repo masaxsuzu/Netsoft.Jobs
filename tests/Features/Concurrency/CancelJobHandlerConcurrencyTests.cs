@@ -64,7 +64,7 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
         await _store.AddAsync(job, CancellationToken.None);
 
         Assert.True(job.Apply(JobTrigger.Start, Now).IsAllowed);
-        Assert.True(await _store.UpdateAsync(job, JobStatus.Queued, CancellationToken.None));
+        Assert.True(await _store.UpdateAsync(job, CancellationToken.None));
 
         InterferingJobStore interfering = new(_store);
         CancelJobHandler handler = new(
@@ -78,7 +78,7 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
         {
             Job finishing = await FindAsync("job-1");
             Assert.True(finishing.Apply(JobTrigger.Complete, Now).IsAllowed);
-            Assert.True(await _store.UpdateAsync(finishing, JobStatus.Running, CancellationToken.None));
+            Assert.True(await _store.UpdateAsync(finishing, CancellationToken.None));
         };
 
         CancelJobResult result = await handler.HandleAsync("job-1", CancellationToken.None).WaitAsync(HangGuard);

@@ -106,7 +106,7 @@ public sealed class JobExecutionMetricsTests : IDisposable
         // キャンセル機能（コマンド側）と同じ順序。状態を進めてから実行中のハンドラへ伝える。
         Job job = await FindAsync("job-1");
         Assert.True(job.Apply(JobTrigger.RequestCancel, Now).IsAllowed);
-        Assert.True(await _store.UpdateAsync(job, JobStatus.Running, CancellationToken.None));
+        Assert.True(await _store.UpdateAsync(job, CancellationToken.None));
         Assert.True(_runningJobs.TryRequestCancel(JobId.From("job-1")));
         Assert.True(await running);
 

@@ -17,7 +17,7 @@ public sealed class SqliteJobStore : IJobStore
     // 列の並びは読み出し側の序数と対応している。SELECT * にすると
     // スキーマを足したときに序数がずれるので、常にこの並びを明示する。
     private const string Columns =
-        "Id, Name, JobType, Parameters, Status, CreatedAt, StartedAt, FinishedAt, FailureMessage";
+        "Id, Name, JobType, Parameters, Status, CreatedAt, StartedAt, FinishedAt, FailureMessage, Version";
 
     private readonly string _connectionString;
 
@@ -54,15 +54,16 @@ public sealed class SqliteJobStore : IJobStore
             connection,
             """
             CREATE TABLE IF NOT EXISTS Jobs (
-                Id             TEXT NOT NULL PRIMARY KEY,
-                Name           TEXT NOT NULL,
-                JobType        TEXT NOT NULL,
-                Parameters     TEXT NOT NULL,
-                Status         TEXT NOT NULL,
-                CreatedAt      TEXT NOT NULL,
-                StartedAt      TEXT NULL,
-                FinishedAt     TEXT NULL,
-                FailureMessage TEXT NULL
+                Id             TEXT    NOT NULL PRIMARY KEY,
+                Name           TEXT    NOT NULL,
+                JobType        TEXT    NOT NULL,
+                Parameters     TEXT    NOT NULL,
+                Status         TEXT    NOT NULL,
+                CreatedAt      TEXT    NOT NULL,
+                StartedAt      TEXT    NULL,
+                FinishedAt     TEXT    NULL,
+                FailureMessage TEXT    NULL,
+                Version        INTEGER NOT NULL DEFAULT 1
             );
             """,
             cancellationToken).ConfigureAwait(false);
@@ -86,7 +87,7 @@ public sealed class SqliteJobStore : IJobStore
         command.CommandText =
             $"""
             INSERT INTO Jobs ({Columns})
-            VALUES ($id, $name, $jobType, $parameters, $status, $createdAt, $startedAt, $finishedAt, $failureMessage);
+            VALUES ($id, $name, $jobType, $parameters, $status, $createdAt, $startedAt, $finishedAt, $failureMessage, $version);
             """;
 
         Bind(command, job);
@@ -100,13 +101,19 @@ public sealed class SqliteJobStore : IJobStore
     /// </exception>
     /// <remarks>
     /// <para>
-    /// 条件付き更新（WHERE に状態を含める）で、読み出しから書き込みまでの間に
-    /// 他所が状態を進めていないことを DB に確かめさせる。呼び出し側が読んだ状態を
+    /// 条件付き更新（WHERE に版を含める）で、読み出しから書き込みまでの間に
+    /// 他所が書いていないことを DB に確かめさせる。呼び出し側が読んだ内容を
     /// そのまま前提にすると、同時に動く実行エンジンとキャンセルが互いの結果を上書きする。
     /// 前提が成り立ったかどうかを判断できるのは、実際に書き込む DB だけである。
     /// </para>
     /// <para>
-    /// 更新できなかったとき、状態の食い違いと Id の取り違えを区別する。
+    /// 期待値が状態ではなく版なのは、<b>状態を変えない書き込みがあるから</b>。
+    /// 編集（parameters の差し替え）は遷移ではないので状態が動かず、状態を期待値にすると
+    /// 「読む → 誰かが編集する → 状態は同じなので通る → 全列を書くので編集が消える」が起きる。
+    /// SET に版の +1 を含めるので、どの書き込みも次の期待値をずらす。
+    /// </para>
+    /// <para>
+    /// 更新できなかったとき、版の食い違いと Id の取り違えを区別する。
     /// 前者は同時実行のもとで普通に起きることなので false を返して読み直させる。
     /// 後者は呼び出し側の誤り（または他所から消された）で、黙って no-op にすると
     /// Running → Completed のような遷移が失われたことに誰も気づけないので例外にする。
@@ -117,15 +124,16 @@ public sealed class SqliteJobStore : IJobStore
     /// 書き戻せる通常の経路に余分な問い合わせを足さないため。
     /// </para>
     /// </remarks>
-    public async Task<bool> UpdateAsync(Job job, JobStatus expectedStatus, CancellationToken cancellationToken)
+    public async Task<bool> UpdateAsync(Job job, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(job);
 
         await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
         await using SqliteCommand command = connection.CreateCommand();
 
-        // Id と状態は WHERE でだけ使う。作成日時と種類は登録後に変わらないが、
+        // Id と版は WHERE でだけ使う。作成日時と種類は登録後に変わらないが、
         // 列を絞ると「何が更新対象か」を 2 箇所で管理することになるので全列を書き戻す。
+        // 全列を書くからこそ、守りは状態ではなく版でなければならない（上の注記を参照）。
         command.CommandText =
             """
             UPDATE Jobs
@@ -136,12 +144,12 @@ public sealed class SqliteJobStore : IJobStore
                 CreatedAt = $createdAt,
                 StartedAt = $startedAt,
                 FinishedAt = $finishedAt,
-                FailureMessage = $failureMessage
-            WHERE Id = $id AND Status = $expectedStatus;
+                FailureMessage = $failureMessage,
+                Version = $version + 1
+            WHERE Id = $id AND Version = $version;
             """;
 
         Bind(command, job);
-        command.Parameters.AddWithValue("$expectedStatus", JobStatusText.ToText(expectedStatus));
 
         int affected = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         if (affected != 0)
@@ -284,6 +292,7 @@ public sealed class SqliteJobStore : IJobStore
         command.Parameters.AddWithValue("$startedAt", ToNullable(job.StartedAt));
         command.Parameters.AddWithValue("$finishedAt", ToNullable(job.FinishedAt));
         command.Parameters.AddWithValue("$failureMessage", (object?)job.FailureMessage ?? DBNull.Value);
+        command.Parameters.AddWithValue("$version", job.Version);
     }
 
     private static Job Read(SqliteDataReader reader) =>
@@ -296,7 +305,8 @@ public sealed class SqliteJobStore : IJobStore
             SqliteTimestamp.FromText(reader.GetString(5)),
             ReadNullableTimestamp(reader, 6),
             ReadNullableTimestamp(reader, 7),
-            reader.IsDBNull(8) ? null : reader.GetString(8));
+            reader.IsDBNull(8) ? null : reader.GetString(8),
+            reader.GetInt64(9));
 
     private static DateTimeOffset? ReadNullableTimestamp(SqliteDataReader reader, int ordinal) =>
         reader.IsDBNull(ordinal) ? null : SqliteTimestamp.FromText(reader.GetString(ordinal));

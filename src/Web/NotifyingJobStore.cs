@@ -44,9 +44,9 @@ public sealed class NotifyingJobStore : IJobStore
     }
 
     /// <inheritdoc />
-    public async Task<bool> UpdateAsync(Job job, JobStatus expectedStatus, CancellationToken cancellationToken)
+    public async Task<bool> UpdateAsync(Job job, CancellationToken cancellationToken)
     {
-        bool updated = await _inner.UpdateAsync(job, expectedStatus, cancellationToken);
+        bool updated = await _inner.UpdateAsync(job, cancellationToken);
         if (updated)
         {
             // false は「前提が崩れて何も書かなかった」。DB は 1 バイトも変わっていないので、

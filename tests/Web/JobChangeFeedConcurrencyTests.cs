@@ -161,7 +161,7 @@ public sealed class JobChangeFeedConcurrencyTests
         feed.Changed += () => throw new InvalidOperationException("購読者の不始末");
 
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => store.UpdateAsync(CreateJob(), JobStatus.Queued, CancellationToken.None));
+            () => store.UpdateAsync(CreateJob(), CancellationToken.None));
 
         Assert.Equal(1, inner.Updates);
     }
@@ -203,7 +203,7 @@ public sealed class JobChangeFeedConcurrencyTests
 
         public Task AddAsync(Job job, CancellationToken cancellationToken) => Task.CompletedTask;
 
-        public Task<bool> UpdateAsync(Job job, JobStatus expectedStatus, CancellationToken cancellationToken)
+        public Task<bool> UpdateAsync(Job job, CancellationToken cancellationToken)
         {
             Updates++;
             return Task.FromResult(true);

@@ -93,7 +93,7 @@ public sealed class EditJobHandler
 
             // 期待は読み出したときの状態。編集は状態を変えないが、読み出しから書き込みまでの
             // 間に状態が動いていたら（終端に達した、など）書かずに読み直して評価をやり直す。
-            if (!await _store.UpdateAsync(job, job.Status, cancellationToken))
+            if (!await _store.UpdateAsync(job, cancellationToken))
             {
                 continue;
             }

@@ -132,7 +132,7 @@ public sealed class JobExecutionEngineTests : IDisposable
         // 状態を Cancelling へ進めてから、実行中のハンドラへ伝える。
         Job job = await FindAsync("job-1");
         Assert.True(job.Apply(JobTrigger.RequestCancel, Now).IsAllowed);
-        Assert.True(await _store.UpdateAsync(job, JobStatus.Running, CancellationToken.None));
+        Assert.True(await _store.UpdateAsync(job, CancellationToken.None));
 
         Assert.True(_runningJobs.TryRequestCancel(JobId.From("job-1")));
 
@@ -155,7 +155,7 @@ public sealed class JobExecutionEngineTests : IDisposable
         // 状態だけ Cancelling にして、ハンドラには伝えずに完走させる。
         Job job = await FindAsync("job-1");
         job.Apply(JobTrigger.RequestCancel, Now);
-        Assert.True(await _store.UpdateAsync(job, JobStatus.Running, CancellationToken.None));
+        Assert.True(await _store.UpdateAsync(job, CancellationToken.None));
 
         handler.Release();
         await running;
@@ -273,7 +273,7 @@ public sealed class JobExecutionEngineTests : IDisposable
         {
             Job cancelling = await FindAsync("job-1");
             Assert.True(cancelling.Apply(JobTrigger.RequestCancel, Now).IsAllowed);
-            Assert.True(await _store.UpdateAsync(cancelling, JobStatus.Running, CancellationToken.None));
+            Assert.True(await _store.UpdateAsync(cancelling, CancellationToken.None));
         };
 
         handler.Release();
@@ -303,7 +303,7 @@ public sealed class JobExecutionEngineTests : IDisposable
         {
             Job closed = await FindAsync("job-1");
             Assert.True(closed.Apply(JobTrigger.Fail, Now, "他のプロセスが閉じました。").IsAllowed);
-            Assert.True(await _store.UpdateAsync(closed, JobStatus.Running, CancellationToken.None));
+            Assert.True(await _store.UpdateAsync(closed, CancellationToken.None));
         };
 
         handler.Release();
@@ -569,7 +569,7 @@ public sealed class JobExecutionEngineTests : IDisposable
         }
 
         // 保存されているのは Queued の状態。そこから書き戻す。
-        await _store.UpdateAsync(job, JobStatus.Queued, CancellationToken.None);
+        await _store.UpdateAsync(job, CancellationToken.None);
         return job;
     }
 
@@ -580,7 +580,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     {
         Job job = await FindAsync(id);
         Assert.True(job.Apply(JobTrigger.Start, Now).IsAllowed);
-        Assert.True(await _store.UpdateAsync(job, JobStatus.Queued, CancellationToken.None));
+        Assert.True(await _store.UpdateAsync(job, CancellationToken.None));
     }
 
     private async Task<Job> FindAsync(string id) =>

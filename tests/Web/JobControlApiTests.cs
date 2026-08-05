@@ -210,7 +210,7 @@ public sealed class JobControlApiTests : IDisposable
 
             JobTransitionResult result = job.Apply(trigger, now);
             Assert.True(result.IsAllowed);
-            Assert.True(await store.UpdateAsync(job, result.Previous, CancellationToken.None));
+            Assert.True(await store.UpdateAsync(job, CancellationToken.None));
         }
     }
 }

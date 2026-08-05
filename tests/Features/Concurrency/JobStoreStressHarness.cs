@@ -167,7 +167,7 @@ public sealed class JobStoreStressHarness
         // 書き戻せなかった場合は何も記録しない。負けた側は状態を進めていないので、
         // 観測の列に足すものが無い。競合そのものを確実に起こして確かめるのは、
         // 窓を狙い撃ちしている JobStoreConcurrencyStressTests の別のテストの仕事。
-        if (await _store.UpdateAsync(job, expected, CancellationToken.None))
+        if (await _store.UpdateAsync(job, CancellationToken.None))
         {
             Log.RecordAcceptedUpdate(id, expected, job.Status);
         }

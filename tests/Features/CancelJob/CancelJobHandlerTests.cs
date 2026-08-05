@@ -170,7 +170,7 @@ public sealed class CancelJobHandlerTests : IDisposable
         {
             Job completed = await SavedAsync("job-1");
             Assert.True(completed.Apply(JobTrigger.Complete, Finished).IsAllowed);
-            Assert.True(await _jobs.UpdateAsync(completed, JobStatus.Running, CancellationToken.None));
+            Assert.True(await _jobs.UpdateAsync(completed, CancellationToken.None));
         };
 
         CancelJobResult result = await CancelAsync("job-1");
@@ -198,7 +198,7 @@ public sealed class CancelJobHandlerTests : IDisposable
         {
             Job started = await SavedAsync("job-1");
             Assert.True(started.Apply(JobTrigger.Start, Started).IsAllowed);
-            Assert.True(await _jobs.UpdateAsync(started, JobStatus.Queued, CancellationToken.None));
+            Assert.True(await _jobs.UpdateAsync(started, CancellationToken.None));
         };
 
         CancelJobResult result = await CancelAsync("job-1");

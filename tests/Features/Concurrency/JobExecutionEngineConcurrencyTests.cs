@@ -233,7 +233,7 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
         await _store.AddAsync(job, CancellationToken.None);
 
         Assert.True(job.Apply(JobTrigger.Start, Now).IsAllowed);
-        Assert.True(await _store.UpdateAsync(job, JobStatus.Queued, CancellationToken.None));
+        Assert.True(await _store.UpdateAsync(job, CancellationToken.None));
     }
 
     private async Task AddQueuedAsync(
