@@ -38,7 +38,7 @@ public sealed class JobApiTests : IDisposable
     {
         HttpResponseMessage response = await _client.PostAsJsonAsync(
             "/api/jobs",
-            new { name = "夜間バッチ", jobType = "demo", parameters = "3" });
+            new { name = "夜間バッチ", jobType = "subtasks", parameters = "3 1" });
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
@@ -48,8 +48,8 @@ public sealed class JobApiTests : IDisposable
         JobDto? job = await _client.GetFromJsonAsync<JobDto>(location);
         Assert.NotNull(job);
         Assert.Equal("夜間バッチ", job.Name);
-        Assert.Equal("demo", job.JobType);
-        Assert.Equal("3", job.Parameters);
+        Assert.Equal("subtasks", job.JobType);
+        Assert.Equal("3 1", job.Parameters);
         Assert.Equal("Queued", job.Status);
     }
 
@@ -87,7 +87,7 @@ public sealed class JobApiTests : IDisposable
 
     /// <summary>
     /// 画面の選択肢はこの応答だけで作られる。種類が実際に登録されているハンドラ
-    /// （demo / archive）と一致すること、並びが実行ごとに変わらないことを保証する。
+    /// （subtasks が唯一）と一致することを保証する。
     /// </summary>
     [Fact]
     public async Task 種類の一覧は登録済みのハンドラを名前順のオブジェクトで返す()
@@ -96,7 +96,7 @@ public sealed class JobApiTests : IDisposable
             await _client.GetFromJsonAsync<IReadOnlyList<JobTypeDto>>("/api/jobs/types");
 
         Assert.NotNull(jobTypes);
-        Assert.Equal([new JobTypeDto("archive"), new JobTypeDto("demo")], jobTypes);
+        Assert.Equal([new JobTypeDto("subtasks")], jobTypes);
     }
 
     /// <summary>
@@ -111,7 +111,7 @@ public sealed class JobApiTests : IDisposable
 
         JsonElement first = body.RootElement.EnumerateArray().First();
         Assert.Equal(JsonValueKind.Object, first.ValueKind);
-        Assert.Equal("archive", first.GetProperty("jobType").GetString());
+        Assert.Equal("subtasks", first.GetProperty("jobType").GetString());
     }
 
     [Fact]
@@ -181,7 +181,7 @@ public sealed class JobApiTests : IDisposable
     {
         HttpResponseMessage response = await _client.PostAsJsonAsync(
             "/api/jobs",
-            new { name, jobType = "demo", parameters = "1" });
+            new { name, jobType = "subtasks", parameters = "1 1" });
 
         response.EnsureSuccessStatusCode();
 

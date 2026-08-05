@@ -35,8 +35,7 @@ public static class JobParameterHints
     private static readonly IReadOnlyDictionary<string, string> Hints =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            ["demo"] = "待ち秒数（例: 10）",
-            ["archive"] = "固めるディレクトリのパス",
+            ["subtasks"] = "サブタスクの個数と各々の秒数（例: 3 5）",
         };
 
     /// <summary>

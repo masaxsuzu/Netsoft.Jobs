@@ -45,7 +45,7 @@ public sealed class JobsApiClientNullBodyTests
         JobsApiClient client = ClientReturning(HttpStatusCode.BadRequest);
 
         RegisterJobResponse response = await client.RegisterJobAsync(
-            "夜間バッチ", "demo", "1", CancellationToken.None);
+            "夜間バッチ", "subtasks", "1 1", CancellationToken.None);
 
         // 失敗であることは保ちつつ、項目別の内訳は無い。ここで例外にしないのは、
         // 400 が「入力を直せば通る」contract どおりの失敗であることに変わりないため。
@@ -61,7 +61,7 @@ public sealed class JobsApiClientNullBodyTests
         // 200 なのに Job が無いのは契約違反で、画面に出せる形が無い。
         // 空の Job をでっち上げると「登録できたように見えるが ID の無い行」という嘘になる。
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => client.RegisterJobAsync("夜間バッチ", "demo", "1", CancellationToken.None));
+            () => client.RegisterJobAsync("夜間バッチ", "subtasks", "1 1", CancellationToken.None));
     }
 
     /// <summary>どのリクエストにも指定ステータスと <c>null</c> 本文で応える偽のクライアント。</summary>

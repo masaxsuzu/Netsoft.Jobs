@@ -41,8 +41,8 @@ public static class JobExecutionServiceCollectionExtensions
 
         // Job の種類を増やすときは、この形で IJobHandler を 1 行足す。
         // TryAddEnumerable にしているのは、同じハンドラを二重に登録しても増えないようにするため。
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IJobHandler, DemoJobHandler>());
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IJobHandler, ArchiveJobHandler>());
+        // ISubTaskStore の実装を選ぶのはホストの関心（IJobStore と同じ）。ここでは登録しない。
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IJobHandler, SubTaskJobHandler>());
 
         services.TryAddSingleton<JobHandlerRegistry>();
         services.TryAddSingleton<RunningJobRegistry>();

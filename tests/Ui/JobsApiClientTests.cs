@@ -30,7 +30,7 @@ public sealed class JobsApiClientTests : IDisposable
     public async Task 登録するとAPI経由で保存され一覧に出る()
     {
         RegisterJobResponse response = await _client.RegisterJobAsync(
-            "夜間バッチ", "demo", "3", CancellationToken.None);
+            "夜間バッチ", "subtasks", "3 1", CancellationToken.None);
 
         Assert.True(response.IsSuccess);
         Assert.NotNull(response.Job);
@@ -66,14 +66,14 @@ public sealed class JobsApiClientTests : IDisposable
     {
         IReadOnlyList<JobTypeDto> jobTypes = await _client.ListJobTypesAsync(CancellationToken.None);
 
-        Assert.Equal([new JobTypeDto("archive"), new JobTypeDto("demo")], jobTypes);
+        Assert.Equal([new JobTypeDto("subtasks")], jobTypes);
     }
 
     [Fact]
     public async Task 待機中のJobはキャンセルできCancelledのJobが返る()
     {
         RegisterJobResponse registered = await _client.RegisterJobAsync(
-            "止めたい Job", "demo", "1", CancellationToken.None);
+            "止めたい Job", "subtasks", "1 1", CancellationToken.None);
         Assert.NotNull(registered.Job);
 
         CancelJobResponse response = await _client.CancelJobAsync(registered.Job.Id, CancellationToken.None);
@@ -100,7 +100,7 @@ public sealed class JobsApiClientTests : IDisposable
     public async Task 終端のJobへのキャンセルは失敗として現在のJobが返る()
     {
         RegisterJobResponse registered = await _client.RegisterJobAsync(
-            "既に終わる Job", "demo", "1", CancellationToken.None);
+            "既に終わる Job", "subtasks", "1 1", CancellationToken.None);
         Assert.NotNull(registered.Job);
 
         // エンジンは止まっているので、Queued へのキャンセルで即座に終端（Cancelled）へ落とせる。

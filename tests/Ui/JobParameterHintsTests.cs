@@ -6,21 +6,16 @@ namespace Netsoft.Jobs.Ui.Tests;
 /// </summary>
 public sealed class JobParameterHintsTests
 {
+    /// <remarks>
+    /// 大文字の行は「大小を区別しない」ことの検査。種類の解決（JobHandlerRegistry）が
+    /// 区別しないので、説明だけ出ないことがあってはならない。
+    /// </remarks>
     [Theory]
-    [InlineData("demo", "待ち秒数（例: 10）")]
-    [InlineData("archive", "固めるディレクトリのパス")]
+    [InlineData("subtasks", "サブタスクの個数と各々の秒数（例: 3 5）")]
+    [InlineData("SUBTASKS", "サブタスクの個数と各々の秒数（例: 3 5）")]
     public void 知っている種類はその種類の説明を返す(string jobType, string expected)
     {
         Assert.Equal(expected, JobParameterHints.For(jobType));
-    }
-
-    [Theory]
-    [InlineData("Demo")]
-    [InlineData("ARCHIVE")]
-    public void 種類の大文字小文字は区別しない(string jobType)
-    {
-        // 種類の解決（JobHandlerRegistry）が区別しないので、説明だけ出ないことがあってはならない。
-        Assert.NotEqual(JobParameterHints.Fallback, JobParameterHints.For(jobType));
     }
 
     [Theory]

@@ -51,7 +51,7 @@ public sealed class JobEventsApiTests : IDisposable
         // 応答が返った後の書き込みが配信されないことはない。
         IJobStore store = _factory.Services.GetRequiredService<IJobStore>();
         await store.AddAsync(
-            Job.Create(JobId.From("job-sse-1"), "通知される Job", "demo", "1", T0),
+            Job.Create(JobId.From("job-sse-1"), "通知される Job", "subtasks", "1 1", T0),
             CancellationToken.None);
 
         Assert.Equal("data: changed", await ReadNextEventAsync(reader));

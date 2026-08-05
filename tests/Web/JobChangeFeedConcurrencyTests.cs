@@ -167,7 +167,7 @@ public sealed class JobChangeFeedConcurrencyTests
     }
 
     private static Job CreateJob() =>
-        Job.Create(JobId.From("job-1"), "テスト", "demo", string.Empty, T0);
+        Job.Create(JobId.From("job-1"), "テスト", "subtasks", string.Empty, T0);
 
     /// <summary>
     /// 参加者全員が揃うまで非同期に待ち合わせる。
