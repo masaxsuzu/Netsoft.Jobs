@@ -135,6 +135,27 @@ public sealed class SubTaskJobHandlerTests : IDisposable
         Assert.Empty(await _store.ListByJobAsync(Job1, CancellationToken.None));
     }
 
+    /// <summary>
+    /// 走り出す前に届いたキャンセルは、行を 1 つも作らずに抜ける。
+    /// </summary>
+    /// <remarks>
+    /// キャンセルの受け口は Running を書き戻すより前に用意されるので、要求が claim と
+    /// ほぼ同時に届くとハンドラは「もう要らない」と分かった状態で始まる。待機に渡した
+    /// トークンだけに頼ると、その前に N 行を作って 1 つ目を開始済みにしてしまい、
+    /// <b>走る前に消された Job に走った形跡が残る</b>。
+    /// </remarks>
+    [Fact]
+    public async Task 走り出す前のキャンセルは行を作らずに抜ける()
+    {
+        using CancellationTokenSource cancellation = new();
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => _handler.ExecuteAsync(Job1, "3 5", cancellation.Token));
+
+        Assert.Empty(await _store.ListByJobAsync(Job1, CancellationToken.None));
+    }
+
     private async Task<IReadOnlyList<SubTaskStatus>> StatusesAsync() =>
         [.. (await _store.ListByJobAsync(Job1, CancellationToken.None)).Select(subTask => subTask.Status)];
 }
