@@ -29,14 +29,22 @@ public sealed class SubTaskJobHandler : IJobHandler
     public static readonly TimeSpan Step = TimeSpan.FromSeconds(1);
 
     private readonly ISubTaskStore _subTasks;
+    private readonly IJobStore _jobs;
     private readonly TimeProvider _timeProvider;
 
-    public SubTaskJobHandler(ISubTaskStore subTasks, TimeProvider timeProvider)
+    /// <param name="jobs">
+    /// 境界で自分の Job の状態を読み直すための口。一時停止の効き目は境界と
+    /// 決まっているので、トークンのような即時の伝達は要らず、読み直しで足りる。
+    /// 書くことは無い（結末を書くのはエンジンの仕事）。
+    /// </param>
+    public SubTaskJobHandler(ISubTaskStore subTasks, IJobStore jobs, TimeProvider timeProvider)
     {
         ArgumentNullException.ThrowIfNull(subTasks);
+        ArgumentNullException.ThrowIfNull(jobs);
         ArgumentNullException.ThrowIfNull(timeProvider);
 
         _subTasks = subTasks;
+        _jobs = jobs;
         _timeProvider = timeProvider;
     }
 
@@ -51,16 +59,35 @@ public sealed class SubTaskJobHandler : IJobHandler
     {
         (int count, int waits) = Parse(parameters);
 
-        SubTask[] subTasks = [.. Enumerable.Range(0, count).Select(index => SubTask.Create(jobId, index))];
+        // 行が既にあるなら、それは前回の実行の続き（一時停止からの再開、または
+        // 受理前に取り消された停止からの走り直し）。済んだものを飛ばして続きから走る。
+        // 個数と行数のずれをどう直すかは編集の関心で、ここでは既存の行を正とする。
+        IReadOnlyList<SubTask> subTasks = await _subTasks.ListByJobAsync(jobId, cancellationToken);
+        if (subTasks.Count == 0)
+        {
+            SubTask[] created = [.. Enumerable.Range(0, count).Select(index => SubTask.Create(jobId, index))];
 
-        // 行を作るまでは畳むものが無いので try の外。ここで中断されても
-        // AddRange は全件か 0 件かなので、中途半端な行は残らない。
-        await _subTasks.AddRangeAsync(subTasks, cancellationToken);
+            // 行を作るまでは畳むものが無いので try の外。ここで中断されても
+            // AddRange は全件か 0 件かなので、中途半端な行は残らない。
+            await _subTasks.AddRangeAsync(created, cancellationToken);
+            subTasks = created;
+        }
 
         try
         {
             foreach (SubTask subTask in subTasks)
             {
+                if (subTask.Status.IsTerminal())
+                {
+                    // 再開したときの、前回までに済んだ（または畳まれた）ぶん。やり直さない。
+                    continue;
+                }
+
+                // 一時停止の観測点。次のサブタスクを始める前に 1 度だけ見る。
+                // 最後のサブタスクの完了後には無いので、走り切ったら結末が勝つ
+                //（状態機械の Pausing + Complete → Completed と同じ判断）。
+                await ThrowIfPauseRequestedAsync(jobId, cancellationToken);
+
                 await RecordAsync(subTask, SubTaskTrigger.Start);
 
                 for (int i = 0; i < waits; i++)
@@ -110,6 +137,23 @@ public sealed class SubTaskJobHandler : IJobHandler
             throw new InvalidOperationException(
                 $"サブタスク {subTask.JobId.Value}[{subTask.Index}] の {trigger} を記録できませんでした。"
                 + "他の書き手がサブタスクを変更しています。");
+        }
+    }
+
+    /// <summary>
+    /// 一時停止が要求されていれば <see cref="JobPausedException"/> で抜ける。
+    /// </summary>
+    /// <remarks>
+    /// 受理を書くのはエンジン（OCE → Cancelled と同じ分担）。ここで Paused を
+    /// 書いてしまうと、結末の書き手が 2 人になり、エンジンの条件付き更新と競合する。
+    /// 読めなかった（行が無い）場合は進む。Job の不在はエンジン側の結末記録が拾う。
+    /// </remarks>
+    private async Task ThrowIfPauseRequestedAsync(JobId jobId, CancellationToken cancellationToken)
+    {
+        Job? job = await _jobs.FindAsync(jobId, cancellationToken);
+        if (job?.Status == JobStatus.Pausing)
+        {
+            throw new JobPausedException(jobId);
         }
     }
 

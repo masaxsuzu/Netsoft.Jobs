@@ -343,49 +343,140 @@ public sealed class JobExecutionEngine
         // Running を書き戻せた直後、つまりこの Job を実行すると確定した点の記録。
         _logger.LogInformation("Job {JobId} ({JobType}) の実行を開始します。", job.Id.Value, job.JobType);
 
-        JobTrigger trigger;
-        string? failureMessage = null;
-
-        try
+        // 一時停止の受理と再開が交差したときだけ 2 周目がある。ハンドラは境界で
+        // Pausing を見て抜けるが、こちらが Paused を書く前に再開（Pausing → Running）が
+        // 割り込むことがある。そのとき Job の所有者はまだ自分なので、抜けずに走り直す。
+        // ハンドラは済んだサブタスクを飛ばして続きから走る。
+        while (true)
         {
-            IJobHandler? handler = _handlers.Find(job.JobType);
-            if (handler is null)
+            JobTrigger trigger;
+            string? failureMessage = null;
+
+            try
             {
-                // 例外にしない。エンジンが止まると他の Job まで動かなくなるので、
-                // この Job だけを失敗として閉じる。
+                IJobHandler? handler = _handlers.Find(job.JobType);
+                if (handler is null)
+                {
+                    // 例外にしない。エンジンが止まると他の Job まで動かなくなるので、
+                    // この Job だけを失敗として閉じる。
+                    trigger = JobTrigger.Fail;
+                    failureMessage = $"JobType \"{job.JobType}\" に対応するハンドラが登録されていません。";
+                }
+                else
+                {
+                    await handler.ExecuteAsync(job.Id, job.Parameters, cancellation.Token);
+
+                    trigger = JobTrigger.Complete;
+                }
+            }
+            catch (JobPausedException)
+            {
+                (bool rerun, JobStatus? settled) = await ConfirmPauseAsync(job.Id);
+                if (rerun)
+                {
+                    _logger.LogInformation(
+                        "Job {JobId} の一時停止は受理される前に再開されました。実行を続けます。", job.Id.Value);
+                    continue;
+                }
+
+                if (settled is { } paused)
+                {
+                    activity?.SetTag("job.status", paused.ToString());
+                }
+
+                return;
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+                // 自分が渡したトークンで終わった場合だけキャンセルとして扱う。
+                // 別のトークンで中断されたのなら、それは利用者の意図ではないので失敗。
+                trigger = JobTrigger.ConfirmCancelled;
+            }
+            catch (Exception exception)
+            {
                 trigger = JobTrigger.Fail;
-                failureMessage = $"JobType \"{job.JobType}\" に対応するハンドラが登録されていません。";
+                failureMessage = Describe(exception);
             }
-            else
+
+            // Error にするのはハンドラの失敗（ハンドラ不在を含む）だけ。キャンセルは利用者が
+            // 意図した結末であって失敗ではないので、Error にすると誤検知の山になる。
+            if (trigger == JobTrigger.Fail)
             {
-                await handler.ExecuteAsync(job.Id, job.Parameters, cancellation.Token);
-
-                trigger = JobTrigger.Complete;
+                activity?.SetStatus(ActivityStatusCode.Error, failureMessage);
             }
-        }
-        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
-        {
-            // 自分が渡したトークンで終わった場合だけキャンセルとして扱う。
-            // 別のトークンで中断されたのなら、それは利用者の意図ではないので失敗。
-            trigger = JobTrigger.ConfirmCancelled;
-        }
-        catch (Exception exception)
-        {
-            trigger = JobTrigger.Fail;
-            failureMessage = Describe(exception);
-        }
 
-        // Error にするのはハンドラの失敗（ハンドラ不在を含む）だけ。キャンセルは利用者が
-        // 意図した結末であって失敗ではないので、Error にすると誤検知の山になる。
-        if (trigger == JobTrigger.Fail)
-        {
-            activity?.SetStatus(ActivityStatusCode.Error, failureMessage);
-        }
+            JobStatus? finished = await FinishAsync(job.Id, trigger, failureMessage);
+            if (finished is { } status)
+            {
+                activity?.SetTag("job.status", status.ToString());
+            }
 
-        JobStatus? finished = await FinishAsync(job.Id, trigger, failureMessage);
-        if (finished is { } status)
+            return;
+        }
+    }
+
+    /// <summary>
+    /// 一時停止の受理（Paused）を書く。ハンドラは既に境界で抜けている。
+    /// </summary>
+    /// <returns>
+    /// rerun が true なら、受理より先に再開が取り消した（Pausing → Running）ので走り直す。
+    /// settled は確定した状態（Paused、またはこの窓でキャンセルが要求されていたら Cancelled）。
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// Paused は終端ではないので <see cref="FinishAsync"/> は使えない（あちらは記録できない
+    /// 結末を Failed に倒す）。ここは受理の窓に割り込みうる 2 つの要求
+    /// （再開・キャンセル）をそれぞれの正しい行き先へ送る。
+    /// </para>
+    /// <para>
+    /// キャンセルへの変換をここでやるのは、ハンドラがもう居ないから。Cancelling は
+    /// 「実行しているプロセスが決着を書くまで」の状態だが、一時停止で抜けた後に
+    /// 要求が来た場合、決着を書けるのは自分だけで、放置すると誰も閉じられない。
+    /// 残ったサブタスクの行は畳まない（Paused からのキャンセルと同じく、中断点の記録として残す）。
+    /// </para>
+    /// </remarks>
+    private async Task<(bool Rerun, JobStatus? Settled)> ConfirmPauseAsync(JobId id)
+    {
+        while (true)
         {
-            activity?.SetTag("job.status", status.ToString());
+            Job? job = await _store.FindAsync(id, CancellationToken.None);
+            if (job is null)
+            {
+                _logger.LogWarning("Job {JobId} は一時停止の受理時に見つかりませんでした。", id.Value);
+                return (Rerun: false, Settled: null);
+            }
+
+            JobTransitionResult result = job.Apply(JobTrigger.ConfirmPaused, _timeProvider.GetUtcNow());
+            if (!result.IsAllowed)
+            {
+                if (job.Status == JobStatus.Running)
+                {
+                    return (Rerun: true, Settled: null);
+                }
+
+                if (job.Status == JobStatus.Cancelling)
+                {
+                    // FinishAsync は Cancelling からの ConfirmCancelled を受理し、
+                    // メトリクスとログもそちらで揃う。
+                    return (Rerun: false, Settled: await FinishAsync(id, JobTrigger.ConfirmCancelled, null));
+                }
+
+                // 終端は他所（復旧など）が書いた。こちらは何も記録しない。
+                _logger.LogInformation(
+                    "Job {JobId} の一時停止は受理できませんでした。現在の状態は {Status} です。",
+                    id.Value,
+                    job.Status);
+                return (Rerun: false, Settled: job.Status);
+            }
+
+            if (await _store.UpdateAsync(job, result.Previous, CancellationToken.None))
+            {
+                // Paused の時刻列は無い。受理の事実と時刻はこのログだけが持つ。
+                _logger.LogInformation("Job {JobId} は一時停止しました。", id.Value);
+                return (Rerun: false, Settled: job.Status);
+            }
+
+            // 書き戻しに負けた。窓に割り込んだ要求を次の周回で正しい行き先へ送る。
         }
     }
 
