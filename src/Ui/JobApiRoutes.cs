@@ -22,4 +22,16 @@ internal static class JobApiRoutes
 
     /// <summary>指定した Job のキャンセル（POST）。</summary>
     public static string CancelFor(string id) => $"{Jobs}/{Uri.EscapeDataString(id)}/cancel";
+
+    /// <summary>指定した Job の一時停止（POST）。</summary>
+    public static string PauseFor(string id) => $"{Jobs}/{Uri.EscapeDataString(id)}/pause";
+
+    /// <summary>指定した Job の再開（POST）。</summary>
+    public static string ResumeFor(string id) => $"{Jobs}/{Uri.EscapeDataString(id)}/resume";
+
+    /// <summary>指定した Job のパラメータの差し替え（PUT）。</summary>
+    public static string ParametersFor(string id) => $"{Jobs}/{Uri.EscapeDataString(id)}/parameters";
+
+    /// <summary>指定した Job のサブタスクの一覧（GET）。</summary>
+    public static string SubTasksFor(string id) => $"{Jobs}/{Uri.EscapeDataString(id)}/subtasks";
 }
