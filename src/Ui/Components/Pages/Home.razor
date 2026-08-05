@@ -90,7 +90,7 @@
                 </tr>
             </thead>
             <tbody>
-                @foreach (JobDto job in _jobs)
+                @foreach (JobListItemDto job in _jobs)
                 {
                     <tr>
                         <td>@job.Name</td>
@@ -98,7 +98,7 @@
                         <td>@job.Status</td>
                         @* サブタスクの進捗（完了 / 総数）。行がまだ無い（登録直後）は「-」。
                            個々の状態まで並べるほどの幅は無いので、数字だけを出す。 *@
-                        <td class="progress">@ProgressFor(job.Id)</td>
+                        <td class="progress">@ProgressFor(job)</td>
                         <td>@Format(job.CreatedAt)</td>
                         <td>@Format(job.StartedAt)</td>
                         <td>@Format(job.FinishedAt)</td>
@@ -110,11 +110,11 @@
                                いつでも走るので、ここで例外を出す式を書くと回路ごと死ぬ
                                （画面全体が二度と操作できなくなる）。get は常に値を返す形にする。 *@
                             <input class="edit-parameters"
-                                   disabled="@(!_interactive || !JobEditability.CanEdit(job))"
+                                   disabled="@(!_interactive || !JobEditability.CanEdit(job.Status))"
                                    @bind:get="EditValueFor(job)"
                                    @bind:set="value => _edits[job.Id] = value ?? string.Empty" />
                             <button type="button"
-                                    disabled="@(!_interactive || !JobEditability.CanEdit(job))"
+                                    disabled="@(!_interactive || !JobEditability.CanEdit(job.Status))"
                                     @onclick="() => EditAsync(job.Id)">
                                 保存
                             </button>
@@ -124,17 +124,17 @@
                                判定すると、状態が増えたときに直し忘れたボタンができる。
                                回路が繋がる前はそれ以前の問題として全部押せない（上の説明を参照）。 *@
                             <button type="button"
-                                    disabled="@(!_interactive || !JobPausability.CanRequestPause(job))"
+                                    disabled="@(!_interactive || !JobPausability.CanRequestPause(job.Status))"
                                     @onclick="() => PauseAsync(job.Id)">
                                 一時停止
                             </button>
                             <button type="button"
-                                    disabled="@(!_interactive || !JobPausability.CanRequestResume(job))"
+                                    disabled="@(!_interactive || !JobPausability.CanRequestResume(job.Status))"
                                     @onclick="() => ResumeAsync(job.Id)">
                                 再開
                             </button>
                             <button type="button"
-                                    disabled="@(!_interactive || !JobCancelability.CanRequestCancel(job))"
+                                    disabled="@(!_interactive || !JobCancelability.CanRequestCancel(job.Status))"
                                     @onclick="() => CancelAsync(job.Id)">
                                 キャンセル
                             </button>
@@ -147,9 +147,8 @@
 </section>
 
 @code {
-    private IReadOnlyList<JobDto> _jobs = [];
+    private IReadOnlyList<JobListItemDto> _jobs = [];
     private IReadOnlyList<JobTypeDto> _jobTypes = [];
-    private readonly Dictionary<string, IReadOnlyList<SubTaskDto>> _subTasks = [];
     private readonly Dictionary<string, string> _edits = [];
     private IDictionary<string, string[]> _registrationErrors = new Dictionary<string, string[]>();
     private string? _notice;
@@ -211,16 +210,9 @@
         });
     }
 
-    private async Task LoadAsync()
-    {
-        _jobs = await Api.ListJobsAsync(CancellationToken.None);
-
-        foreach (JobDto job in _jobs)
-        {
-            // 404（読んでいる間に消えた）は「行なし」と同じ扱いでよい。
-            _subTasks[job.Id] = await Api.ListSubTasksAsync(job.Id, CancellationToken.None) ?? [];
-        }
-    }
+    // 進捗は一覧の応答に載っている。行ごとに取りに行くと、画面の 1 回の更新が
+    // Job の件数だけ往復し、その更新はサブタスクが 1 つ進むたびに起きる。
+    private async Task LoadAsync() => _jobs = await Api.ListJobsAsync(CancellationToken.None);
 
     /// <summary>
     /// 編集欄に出す値。入力中の値があればそれを、無ければサーバの現在値を出す。
@@ -230,19 +222,12 @@
     /// 種まき方式だと、_jobs の差し替えと種まきの間に描画が走った瞬間に
     /// 辞書の取りこぼしが起きる（描画は await のたびに割り込める）。
     /// </remarks>
-    private string EditValueFor(JobDto job) =>
+    private string EditValueFor(JobListItemDto job) =>
         _edits.TryGetValue(job.Id, out string? edited) ? edited : job.Parameters;
 
-    private string ProgressFor(string id)
-    {
-        if (!_subTasks.TryGetValue(id, out IReadOnlyList<SubTaskDto>? subTasks) || subTasks.Count == 0)
-        {
-            return "-";
-        }
-
-        int completed = subTasks.Count(subTask => subTask.Status == "Completed");
-        return $"{completed}/{subTasks.Count}";
-    }
+    // 行がまだ無い（登録直後で分割されていない）のは進捗ゼロとは違うので、0/0 とは出さない。
+    private static string ProgressFor(JobListItemDto job) =>
+        job.TotalSubTasks == 0 ? "-" : $"{job.CompletedSubTasks}/{job.TotalSubTasks}";
 
     /// <summary>
     /// 選択肢に出す種類を取り直す。

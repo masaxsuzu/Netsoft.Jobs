@@ -48,6 +48,16 @@ description: src/ を 4 観点（再利用・単純化・効率・深さ）で�
 
 ### 畳むべきでない・意図的（再提案禁止）
 
+- **定義の形式的な重複はむしろ推奨**（利用者の方針。2026-08 に明示）。型・結果型・応答型・
+  ハンドラが「見た目が同じ」ことは畳む理由にならない。用途ごとに独立して動けるほうが、
+  片方を変えたい日にもう片方まで動くより良い。**以下は判定済みで再提案禁止**:
+  `PauseJobHandler` / `ResumeJobHandler`（差はトリガーとログ文言のみ）、
+  `JobControlResult` / `CancelJobResult`（差はコメントのみ）、
+  Ui の `JobControlResponse` / `CancelJobResponse`（差は型名のみ）、
+  エンドポイントの 200/404/409 写し 3 箇所、`JobDto` と `JobListItemDto` の項目重複。
+  なお「行数を減らす」以外の理由（引数が実際に使っていない値を要求している等）で
+  署名を狭めるのは重複の畳み込みではないので、この禁止の対象外
+
 - エンドポイント 3 本 / `*ServiceCollectionExtensions` / CAS 再試行ループ 3 箇所
 - `JobChangeFeed` の Web・Ui 二重化 / API ルート定数の Ui 側写し
 - `Job.Create` と `RegisterJobHandler.Validate` の検証二重化（層の方向が壊れる）
@@ -73,6 +83,10 @@ description: src/ を 4 観点（再利用・単純化・効率・深さ）で�
   システムライブラリが有るかは無関係。スキップすると CI でだけ E2E が壊れる
 - keep-alive 認知型ポーリングの**検出遅延 最悪 2×interval** と**時計の逆行時の抑止**は
   受容済みのトレードオフ（敵対的検証で確認。ワークステーション用途では実害微小）
+- **一覧の N+1 は解消済み**（#36）。画面が Job ごとに `/subtasks` を呼んでいた頃は
+  3 分半で 377 往復・うち 230 回（61%）がサブタスク取得だった。一覧の応答に進捗を載せ、
+  集計を `CountByJobAsync` の 1 クエリ（GROUP BY）にして、変更通知 1 回あたり 1 往復に固定。
+  **一覧の応答へ「Job ごとに引く」項目を足すときは、必ず集計側も 1 回で取れる形にする**
 - 既知のフレーク: `TemporaryJobStore.Dispose` 等のプロセス全域 `ClearAllPools()` が
   並列テストの `InitializeAsync` と稀に競合する（tests 4 箇所）。直すなら性能でなく
   フレーク解消として。fixture 設計の判断を含むため未着手

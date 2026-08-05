@@ -26,26 +26,48 @@ namespace Netsoft.Jobs.Features.QueryJobs;
 public sealed class QueryJobsHandler
 {
     private readonly IJobStore _store;
+    private readonly ISubTaskStore _subTasks;
 
-    public QueryJobsHandler(IJobStore store)
+    public QueryJobsHandler(IJobStore store, ISubTaskStore subTasks)
     {
         ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(subTasks);
 
         _store = store;
+        _subTasks = subTasks;
     }
 
     /// <summary>
-    /// 全件を作成日時の新しい順で返す。1 件も無ければ空の一覧。
+    /// 全件を作成日時の新しい順で、サブタスクの進捗を添えて返す。1 件も無ければ空の一覧。
     /// </summary>
     /// <remarks>
+    /// <para>
     /// 並び順は <see cref="IJobStore.ListAsync"/> の契約なので、ここでは並べ替え直さない。
     /// 二重に並べ替えると、実装ごとの同時刻の扱いとずれたときに気づけなくなる。
+    /// </para>
+    /// <para>
+    /// 進捗は Job 数によらず 1 回の集計で取る。件数分の問い合わせを撃たないためで、
+    /// 画面は変更通知のたびに一覧を取り直すので、ここの往復数がそのまま鳴り続ける。
+    /// </para>
+    /// <para>
+    /// 2 回の読み出しの間に実行が進むと、Job の状態と進捗が別の瞬間のものになりうる。
+    /// 揃えるにはトランザクションで括ることになるが、一覧は<b>読むそばから古くなる</b>もので、
+    /// どのみち次の変更通知で取り直される。1 画面のちらつきのために読み出しを重くしない。
+    /// </para>
     /// </remarks>
-    public async Task<IReadOnlyList<JobDto>> ListAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<JobListItemDto>> ListAsync(CancellationToken cancellationToken)
     {
         IReadOnlyList<Job> jobs = await _store.ListAsync(cancellationToken);
+        IReadOnlyDictionary<JobId, SubTaskProgress> progress =
+            await _subTasks.CountByJobAsync(cancellationToken);
 
-        return [.. jobs.Select(JobDto.From)];
+        // 行が無い Job は集計に現れない。まだ分割されていないだけなので None を当てる。
+        return
+        [
+            .. jobs.Select(job => JobListItemDto.From(
+                job,
+                progress.TryGetValue(job.Id, out SubTaskProgress found) ? found : SubTaskProgress.None)),
+        ];
     }
 
     /// <summary>

@@ -37,7 +37,7 @@ public sealed class JobsApiClientTests : IDisposable
         Assert.NotNull(response.Job);
         Assert.Equal("Queued", response.Job.Status);
 
-        IReadOnlyList<JobDto> jobs = await _client.ListJobsAsync(CancellationToken.None);
+        IReadOnlyList<JobListItemDto> jobs = await _client.ListJobsAsync(CancellationToken.None);
         Assert.Contains(jobs, job => job.Id == response.Job.Id && job.Name == "夜間バッチ");
     }
 

@@ -36,9 +36,16 @@ public sealed class JobsApiClient
         _client = client;
     }
 
-    /// <summary>すべての Job を取得する。</summary>
-    public async Task<IReadOnlyList<JobDto>> ListJobsAsync(CancellationToken cancellationToken) =>
-        await _client.GetFromJsonAsync<IReadOnlyList<JobDto>>(JobApiRoutes.Jobs, cancellationToken) ?? [];
+    /// <summary>
+    /// すべての Job を、サブタスクの進捗つきで取得する。
+    /// </summary>
+    /// <remarks>
+    /// 進捗が応答に載っているので、行ごとに <see cref="ListSubTasksAsync"/> を呼ばない。
+    /// 呼ぶと画面の 1 回の更新が Job の件数だけ往復することになり、
+    /// 更新はサブタスクが 1 つ進むたびに起きる。
+    /// </remarks>
+    public async Task<IReadOnlyList<JobListItemDto>> ListJobsAsync(CancellationToken cancellationToken) =>
+        await _client.GetFromJsonAsync<IReadOnlyList<JobListItemDto>>(JobApiRoutes.Jobs, cancellationToken) ?? [];
 
     /// <summary>
     /// 登録されている Job の種類を取得する。並び順はサーバが決めた順（名前順）のまま。

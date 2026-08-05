@@ -22,11 +22,16 @@ public sealed class QueryJobsHandlerTests : IDisposable
     private static readonly DateTimeOffset Finished = new(2026, 7, 29, 9, 2, 0, TimeSpan.Zero);
 
     private readonly TemporaryJobStore _store = new();
+    private readonly TemporarySubTaskStore _subTasks = new();
     private readonly QueryJobsHandler _handler;
 
-    public QueryJobsHandlerTests() => _handler = new QueryJobsHandler(_store);
+    public QueryJobsHandlerTests() => _handler = new QueryJobsHandler(_store, _subTasks);
 
-    public void Dispose() => _store.Dispose();
+    public void Dispose()
+    {
+        _subTasks.Dispose();
+        _store.Dispose();
+    }
 
     [Fact]
     public async Task 一覧は作成日時の新しい順で返る()
@@ -35,7 +40,7 @@ public sealed class QueryJobsHandlerTests : IDisposable
         await AddAsync(Queued("job-new", Created.AddHours(2)));
         await AddAsync(Queued("job-middle", Created.AddHours(1)));
 
-        IReadOnlyList<JobDto> jobs = await _handler.ListAsync(CancellationToken.None);
+        IReadOnlyList<JobListItemDto> jobs = await _handler.ListAsync(CancellationToken.None);
 
         Assert.Equal(["job-new", "job-middle", "job-old"], jobs.Select(job => job.Id));
     }
@@ -105,16 +110,45 @@ public sealed class QueryJobsHandlerTests : IDisposable
         await AddAsync(Failed("job-1", Created));
         await AddAsync(Completed("job-2", Created.AddMinutes(1)));
 
-        IReadOnlyList<JobDto> jobs = await _handler.ListAsync(CancellationToken.None);
+        IReadOnlyList<JobListItemDto> jobs = await _handler.ListAsync(CancellationToken.None);
 
-        JobDto failed = jobs.Single(job => job.Id == "job-1");
+        JobListItemDto failed = jobs.Single(job => job.Id == "job-1");
         Assert.Equal(nameof(JobStatus.Failed), failed.Status);
         Assert.Equal(FailureText, failed.FailureMessage);
         Assert.Equal(Finished, failed.FinishedAt);
 
-        JobDto completed = jobs.Single(job => job.Id == "job-2");
+        JobListItemDto completed = jobs.Single(job => job.Id == "job-2");
         Assert.Equal(nameof(JobStatus.Completed), completed.Status);
         Assert.Null(completed.FailureMessage);
+    }
+
+    /// <summary>
+    /// 一覧が進捗を運ぶこと。画面が行ごとにサブタスクを取りに行かずに済む唯一の根拠。
+    /// </summary>
+    [Fact]
+    public async Task 一覧は各Jobのサブタスクの進捗を添えて返る()
+    {
+        await AddAsync(Queued("job-1", Created));
+        await AddAsync(Queued("job-2", Created.AddMinutes(1)));
+
+        // job-1 は 3 行で 1 つ完了。job-2 は行を作らない（登録しただけの Job）。
+        SubTask first = SubTask.Create(JobId.From("job-1"), 0);
+        await _subTasks.AddRangeAsync(
+            [first, SubTask.Create(JobId.From("job-1"), 1), SubTask.Create(JobId.From("job-1"), 2)],
+            CancellationToken.None);
+        await ApplyAsync(first, SubTaskTrigger.Start);
+        await ApplyAsync(first, SubTaskTrigger.Complete);
+
+        IReadOnlyList<JobListItemDto> jobs = await _handler.ListAsync(CancellationToken.None);
+
+        JobListItemDto withRows = jobs.Single(job => job.Id == "job-1");
+        Assert.Equal(1, withRows.CompletedSubTasks);
+        Assert.Equal(3, withRows.TotalSubTasks);
+
+        // 行がまだ無い Job は 0/0。集計に現れないので、既定値が当たることを固定する。
+        JobListItemDto withoutRows = jobs.Single(job => job.Id == "job-2");
+        Assert.Equal(0, withoutRows.CompletedSubTasks);
+        Assert.Equal(0, withoutRows.TotalSubTasks);
     }
 
     [Fact]
@@ -132,6 +166,12 @@ public sealed class QueryJobsHandlerTests : IDisposable
     }
 
     private Task AddAsync(Job job) => _store.AddAsync(job, CancellationToken.None);
+
+    private async Task ApplyAsync(SubTask subTask, SubTaskTrigger trigger)
+    {
+        SubTaskTransition transition = subTask.Apply(trigger);
+        Assert.True(await _subTasks.UpdateAsync(subTask, transition.Previous, CancellationToken.None));
+    }
 
     private static Job Queued(string id, DateTimeOffset createdAt) =>
         Job.Create(JobId.From(id), $"集計 {id}", "Demo", "{}", createdAt);

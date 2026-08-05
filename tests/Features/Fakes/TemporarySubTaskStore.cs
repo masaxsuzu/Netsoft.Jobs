@@ -38,6 +38,10 @@ public sealed class TemporarySubTaskStore : ISubTaskStore, IDisposable
     public Task RemovePendingFromAsync(JobId jobId, int firstIndex, CancellationToken cancellationToken) =>
         _store.RemovePendingFromAsync(jobId, firstIndex, cancellationToken);
 
+    /// <inheritdoc />
+    public Task<IReadOnlyDictionary<JobId, SubTaskProgress>> CountByJobAsync(CancellationToken cancellationToken) =>
+        _store.CountByJobAsync(cancellationToken);
+
     public void Dispose()
     {
         // 自分の DB のプールだけを閉じてから消す（理由は TemporaryJobStore と同じ）。

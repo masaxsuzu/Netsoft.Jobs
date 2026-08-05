@@ -76,5 +76,9 @@ public sealed class NotifyingSubTaskStoreTests
 
         public Task RemovePendingFromAsync(JobId jobId, int firstIndex, CancellationToken cancellationToken) =>
             Task.CompletedTask;
+
+        public Task<IReadOnlyDictionary<JobId, SubTaskProgress>> CountByJobAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyDictionary<JobId, SubTaskProgress>>(
+                new Dictionary<JobId, SubTaskProgress>());
     }
 }

@@ -149,6 +149,38 @@ public sealed class SqliteSubTaskStore : ISubTaskStore
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<JobId, SubTaskProgress>> CountByJobAsync(
+        CancellationToken cancellationToken)
+    {
+        await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using SqliteCommand command = connection.CreateCommand();
+
+        // Job 数によらず 1 回。主キーの先頭が JobId なので、GROUP BY はその並びをそのまま使える。
+        command.CommandText =
+            """
+            SELECT JobId,
+                   SUM(CASE WHEN Status = $completed THEN 1 ELSE 0 END),
+                   COUNT(*)
+            FROM SubTasks
+            GROUP BY JobId;
+            """;
+        command.Parameters.AddWithValue("$completed", SubTaskStatusText.ToText(SubTaskStatus.Completed));
+
+        Dictionary<JobId, SubTaskProgress> progress = [];
+
+        await using SqliteDataReader reader =
+            await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            // GROUP BY の各組には必ず 1 行以上あるので、SUM が NULL になることはない。
+            progress[JobId.From(reader.GetString(0))] =
+                new SubTaskProgress(reader.GetInt32(1), reader.GetInt32(2));
+        }
+
+        return progress;
+    }
+
+    /// <inheritdoc />
     public async Task RemovePendingFromAsync(JobId jobId, int firstIndex, CancellationToken cancellationToken)
     {
         await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);

@@ -24,11 +24,11 @@ public static class QueryJobsEndpoint
 
         // URL は登録の Location ヘッダとキャンセルの生え先が一致していなければならないので、
         // 機能ごとに定数を持たず Features 直下の JobApiRoutes を共有する。
-        endpoints.MapGet(JobApiRoutes.Jobs, async Task<Ok<IReadOnlyList<JobDto>>> (
+        endpoints.MapGet(JobApiRoutes.Jobs, async Task<Ok<IReadOnlyList<JobListItemDto>>> (
             QueryJobsHandler handler,
             CancellationToken cancellationToken) =>
         {
-            IReadOnlyList<JobDto> jobs = await handler.ListAsync(cancellationToken);
+            IReadOnlyList<JobListItemDto> jobs = await handler.ListAsync(cancellationToken);
 
             // 1 件も無いのは異常ではないので、空の配列をそのまま 200 で返す。
             return TypedResults.Ok(jobs);

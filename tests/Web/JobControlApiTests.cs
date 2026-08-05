@@ -149,6 +149,38 @@ public sealed class JobControlApiTests : IDisposable
             (await _client.GetAsync("/api/jobs/does-not-exist/subtasks")).StatusCode);
     }
 
+    /// <summary>
+    /// 一覧の応答が進捗を運ぶこと。画面はこれを見て行ごとの取得をやめているので、
+    /// 落ちると N+1 が黙って戻る（表示は「-」のままになって気づきにくい）。
+    /// </summary>
+    [Fact]
+    public async Task 一覧の応答は各Jobの進捗を含む()
+    {
+        JobDto registered = await RegisterAsync();
+
+        IReadOnlyList<JobListItemDto>? beforeRows =
+            await _client.GetFromJsonAsync<IReadOnlyList<JobListItemDto>>("/api/jobs");
+        JobListItemDto before = Assert.Single(beforeRows!);
+
+        // 行が作られる前は 0/0。「進捗ゼロ」ではなく「まだ分割されていない」。
+        Assert.Equal(0, before.TotalSubTasks);
+
+        ISubTaskStore subTasks = _factory.Services.GetRequiredService<ISubTaskStore>();
+        SubTask first = SubTask.Create(JobId.From(registered.Id), 0);
+        await subTasks.AddRangeAsync([first, SubTask.Create(JobId.From(registered.Id), 1)], CancellationToken.None);
+        SubTaskTransition started = first.Apply(SubTaskTrigger.Start);
+        Assert.True(await subTasks.UpdateAsync(first, started.Previous, CancellationToken.None));
+        SubTaskTransition completed = first.Apply(SubTaskTrigger.Complete);
+        Assert.True(await subTasks.UpdateAsync(first, completed.Previous, CancellationToken.None));
+
+        IReadOnlyList<JobListItemDto>? afterRows =
+            await _client.GetFromJsonAsync<IReadOnlyList<JobListItemDto>>("/api/jobs");
+        JobListItemDto after = Assert.Single(afterRows!);
+
+        Assert.Equal(1, after.CompletedSubTasks);
+        Assert.Equal(2, after.TotalSubTasks);
+    }
+
     private async Task<JobDto> RegisterAsync()
     {
         HttpResponseMessage response = await _client.PostAsJsonAsync(
