@@ -43,3 +43,4 @@ auto-merge を有効にしてよいのは、受け入れ条件を満たし、ロ
 
 - [build.md](./docs/build.md) — ビルド・テスト・カバレッジの規則
 - [conventions.md](./docs/conventions.md) — コーディング規約と命名
+- [operating.md](./docs/operating.md) — 単一プロセス前提と、handler を書く人への契約
