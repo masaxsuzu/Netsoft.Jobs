@@ -22,12 +22,16 @@
     カバレッジの基準。マージ済みの全体に対して判定するので、最後に走るこの
     プロジェクトにだけ置く（設定は tests/Directory.Build.props の注記を参照）。
 
+    基準は C1（分岐）だけに置く。行（C0）は分岐を全部通せばほぼ付いてくるので、
+    基準を二重にしても守れるものは増えず、「行を踏むだけで判断を検証しない」
+    テストを温存する圧力にだけなる。行の計測と表示は残る。基準にしないだけ。
+
     ThresholdStat を Total にするのは、既定の Minimum がモジュール単位の最小値を
     見るため。全体が基準を満たしていても小さなモジュール 1 つで落ちてしまう。
   -->
   <PropertyGroup Condition="'$(CollectCoverage)' == 'true'">
-    <Threshold>90,80</Threshold>
-    <ThresholdType>line,branch</ThresholdType>
+    <Threshold>80</Threshold>
+    <ThresholdType>branch</ThresholdType>
     <ThresholdStat>Total</ThresholdStat>
   </PropertyGroup>
 
