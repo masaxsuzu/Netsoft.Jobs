@@ -71,6 +71,13 @@ public sealed class SubTaskJobHandler : IJobHandler
     {
         (int count, int waits) = SubTaskParameters.Parse(parameters);
 
+        // 何かを書く前のキャンセル観測点。キャンセルの受け口は Running を書き戻すより
+        // 前に用意されている（JobExecutionEngine の注記）ので、要求が claim とほぼ同時に
+        // 届くとハンドラは「もう要らない」と分かった状態で始まる。ここで先に抜ければ、
+        // サブタスクの行を 1 つも作らずに済む ── 走る前に消された Job に、
+        // 走った形跡（Cancelled の行が N 個）を残さない。
+        cancellationToken.ThrowIfCancellationRequested();
+
         // 行が既にあるなら、それは前回の実行の続き（一時停止からの再開、または
         // 受理前に取り消された停止からの走り直し）。済んだものを飛ばして続きから走る。
         List<SubTask> subTasks = [.. await _subTasks.ListByJobAsync(jobId, cancellationToken)];
@@ -88,6 +95,13 @@ public sealed class SubTaskJobHandler : IJobHandler
         {
             while (true)
             {
+                // 次のサブタスクを始める前のキャンセル観測点。**結末は変えない** ──
+                // 畳み（CancelRemainingAsync）が Running も Pending も同じ Cancelled に
+                // するので、ここを外しても最終状態は 1 ビットも変わらない。
+                // 省くのは無駄な仕事（境界の読み直しと、開始の書き込みと、1 秒の待ち）だけ。
+                // 守りではないので、これが何かを保証していると読まないこと。
+                cancellationToken.ThrowIfCancellationRequested();
+
                 // 境界。一時停止の観測と編集の反映をここでまとめて行う。
                 // 最後のサブタスクの完了後には境界が無いので、走り切ったら結末が勝つ
                 //（状態機械の Pausing + Complete → Completed と同じ判断）。
