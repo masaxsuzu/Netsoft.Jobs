@@ -110,6 +110,68 @@ public sealed class PauseResumeHandlerTests : IDisposable
         Assert.Null(resumed.Job);
     }
 
+    /// <summary>
+    /// 読み出しと保存の間に他所が書いていたら、書き戻さずに読み直してやり直す。
+    /// </summary>
+    /// <remarks>
+    /// この再試行を外しても結末は「受理」で返るので、外から見ると成功したように見える
+    /// （API は 200、画面には「一時停止しました」）。実際には DB が変わらないまま
+    /// Job が走り続ける。**変異検査でこの穴が素通りしていた**ので、両方の口に置く。
+    /// </remarks>
+    [Fact]
+    public async Task 読み出しと保存の間に書かれたら読み直してやり直す()
+    {
+        InterferingJobStore interfering = new(_store);
+        FixedTimeProvider time = new(Requested);
+        PauseJobHandler pause = new(interfering, time, NullLogger<PauseJobHandler>.Instance);
+
+        await AddAsync(JobAt("job-1", nameof(JobStatus.Running)));
+
+        // 書き戻す直前に、状態を動かさない書き込み（編集）を差し込む。版が進むので
+        // 1 回目の書き戻しは通らない。状態は Running のままなので、読み直せば受理できる。
+        interfering.BeforeNextUpdate = async () =>
+        {
+            Job edited = await SavedAsync("job-1");
+            edited.ChangeParameters("9 9");
+            Assert.True(await _store.UpdateAsync(edited, CancellationToken.None));
+        };
+
+        JobControlResult result = await pause.HandleAsync("job-1", CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(nameof(JobStatus.Pausing), result.Job?.Status);
+
+        // 保存まで届いていること（受理を返しただけ、では通らない）。
+        Job saved = await SavedAsync("job-1");
+        Assert.Equal(JobStatus.Pausing, saved.Status);
+        Assert.Equal("9 9", saved.Parameters);
+        Assert.Equal(2, interfering.UpdateAttempts);
+    }
+
+    /// <summary>再開側も同じ。<see cref="読み出しと保存の間に書かれたら読み直してやり直す"/> を参照。</summary>
+    [Fact]
+    public async Task 再開も読み出しと保存の間に書かれたら読み直してやり直す()
+    {
+        InterferingJobStore interfering = new(_store);
+        FixedTimeProvider time = new(Requested);
+        ResumeJobHandler resume = new(interfering, time, NullLogger<ResumeJobHandler>.Instance);
+
+        await AddAsync(JobAt("job-1", nameof(JobStatus.Paused)));
+
+        interfering.BeforeNextUpdate = async () =>
+        {
+            Job edited = await SavedAsync("job-1");
+            edited.ChangeParameters("9 9");
+            Assert.True(await _store.UpdateAsync(edited, CancellationToken.None));
+        };
+
+        JobControlResult result = await resume.HandleAsync("job-1", CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(nameof(JobStatus.Queued), (await SavedAsync("job-1")).Status.ToString());
+        Assert.Equal(2, interfering.UpdateAttempts);
+    }
+
     private Task AddAsync(Job job) => _store.AddAsync(job, CancellationToken.None);
 
     private async Task<Job> SavedAsync(string id) =>

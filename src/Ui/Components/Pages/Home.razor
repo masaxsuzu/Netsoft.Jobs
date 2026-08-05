@@ -1,12 +1,12 @@
 @page "/"
 @using Netsoft.Jobs.Contracts
 @implements IDisposable
-@inject JobsApiClient Api
+@inject JobBoard Board
 @inject JobChangeFeed ChangeFeed
 
 @* 画面は HTTP API（別プロセスの Web ホスト）を型付きクライアント越しに呼ぶ。
-   ハンドラはもう同じプロセスに居ない。HTTP の形（400/404/409）はクライアントが
-   結果型へ写すので、この画面はステータスコードを知らない。 *@
+   状態と操作は JobBoard が持ち、ここは見せ方だけを持つ。分けてある理由は
+   JobBoard の注記を参照（測れるようにするためと、回路なしで叩けるようにするため）。 *@
 
 <h1>Netsoft.Jobs</h1>
 
@@ -18,8 +18,8 @@
     <form @onsubmit="RegisterAsync">
         <div>
             <label for="job-name">名前</label>
-            <input id="job-name" disabled="@(!_interactive)" @bind="_name" />
-            @foreach (string message in ErrorsFor("name"))
+            <input id="job-name" disabled="@(!_interactive)" @bind="Board.Name" />
+            @foreach (string message in Board.ErrorsFor("name"))
             {
                 <p class="error">@message</p>
             }
@@ -28,22 +28,20 @@
             <label for="job-type">種類</label>
             @* 選択肢はサーバ（登録済みのハンドラ）から来る。ここに種類名を並べると、
                ハンドラを足し引きしたときに実行できる種類とずれる。 *@
-            <select id="job-type" disabled="@(!_interactive || !CanRegister)" @bind="_jobType">
+            <select id="job-type" disabled="@(!_interactive || !Board.CanRegister)" @bind="Board.JobType">
                 @* 既定を空にしておく。先頭の種類を勝手に選ぶと、選んだつもりのない
                    種類のまま登録できてしまう。 *@
                 <option value="">選択してください</option>
-                @foreach (JobTypeDto jobType in _jobTypes)
+                @foreach (JobTypeDto jobType in Board.JobTypes)
                 {
                     <option value="@jobType.JobType">@jobType.JobType</option>
                 }
             </select>
-            @if (_jobTypesNotice is not null)
+            @if (Board.JobTypesNotice is not null)
             {
-                @* 一覧の _notice と分けてあるのは、この知らせが「登録できない理由」であり、
-                   一覧の操作（キャンセル）の結果で消えてはいけないため。 *@
-                <p class="notice">@_jobTypesNotice</p>
+                <p class="notice">@Board.JobTypesNotice</p>
             }
-            @foreach (string message in ErrorsFor("jobType"))
+            @foreach (string message in Board.ErrorsFor("jobType"))
             {
                 <p class="error">@message</p>
             }
@@ -52,23 +50,24 @@
             <label for="job-parameters">パラメータ</label>
             @* 欄はテキスト 1 つのまま（Parameters はハンドラだけが解釈する不透明な文字列）。
                何を入れるのかの説明だけを、UI 側の対応表から選んだ種類に応じて出す。 *@
-            <input id="job-parameters" disabled="@(!_interactive)" @bind="_parameters" placeholder="@JobParameterHints.For(_jobType)" />
-            @foreach (string message in ErrorsFor("parameters"))
+            <input id="job-parameters" disabled="@(!_interactive)" @bind="Board.Parameters"
+                   placeholder="@JobParameterHints.For(Board.JobType)" />
+            @foreach (string message in Board.ErrorsFor("parameters"))
             {
                 <p class="error">@message</p>
             }
         </div>
-        <button type="submit" disabled="@(!_interactive || !CanRegister)">登録</button>
+        <button type="submit" disabled="@(!_interactive || !Board.CanRegister || Board.IsBusy)">登録</button>
     </form>
 </section>
 
 <section>
     <h2>Job の一覧</h2>
-    @if (_notice is not null)
+    @if (Board.Notice is not null)
     {
-        <p class="notice">@_notice</p>
+        <p class="notice">@Board.Notice</p>
     }
-    @if (_jobs.Count == 0)
+    @if (Board.Jobs.Count == 0)
     {
         <p>Job はまだありません。</p>
     }
@@ -90,18 +89,23 @@
                 </tr>
             </thead>
             <tbody>
-                @foreach (JobListItemDto job in _jobs)
+                @* @key で行と Job を結びつける。無いと Blazor は行 DOM を「位置」で
+                   再利用するので、新しい Job が入って行がずれたときに、まだ確定して
+                   いない入力（レンダーツリーに乗っていない値）が別の Job の行へ移る。
+                   その行で保存すると、打った値ではなくサーバ値が送られて何も保存されず、
+                   それでも欄には打った文字が残る ── 画面が嘘をつく。 *@
+                @foreach (JobListItemDto job in Board.Jobs)
                 {
-                    <tr>
+                    <tr @key="job.Id">
                         <td>@job.Name</td>
                         <td>@job.JobType</td>
                         <td>@job.Status</td>
                         @* サブタスクの進捗（完了 / 総数）。行がまだ無い（登録直後）は「-」。
                            個々の状態まで並べるほどの幅は無いので、数字だけを出す。 *@
-                        <td class="progress">@ProgressFor(job)</td>
-                        <td>@Format(job.CreatedAt)</td>
-                        <td>@Format(job.StartedAt)</td>
-                        <td>@Format(job.FinishedAt)</td>
+                        <td class="progress">@JobBoard.ProgressFor(job)</td>
+                        <td>@JobBoard.Format(job.CreatedAt)</td>
+                        <td>@JobBoard.Format(job.StartedAt)</td>
+                        <td>@JobBoard.Format(job.FinishedAt)</td>
                         <td>@job.FailureMessage</td>
                         <td>
                             @* 実行中でも編集できる（反映はサブタスクの境界）。入力中の値は
@@ -110,12 +114,12 @@
                                いつでも走るので、ここで例外を出す式を書くと回路ごと死ぬ
                                （画面全体が二度と操作できなくなる）。get は常に値を返す形にする。 *@
                             <input class="edit-parameters"
-                                   disabled="@(!_interactive || !JobEditability.CanEdit(job.Status))"
-                                   @bind:get="EditValueFor(job)"
-                                   @bind:set="value => _edits[job.Id] = value ?? string.Empty" />
+                                   disabled="@(!_interactive || !JobEditability.CanEdit(job.Status) || Board.IsBusy)"
+                                   @bind:get="Board.EditValueFor(job)"
+                                   @bind:set="value => Board.SetEdit(job.Id, value)" />
                             <button type="button"
-                                    disabled="@(!_interactive || !JobEditability.CanEdit(job.Status))"
-                                    @onclick="() => EditAsync(job.Id)">
+                                    disabled="@(!_interactive || !JobEditability.CanEdit(job.Status) || Board.IsBusy)"
+                                    @onclick="() => Board.EditAsync(job.Id, CancellationToken.None)">
                                 保存
                             </button>
                         </td>
@@ -124,18 +128,18 @@
                                判定すると、状態が増えたときに直し忘れたボタンができる。
                                回路が繋がる前はそれ以前の問題として全部押せない（上の説明を参照）。 *@
                             <button type="button"
-                                    disabled="@(!_interactive || !JobPausability.CanRequestPause(job.Status))"
-                                    @onclick="() => PauseAsync(job.Id)">
+                                    disabled="@(!_interactive || !JobPausability.CanRequestPause(job.Status) || Board.IsBusy)"
+                                    @onclick="() => Board.PauseAsync(job.Id, CancellationToken.None)">
                                 一時停止
                             </button>
                             <button type="button"
-                                    disabled="@(!_interactive || !JobPausability.CanRequestResume(job.Status))"
-                                    @onclick="() => ResumeAsync(job.Id)">
+                                    disabled="@(!_interactive || !JobPausability.CanRequestResume(job.Status) || Board.IsBusy)"
+                                    @onclick="() => Board.ResumeAsync(job.Id, CancellationToken.None)">
                                 再開
                             </button>
                             <button type="button"
-                                    disabled="@(!_interactive || !JobCancelability.CanRequestCancel(job.Status))"
-                                    @onclick="() => CancelAsync(job.Id)">
+                                    disabled="@(!_interactive || !JobCancelability.CanRequestCancel(job.Status) || Board.IsBusy)"
+                                    @onclick="() => Board.CancelAsync(job.Id, CancellationToken.None)">
                                 キャンセル
                             </button>
                         </td>
@@ -147,21 +151,6 @@
 </section>
 
 @code {
-    private IReadOnlyList<JobListItemDto> _jobs = [];
-    private IReadOnlyList<JobTypeDto> _jobTypes = [];
-    private readonly Dictionary<string, string> _edits = [];
-    private IDictionary<string, string[]> _registrationErrors = new Dictionary<string, string[]>();
-    private string? _notice;
-    private string? _jobTypesNotice;
-
-    // 選べる種類が 1 つも無い状態で登録させない。押しても種類が空で必ず弾かれるだけで、
-    // 利用者にはどうしようもない（種類は自分では入力できない）。
-    private bool CanRegister => _jobTypes.Count > 0;
-
-    private string _name = string.Empty;
-    private string _jobType = string.Empty;
-    private string _parameters = string.Empty;
-
     // 回路が繋がって操作がサーバに届くようになったか。プリレンダリング中は false のまま
     // 描画されるので、フォームは見えても disabled で押せない。
     private bool _interactive;
@@ -182,11 +171,12 @@
         // 読み込みより先に購読する。逆順だと、読み込みと再描画のすき間に起きた変更を取りこぼす。
         ChangeFeed.Changed += HandleChanged;
 
-        await LoadJobTypesAsync();
-        await LoadAsync();
+        await Board.InitializeAsync(CancellationToken.None);
     }
 
     public void Dispose() => ChangeFeed.Changed -= HandleChanged;
+
+    private Task RegisterAsync() => Board.RegisterAsync(CancellationToken.None);
 
     /// <summary>
     /// 実行エンジンや他の画面が Job を変えたときに呼ばれる。
@@ -194,158 +184,19 @@
     private void HandleChanged()
     {
         // 発火元はエンジンや API のスレッドなので、必ずこの回路の同期コンテキストへ載せ替える。
-        // 例外を出すと通知の発火元（store の書き込み）へ漏れるため、ここで握って表示に変える。
+        // 取り直し自体の失敗は Board が知らせに変えるので、ここで握るのは載せ替えと
+        // 再描画の失敗だけ。通知の発火元（store の書き込み）へ例外を漏らさない。
         _ = InvokeAsync(async () =>
         {
             try
             {
-                await LoadAsync();
+                await Board.ReloadAsync(CancellationToken.None);
                 StateHasChanged();
             }
-            catch (Exception exception)
+            catch (Exception)
             {
-                _notice = $"一覧の更新に失敗しました: {exception.Message}";
-                StateHasChanged();
+                // ここへ来るのは再描画そのものが壊れたときで、画面に出す先も残っていない。
             }
         });
     }
-
-    // 進捗は一覧の応答に載っている。行ごとに取りに行くと、画面の 1 回の更新が
-    // Job の件数だけ往復し、その更新はサブタスクが 1 つ進むたびに起きる。
-    private async Task LoadAsync() => _jobs = await Api.ListJobsAsync(CancellationToken.None);
-
-    /// <summary>
-    /// 編集欄に出す値。入力中の値があればそれを、無ければサーバの現在値を出す。
-    /// </summary>
-    /// <remarks>
-    /// _edits は「利用者が打った値」だけを持ち、読み込みでの種まきをしない。
-    /// 種まき方式だと、_jobs の差し替えと種まきの間に描画が走った瞬間に
-    /// 辞書の取りこぼしが起きる（描画は await のたびに割り込める）。
-    /// </remarks>
-    private string EditValueFor(JobListItemDto job) =>
-        _edits.TryGetValue(job.Id, out string? edited) ? edited : job.Parameters;
-
-    // 行がまだ無い（登録直後で分割されていない）のは進捗ゼロとは違うので、0/0 とは出さない。
-    private static string ProgressFor(JobListItemDto job) =>
-        job.TotalSubTasks == 0 ? "-" : $"{job.CompletedSubTasks}/{job.TotalSubTasks}";
-
-    /// <summary>
-    /// 選択肢に出す種類を取り直す。
-    /// </summary>
-    /// <remarks>
-    /// 失敗しても画面ごと落とさない。種類が取れないのは登録できないというだけで、
-    /// 一覧は見えるべきだし、API が戻れば次の読み込みで選べるようになる。
-    /// 例外の型を絞らないのは、ここで区別しても利用者への伝え方が変わらないため
-    /// （繋がらない・5xx・壊れた応答のいずれも「取得できなかった」に落ちる）。
-    /// </remarks>
-    private async Task LoadJobTypesAsync()
-    {
-        try
-        {
-            _jobTypes = await Api.ListJobTypesAsync(CancellationToken.None);
-            _jobTypesNotice = _jobTypes.Count == 0
-                ? "登録できる Job の種類がありません。"
-                : null;
-        }
-        catch (Exception exception)
-        {
-            _jobTypes = [];
-            _jobTypesNotice = $"Job の種類を取得できませんでした: {exception.Message}";
-        }
-    }
-
-    private async Task RegisterAsync()
-    {
-        RegisterJobResponse result = await Api.RegisterJobAsync(
-            _name, _jobType, _parameters, CancellationToken.None);
-
-        if (!result.IsSuccess)
-        {
-            // API の 400（ValidationProblem）の errors がそのまま項目ごとの表示に使える形。
-            _registrationErrors = result.Errors;
-            return;
-        }
-
-        _registrationErrors = new Dictionary<string, string[]>();
-        _name = string.Empty;
-        _jobType = string.Empty;
-        _parameters = string.Empty;
-
-        // 一覧は store の変更通知でも更新されるが、自分の操作の結果は通知を待たずに反映する。
-        await LoadAsync();
-    }
-
-    private async Task PauseAsync(string id)
-    {
-        JobControlResponse result = await Api.PauseJobAsync(id, CancellationToken.None);
-
-        _notice = result switch
-        {
-            { Job: null } => "対象の Job が見つかりませんでした。",
-            { IsSuccess: false } => $"一時停止できませんでした。現在の状態: {result.Job.Status}",
-            _ => null,
-        };
-
-        await LoadAsync();
-    }
-
-    private async Task ResumeAsync(string id)
-    {
-        JobControlResponse result = await Api.ResumeJobAsync(id, CancellationToken.None);
-
-        _notice = result switch
-        {
-            { Job: null } => "対象の Job が見つかりませんでした。",
-            { IsSuccess: false } => $"再開できませんでした。現在の状態: {result.Job.Status}",
-            _ => null,
-        };
-
-        await LoadAsync();
-    }
-
-    private async Task EditAsync(string id)
-    {
-        // 打っていなければ欄にはサーバ値が出ているので、それをそのまま送る（実質の無変更）。
-        string parameters = _edits.TryGetValue(id, out string? edited)
-            ? edited
-            : _jobs.FirstOrDefault(job => job.Id == id)?.Parameters ?? string.Empty;
-        EditJobResponse result = await Api.EditJobParametersAsync(id, parameters, CancellationToken.None);
-
-        _notice = result switch
-        {
-            { IsSuccess: true } => null,
-            { Errors.Count: > 0 } => $"編集できませんでした: {result.Errors.Values.SelectMany(m => m).FirstOrDefault()}",
-            { Job: null } => "対象の Job が見つかりませんでした。",
-            _ => $"編集できませんでした。現在の状態: {result.Job.Status}",
-        };
-
-        if (result.IsSuccess)
-        {
-            // 入力中の値を破棄して、欄をサーバの現在値（受理された形）へ戻す。
-            _edits.Remove(id);
-        }
-
-        await LoadAsync();
-    }
-
-    private async Task CancelAsync(string id)
-    {
-        CancelJobResponse result = await Api.CancelJobAsync(id, CancellationToken.None);
-
-        // 拒否は誤りではなく「ボタンを出した後に状態が進んだ」競合。現在の状態を見せて説明する。
-        _notice = result switch
-        {
-            { Job: null } => "対象の Job が見つかりませんでした。",
-            { IsSuccess: false } => $"キャンセルできませんでした。現在の状態: {result.Job.Status}",
-            _ => null,
-        };
-
-        await LoadAsync();
-    }
-
-    private IEnumerable<string> ErrorsFor(string field) =>
-        _registrationErrors.TryGetValue(field, out string[]? messages) ? messages : [];
-
-    private static string Format(DateTimeOffset? value) =>
-        value is { } present ? present.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") : "-";
 }

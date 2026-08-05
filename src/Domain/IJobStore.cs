@@ -71,7 +71,9 @@ public interface IJobStore
     Task<Job?> FindOldestQueuedAsync(CancellationToken cancellationToken);
 
     /// <summary>
-    /// 指定した状態の Job を取得する。起動時復旧で Running / Cancelling を拾うのに使う。
+    /// 指定した状態の Job を取得する。起動時復旧が、ハンドラが動いていたはずの状態
+    /// （Running / Cancelling / Pausing。<see cref="JobStatusExtensions.IsHandlerActive"/>）を
+    /// 拾うのに使う。
     /// </summary>
     Task<IReadOnlyList<Job>> ListByStatusAsync(JobStatus status, CancellationToken cancellationToken);
 }

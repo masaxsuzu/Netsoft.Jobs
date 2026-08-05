@@ -133,11 +133,16 @@ public sealed class EditExecutionTests : IDisposable
     }
 
     /// <summary>
-    /// 検証をすり抜けた「N &lt; 着手済み」（検証と反映の間に次のサブタスクが走った競合）は、
-    /// 境界が着手済みへ切り上げる。着手済みの行はどの経路でも消えない。
+    /// 検証をすり抜けた「N &lt; 着手済み」（検証と反映の間に次のサブタスクが走った競合）でも、
+    /// 着手済みの行は消えない。
     /// </summary>
+    /// <remarks>
+    /// 守っているのは RemovePendingFromAsync の SQL（未着手しか消さない）である。
+    /// 以前この試験は「境界が着手済みへ切り上げる」という名前だったが、その切り上げを
+    /// 消してもここは通った ── 検出していたのは最初から SQL の側だった。
+    /// </remarks>
     [Fact]
-    public async Task 着手済みを下回るNは境界で着手済みへ切り上げられる()
+    public async Task 着手済みの行はNを下回る編集でも消えない()
     {
         await RegisterAsync("3 1");
         JobExecutionEngine engine = await StartEngineAsync();

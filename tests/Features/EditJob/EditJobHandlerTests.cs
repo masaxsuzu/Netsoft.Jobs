@@ -124,6 +124,38 @@ public sealed class EditJobHandlerTests : IDisposable
         Assert.Empty(result.Errors);
     }
 
+    /// <summary>
+    /// 読み出しと保存の間に他所が書いていたら、書き戻さずに読み直してやり直す。
+    /// </summary>
+    /// <remarks>
+    /// この再試行を外しても結末は「受理」で返る（API は 200、画面は保存されたと表示する）。
+    /// 実際には保存されていない。**変異検査でこの穴が素通りしていた**ので固定する。
+    /// </remarks>
+    [Fact]
+    public async Task 読み出しと保存の間に書かれたら読み直してやり直す()
+    {
+        await AddJobAsync(nameof(JobStatus.Running), "2 1");
+
+        InterferingJobStore interfering = new(_jobs);
+        EditJobHandler handler = new(interfering, _subTasks, NullLogger<EditJobHandler>.Instance);
+
+        // 書き戻す直前に、状態を動かさない書き込みを差し込む（版だけが進む）。
+        interfering.BeforeNextUpdate = async () =>
+        {
+            Job other = await SavedAsync();
+            other.ChangeParameters("7 7");
+            Assert.True(await _jobs.UpdateAsync(other, CancellationToken.None));
+        };
+
+        EditJobResult result = await handler.HandleAsync("job-1", "5 3", CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+
+        // 受理を返しただけでなく、実際に保存まで届いていること。
+        Assert.Equal("5 3", (await SavedAsync()).Parameters);
+        Assert.Equal(2, interfering.UpdateAttempts);
+    }
+
     private async Task AddJobAsync(string status, string parameters)
     {
         JobStatus target = Enum.Parse<JobStatus>(status);

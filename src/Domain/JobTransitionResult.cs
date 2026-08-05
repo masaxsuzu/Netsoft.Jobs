@@ -17,13 +17,14 @@ public readonly record struct JobTransitionResult
     }
 
     /// <summary>
-    /// 判定を行った時点の状態。<see cref="IJobStore.UpdateAsync"/> の期待状態に渡す。
+    /// 判定を行った時点の状態。<see cref="Job.Apply"/> が Job を破壊的に変えた後でも、
+    /// 「どこから来たか」をこの結果から読める。
     /// </summary>
     /// <remarks>
-    /// これを結果に載せるのは、遷移前の状態を知っているのが判定そのものだけだから。
-    /// 呼び出し側に控えさせると、<see cref="Job.Apply"/> が Job を破壊的に変える前に
-    /// 控えるという順序の約束が生まれ、破っても何も言われない。破ると期待状態が遷移「後」の
-    /// 状態になり、条件付き更新が永久に一致せず、読み直しのループが回り続ける。
+    /// かつては <see cref="IJobStore.UpdateAsync"/> の期待状態として渡していたが、
+    /// 条件付き更新の守りが状態から版（<see cref="Job.Version"/>）へ移ったので、
+    /// その用途は無くなった。いま読んでいるのは実行エンジンだけで、結末の書き込みが
+    /// 「キャンセル要求中に完走した」のか単なる完了かを見分けてログを分けるのに使う。
     /// </remarks>
     public JobStatus Previous { get; }
 

@@ -23,8 +23,13 @@
     検証されているコードが未カバーに見える（実測: Features 単独 73.7%）。
 
     除外は「E2E が実プロセスで検証しているが、coverlet が別プロセスを計測できないもの」だけ。
-    *.razor のイベントハンドラは回路 (WebSocket) 経由でしか動かない。
+    *.razor に残るのは markup と、回路 (WebSocket) が無いと呼ばれないライフサイクル
+    (OnAfterRender・変更通知の載せ替え) だけである。
     テストを書けるのに書いていないものを除外で隠さないこと。
+
+    かつてこの除外は画面のロジックまで丸ごと隠していた。@code に 200 行が入っていて、
+    「一時停止ボタンが再開を叩く」ように壊しても全テストが通る状態だった（変異検査で発覚）。
+    状態と操作は JobBoard へ出して計測下に置いた。**.razor に振る舞いを戻さないこと。**
   -->
   <PropertyGroup Condition="'$(CollectCoverage)' == 'true'">
     <CoverletOutput>$(MSBuildThisFileDirectory)../TestResults/coverage.json</CoverletOutput>
