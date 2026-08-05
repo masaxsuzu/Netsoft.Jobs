@@ -64,9 +64,17 @@ public sealed class JobEventsSubscriptionService : BackgroundService
     /// <summary>
     /// SSE へ接続し続ける。切れたら（繋がらなかったら）間隔を置いて繋ぎ直す。
     /// </summary>
+    /// <remarks>
+    /// ループの出口は停止要求で発火する 2 つの return だけ。入口に
+    /// <c>!stoppingToken.IsCancellationRequested</c> の番人を置かないのは、
+    /// 周回の締めの Task.Delay が同じトークンで必ず止まるので二重の確認になるうえ、
+    /// 停止済みトークンでの起動は BackgroundService が ExecuteAsync を呼ばずに
+    /// 打ち切るため（.NET 10 で確認）、入口で偽になる経路がそもそも無いから。
+    /// 置くと、どのテストからも到達できない分岐が計測に残り続ける。
+    /// </remarks>
     private async Task SubscribeAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
+        while (true)
         {
             try
             {
@@ -139,9 +147,13 @@ public sealed class JobEventsSubscriptionService : BackgroundService
     /// <summary>
     /// SSE と独立に間隔を計り、受信が途絶えているときだけ合図を発火し続ける。
     /// </summary>
+    /// <remarks>
+    /// 出口は Task.Delay の停止だけ。入口に番人を置かない理由は
+    /// <see cref="SubscribeAsync"/> と同じ。
+    /// </remarks>
     private async Task PollAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
+        while (true)
         {
             try
             {
