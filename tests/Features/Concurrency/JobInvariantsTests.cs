@@ -21,13 +21,16 @@ public sealed class JobInvariantsTests
     /// <remarks>
     /// 個別のケースを並べるのではなく総当たりにするのは、状態機械に遷移を足したときに
     /// テストを書き足さなくても検査が追随するようにするため。
-    /// 遷移は終端で必ず止まるので、深さを切らなくても列挙は有限で終わる。
+    /// 一時停止と再開で Queued へ戻る閉路ができたので、終端だけでは列挙が止まらない
+    /// （実際に無限再帰で落ちた）。既に通った状態へ 2 度目に入る枝は、その節を検査してから
+    /// 打ち切る。不変条件は状態と時刻の前後関係にしか依存せず、時刻は単調に進むので、
+    /// 閉路の 2 周目に 1 周目と違う破れ方は現れない。
     /// </remarks>
     [Fact]
     public void 状態機械を通して作れるJobはすべて不変条件を満たす()
     {
         List<string> violations = [];
-        Walk(CreateQueued(), [], violations);
+        Walk(CreateQueued(), [], [JobStatus.Queued], violations);
 
         Assert.Empty(violations);
     }
@@ -105,7 +108,7 @@ public sealed class JobInvariantsTests
     /// <summary>
     /// 状態機械が許す遷移をすべて辿り、行き着いた Job を検査する。
     /// </summary>
-    private static void Walk(Job job, List<JobTrigger> path, List<string> violations)
+    private static void Walk(Job job, List<JobTrigger> path, List<JobStatus> seen, List<string> violations)
     {
         if (JobInvariants.FindViolation(job) is { } violation)
         {
@@ -129,7 +132,18 @@ public sealed class JobInvariantsTests
                 continue;
             }
 
-            Walk(branch, [.. path, trigger], violations);
+            if (seen.Contains(branch.Status))
+            {
+                // 閉路の 2 周目。この節そのものは検査した上で、先へは進まない。
+                if (JobInvariants.FindViolation(branch) is { } cycleViolation)
+                {
+                    violations.Add($"[{string.Join(" → ", [.. path, trigger])}] {cycleViolation}");
+                }
+
+                continue;
+            }
+
+            Walk(branch, [.. path, trigger], [.. seen, branch.Status], violations);
         }
     }
 

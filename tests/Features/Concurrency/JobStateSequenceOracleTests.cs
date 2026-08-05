@@ -32,9 +32,16 @@ public sealed class JobStateSequenceOracleTests
             [JobStatus.Running, JobStatus.Running, JobStatus.Running]));
     }
 
+    /// <remarks>
+    /// Resume が入る前は Running → Queued も後退だった。いまは
+    /// Pausing → Paused → Resume を経て正当に戻れるので、オラクルが捕まえられる後退は
+    /// Cancelling と終端から出る列だけに狭まっている。検出力の低下は閉路の正直な代償で、
+    /// 閉路そのものが合法であることは下の「一時停止と再開の列は説明できる」が固定する。
+    /// </remarks>
     [Theory]
-    [InlineData(JobStatus.Running, JobStatus.Queued)]
     [InlineData(JobStatus.Cancelling, JobStatus.Running)]
+    [InlineData(JobStatus.Cancelling, JobStatus.Queued)]
+    [InlineData(JobStatus.Cancelling, JobStatus.Paused)]
     [InlineData(JobStatus.Completed, JobStatus.Cancelling)]
     [InlineData(JobStatus.Cancelled, JobStatus.Completed)]
     [InlineData(JobStatus.Failed, JobStatus.Running)]
@@ -44,12 +51,24 @@ public sealed class JobStateSequenceOracleTests
     }
 
     [Fact]
-    public void Queuedから到達できない状態で始まる列は説明できない()
+    public void 一時停止と再開の列は説明できる()
     {
-        // Job は必ず Queued で作られる。最初の観測がそこから来られないなら、
-        // 状態機械を通さずに書かれたということ。
-        Assert.Null(JobStateSequenceOracle.FindViolation([JobStatus.Cancelled]));
-        Assert.NotNull(JobStateSequenceOracle.FindViolation([JobStatus.Running, JobStatus.Queued]));
+        // Queued へ戻る唯一の道。観測が飛んでいても（Running → Queued だけでも）説明できる。
+        Assert.Null(JobStateSequenceOracle.FindViolation(
+            [JobStatus.Running, JobStatus.Pausing, JobStatus.Paused, JobStatus.Queued, JobStatus.Running]));
+        Assert.Null(JobStateSequenceOracle.FindViolation([JobStatus.Running, JobStatus.Queued]));
+    }
+
+    [Fact]
+    public void どの状態もQueuedから到達できる()
+    {
+        // Job は必ず Queued で作られる。全状態が到達可能になったので、
+        // 「最初の観測が Queued から来られない」という違反は現在の機械では起きない
+        //（オラクルの検査自体は、将来孤立した状態が増えたときのために残っている）。
+        foreach (JobStatus status in Enum.GetValues<JobStatus>())
+        {
+            Assert.Null(JobStateSequenceOracle.FindViolation([status]));
+        }
     }
 
     [Fact]

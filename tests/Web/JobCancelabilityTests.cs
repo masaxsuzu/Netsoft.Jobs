@@ -12,6 +12,8 @@ public sealed class JobCancelabilityTests
     [InlineData("Queued", true)]
     [InlineData("Running", true)]
     [InlineData("Cancelling", false)]
+    [InlineData("Pausing", true)]
+    [InlineData("Paused", true)]
     [InlineData("Completed", false)]
     [InlineData("Failed", false)]
     [InlineData("Cancelled", false)]

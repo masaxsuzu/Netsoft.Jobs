@@ -137,9 +137,20 @@ public sealed class Job
             FailureMessage = failureMessage;
         }
 
-        if (next == JobStatus.Running)
+        // Running へ入る契機は Start（初回・再開後とも）と Resume（Pausing の揺り戻し）の
+        // 2 つある。開始時刻を書くのは Start だけ。揺り戻しは実行が途切れていないので、
+        // 時刻を触ると「走り続けているのに開始し直した」という嘘になる。
+        if (trigger == JobTrigger.Start)
         {
             StartedAt = at;
+        }
+
+        // 再開で待ち行列へ戻るとき、前回の実行の開始時刻を消す。Queued は
+        // 「まだ開始していない」状態で、時刻が残ると不変条件（Queued に StartedAt は無い）が
+        // 破れる。次の Start が新しい時刻を書く。
+        if (next == JobStatus.Queued)
+        {
+            StartedAt = null;
         }
 
         if (next.IsTerminal())

@@ -27,6 +27,12 @@ public enum JobStatus
 
     /// <summary>キャンセルにより終了。</summary>
     Cancelled,
+
+    /// <summary>一時停止要求済み。ハンドラはまだ動いていて、サブタスクの境界での受理を待つ。</summary>
+    Pausing,
+
+    /// <summary>一時停止中。ハンドラは居らず、再開されるまで誰も走らせない。</summary>
+    Paused,
 }
 
 /// <summary>
@@ -48,6 +54,11 @@ public static class JobStatusExtensions
     /// プロセスが落ちた時点で Queued だった Job はハンドラを起動していないので、
     /// 次のプロセスがそのまま拾って実行すればよく、Failed にしてはいけない。
     /// </remarks>
+    /// <remarks>
+    /// Paused も含めない。一時停止の受理はハンドラが抜けた後なので、
+    /// プロセスが落ちても失われた実行は無く、次のプロセスは再開要求を待てばよい。
+    /// Pausing は含める。受理前に落ちたならハンドラは走っていた。
+    /// </remarks>
     public static bool IsHandlerActive(this JobStatus status) =>
-        status is JobStatus.Running or JobStatus.Cancelling;
+        status is JobStatus.Running or JobStatus.Cancelling or JobStatus.Pausing;
 }
