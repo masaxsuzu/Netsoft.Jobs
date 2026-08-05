@@ -114,7 +114,7 @@ public sealed class JobExecutionEngine
         // 復旧そのものは JobCrashRecovery が持つ。ここに残しているのは呼ぶ順序
         // ── 「復旧を終えてからでないとインスタンスを作らない」── の方で、
         // それがこのメソッドの存在理由だから。
-        await JobCrashRecovery.RecoverAsync(store, timeProvider, logger, cancellationToken);
+        await JobCrashRecovery.RunAsync(store, timeProvider, logger, cancellationToken);
 
         return new JobExecutionEngine(
             store, handlers, runningJobs, signal, timeProvider, instrumentation, logger);

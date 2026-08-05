@@ -54,7 +54,7 @@ internal static class JobCrashRecovery
     /// インスタンスを返さないので、復旧しそこねたまま実行が始まることはない。
     /// 呼び出し側は作り直せばやり直せる。
     /// </remarks>
-    public static async Task RecoverAsync(
+    public static async Task RunAsync(
         IJobStore store,
         TimeProvider timeProvider,
         ILogger logger,
