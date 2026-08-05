@@ -173,41 +173,66 @@ public sealed class JobObservationLog
     }
 
     /// <summary>
-    /// 条件付き更新の成功が 1 本の鎖になっているかを見る。
+    /// 条件付き更新の成功が、Queued から始まる 1 本の道として並べられるかを見る。
     /// </summary>
     /// <remarks>
-    /// 同じ状態から 2 回書き戻せたなら、片方の更新はもう片方に黙って上書きされている。
-    /// 鎖が Queued から繋がらない場合は、誰かが Queued 以外の状態へ直接書いたということ。
+    /// <para>
+    /// かつては「状態 → 次の状態」の辞書（関数）で確かめていた。同じ状態から 2 回
+    /// 書き戻せたら喪失、という判定だったが、一時停止と再開の閉路ができてからは
+    /// 同じ状態を正当に 2 度通れる（再開後の Queued → Running など）。関数の形の検査は
+    /// 閉路で嘘をつき、鎖を辿るループは無限に回る（実際にテストホストが固まった）。
+    /// </para>
+    /// <para>
+    /// いまの検査は、観測された辺の全部を 1 回ずつ使って Queued から一筆書きできるか
+    ///（多重グラフの道の存在）。更新の喪失（X → A と X → B が両方成功したのに
+    /// X へは 1 度しか入っていない）はどちらかの辺が使えず道が完成しないので捕まる。
+    /// 記録の並びには依存しない。並びはコミット順と入れ替わりうるため。
+    /// </para>
     /// </remarks>
     private static IEnumerable<string> FindUpdateChainViolations(
         string id,
         List<(JobStatus From, JobStatus To)> edges)
     {
-        Dictionary<JobStatus, JobStatus> chain = [];
-
-        foreach ((JobStatus from, JobStatus to) in edges)
+        if (edges.Count > 0 && !CanWalkAll(JobStatus.Queued, edges))
         {
-            if (!chain.TryAdd(from, to))
+            yield return $"Job {id}: 成功した更新 {edges.Count} 件を Queued から"
+                + $" 1 本の道として並べられません（{FormatEdges(edges)}）。"
+                + "更新の喪失か、状態機械を迂回した書き込みがあります。";
+        }
+    }
+
+    /// <summary>
+    /// <paramref name="remaining"/> の辺を全部 1 回ずつ使って
+    /// <paramref name="current"/> から歩き切れるか。
+    /// </summary>
+    /// <remarks>
+    /// 全順序を試す後戻り探索。辺の数は 1 つの Job の一生ぶん（高々十数本）なので、
+    /// 効率より「閉路があっても正しい」ことを優先する。
+    /// </remarks>
+    private static bool CanWalkAll(JobStatus current, List<(JobStatus From, JobStatus To)> remaining)
+    {
+        if (remaining.Count == 0)
+        {
+            return true;
+        }
+
+        for (int i = 0; i < remaining.Count; i++)
+        {
+            if (remaining[i].From != current)
             {
-                yield return $"Job {id}: 状態 {from} からの条件付き更新が 2 回成功しました"
-                    + $"（{from} → {chain[from]} と {from} → {to}）。更新がひとつ失われています。";
-                yield break;
+                continue;
+            }
+
+            List<(JobStatus From, JobStatus To)> rest = [.. remaining];
+            rest.RemoveAt(i);
+
+            if (CanWalkAll(remaining[i].To, rest))
+            {
+                return true;
             }
         }
 
-        JobStatus current = JobStatus.Queued;
-        int walked = 0;
-        while (chain.TryGetValue(current, out JobStatus next))
-        {
-            current = next;
-            walked++;
-        }
-
-        if (walked != chain.Count)
-        {
-            yield return $"Job {id}: 成功した更新 {chain.Count} 件のうち"
-                + $" Queued から辿れるのは {walked} 件だけです（{FormatEdges(edges)}）。";
-        }
+        return false;
     }
 
     private static bool Differs(Job left, Job right) =>

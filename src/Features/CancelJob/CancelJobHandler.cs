@@ -43,10 +43,12 @@ public sealed class CancelJobHandler
     /// </summary>
     /// <remarks>
     /// 読み出しと保存の間に実行エンジンが結末を書き込むことがある。条件付き更新で書き戻せなければ
-    /// 先頭から（読み直しから）やり直す。状態機械は終端へ向かう一方通行なので、
-    /// 書き戻せなかったということは相手が状態を先へ進めたということ。
-    /// 終端に達していればやり直した先で <see cref="JobTransitionRejection.JobAlreadyFinished"/> として
-    /// 拒否されるので、やり直しは必ず有限で止まる。
+    /// 先頭から（読み直しから）やり直す。やり直しが決着するのは、どの状態でもキャンセルの
+    /// 評価が答えを持つから ── 非終端なら受理される（Queued / Paused は即終端へ、
+    /// Running / Pausing は Cancelling へ）か既に効いていて
+    /// （<see cref="JobTransitionRejection.AlreadyInEffect"/>）、終端なら
+    /// <see cref="JobTransitionRejection.JobAlreadyFinished"/> として拒否されて抜ける。
+    /// 読み直した先がどこであれ、次の評価で必ず止まるか書ける。
     /// </remarks>
     public async Task<CancelJobResult> HandleAsync(string id, CancellationToken cancellationToken)
     {

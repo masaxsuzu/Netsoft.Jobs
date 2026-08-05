@@ -128,6 +128,47 @@ public sealed class JobTests
         Assert.Equal(JobStatus.Queued, queued.Status);
     }
 
+    /// <summary>
+    /// 一時停止と再開の時刻の規則。停止中も「開始した」事実は保ち、
+    /// 待ち行列へ戻る瞬間だけ消す（Queued は StartedAt を持たないという不変条件を守る）。
+    /// </summary>
+    [Fact]
+    public void 再開でQueuedへ戻るとStartedAtが消え次のStartで入り直す()
+    {
+        Job job = JobAt(JobStatus.Running);
+
+        Assert.True(job.Apply(JobTrigger.RequestPause, FinishedAt).IsAllowed);
+        Assert.Equal(StartedAt, job.StartedAt);
+
+        Assert.True(job.Apply(JobTrigger.ConfirmPaused, FinishedAt).IsAllowed);
+        Assert.Equal(JobStatus.Paused, job.Status);
+        Assert.Equal(StartedAt, job.StartedAt);
+        Assert.Null(job.FinishedAt);
+
+        Assert.True(job.Apply(JobTrigger.Resume, FinishedAt).IsAllowed);
+        Assert.Equal(JobStatus.Queued, job.Status);
+        Assert.Null(job.StartedAt);
+
+        DateTimeOffset restartedAt = FinishedAt.AddMinutes(1);
+        Assert.True(job.Apply(JobTrigger.Start, restartedAt).IsAllowed);
+        Assert.Equal(restartedAt, job.StartedAt);
+    }
+
+    /// <summary>
+    /// 受理前の揺り戻し（Pausing → Resume → Running）は実行が途切れていないので、
+    /// 開始時刻を触らない。Start でだけ書くという規則の縁。
+    /// </summary>
+    [Fact]
+    public void 受理前の再開はRunningへ戻り開始時刻を触らない()
+    {
+        Job job = JobAt(JobStatus.Pausing);
+
+        Assert.True(job.Apply(JobTrigger.Resume, FinishedAt).IsAllowed);
+
+        Assert.Equal(JobStatus.Running, job.Status);
+        Assert.Equal(StartedAt, job.StartedAt);
+    }
+
     [Fact]
     public void 復元は状態機械を通さずに保存された状態をそのまま再現する()
     {

@@ -83,7 +83,9 @@ public static class JobInvariants
             JobStatus.Queued => false,
 
             // ハンドラを起動した（していた）状態からしか来られない。
-            JobStatus.Running or JobStatus.Cancelling or JobStatus.Completed or JobStatus.Failed => true,
+            // Paused も同じ。停止の受理は実行の途中でしか起きない。
+            JobStatus.Running or JobStatus.Cancelling or JobStatus.Completed or JobStatus.Failed
+                or JobStatus.Pausing or JobStatus.Paused => true,
 
             // Queued からの即時キャンセルと、Cancelling からの受理の両方がある。
             JobStatus.Cancelled => null,

@@ -31,10 +31,30 @@ internal static class JobTransitionTable
             [(JobStatus.Cancelling, JobTrigger.Complete)] = JobStatus.Completed,
             [(JobStatus.Cancelling, JobTrigger.Fail)] = JobStatus.Failed,
 
-            // 起動時復旧の対象はハンドラが動いていたはずの状態だけ。Queued に行が無いのは、
-            // 副作用が無く、そのまま実行すればよいから。
+            // 起動時復旧の対象はハンドラが動いていたはずの状態だけ。Queued に行が無いのは
+            // 副作用が無くそのまま実行すればよいから。Paused に行が無いのは、受理済みの
+            // 停止はハンドラが抜けた後で、プロセスが落ちても失われた実行が無いから。
             [(JobStatus.Running, JobTrigger.RecoverAfterCrash)] = JobStatus.Failed,
             [(JobStatus.Cancelling, JobTrigger.RecoverAfterCrash)] = JobStatus.Failed,
+            [(JobStatus.Pausing, JobTrigger.RecoverAfterCrash)] = JobStatus.Failed,
+
+            // 一時停止は要求と受理の 2 段（キャンセルと同型）。効き目はサブタスクの境界。
+            [(JobStatus.Running, JobTrigger.RequestPause)] = JobStatus.Pausing,
+            [(JobStatus.Pausing, JobTrigger.ConfirmPaused)] = JobStatus.Paused,
+
+            // 受理前に結末が来たら結末が勝つ（Cancelling の 2 行と同じ判断）。
+            [(JobStatus.Pausing, JobTrigger.Complete)] = JobStatus.Completed,
+            [(JobStatus.Pausing, JobTrigger.Fail)] = JobStatus.Failed,
+
+            // 中止は停止より強い意図（捨てる）。要求中でも受理後でも上書きできる。
+            // 受理後は誰も走っていないので、Queued と同じく即終端。
+            [(JobStatus.Pausing, JobTrigger.RequestCancel)] = JobStatus.Cancelling,
+            [(JobStatus.Paused, JobTrigger.RequestCancel)] = JobStatus.Cancelled,
+
+            // 再開。受理前ならハンドラが走り続けているので Running へ揺り戻すだけ。
+            // 受理後は Queued へ戻して既存のディスパッチに乗せる（専用の再実行経路は無い）。
+            [(JobStatus.Pausing, JobTrigger.Resume)] = JobStatus.Running,
+            [(JobStatus.Paused, JobTrigger.Resume)] = JobStatus.Queued,
         };
 
     public static IEnumerable<JobStatus> AllStatuses => Enum.GetValues<JobStatus>();

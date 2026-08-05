@@ -25,4 +25,13 @@ public enum JobTrigger
 
     /// <summary>起動時の復旧走査。前回プロセスが異常終了していた。</summary>
     RecoverAfterCrash,
+
+    /// <summary>利用者が一時停止を要求した。</summary>
+    RequestPause,
+
+    /// <summary>ハンドラがサブタスクの境界で一時停止を受理して抜けた。</summary>
+    ConfirmPaused,
+
+    /// <summary>利用者が再開を要求した。</summary>
+    Resume,
 }

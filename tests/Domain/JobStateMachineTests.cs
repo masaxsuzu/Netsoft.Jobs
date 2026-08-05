@@ -51,8 +51,15 @@ public sealed class JobStateMachineTests
     [Theory]
     [InlineData(JobStatus.Cancelling, JobTrigger.RequestCancel, JobTransitionRejection.AlreadyInEffect)]
     [InlineData(JobStatus.Running, JobTrigger.Start, JobTransitionRejection.AlreadyInEffect)]
+    [InlineData(JobStatus.Pausing, JobTrigger.Start, JobTransitionRejection.AlreadyInEffect)]
+    [InlineData(JobStatus.Pausing, JobTrigger.RequestPause, JobTransitionRejection.AlreadyInEffect)]
+    [InlineData(JobStatus.Paused, JobTrigger.RequestPause, JobTransitionRejection.AlreadyInEffect)]
+    [InlineData(JobStatus.Queued, JobTrigger.Resume, JobTransitionRejection.AlreadyInEffect)]
+    [InlineData(JobStatus.Running, JobTrigger.Resume, JobTransitionRejection.AlreadyInEffect)]
     [InlineData(JobStatus.Queued, JobTrigger.Complete, JobTransitionRejection.InvalidForCurrentStatus)]
     [InlineData(JobStatus.Running, JobTrigger.ConfirmCancelled, JobTransitionRejection.InvalidForCurrentStatus)]
+    [InlineData(JobStatus.Queued, JobTrigger.RequestPause, JobTransitionRejection.InvalidForCurrentStatus)]
+    [InlineData(JobStatus.Cancelling, JobTrigger.Resume, JobTransitionRejection.InvalidForCurrentStatus)]
     public void 終端以外の拒否は既に効いているかどうかで理由が分かれる(
         JobStatus current, JobTrigger trigger, JobTransitionRejection expected)
     {
@@ -65,7 +72,7 @@ public sealed class JobStateMachineTests
         // 起動時復旧の対象を決める判定なので、対象がずれないことを明示的に固定する。
         foreach (JobStatus status in JobTransitionTable.AllStatuses)
         {
-            bool expected = status is JobStatus.Running or JobStatus.Cancelling;
+            bool expected = status is JobStatus.Running or JobStatus.Cancelling or JobStatus.Pausing;
 
             Assert.Equal(expected, status.IsHandlerActive());
         }

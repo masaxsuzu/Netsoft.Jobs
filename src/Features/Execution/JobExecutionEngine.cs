@@ -197,8 +197,11 @@ public sealed class JobExecutionEngine
         // 取れる候補が無くなるまで繰り返す。書き戻せなかったということは、
         // その Job は他によって Queued から先へ進められたということなので、
         // 次の FindOldestQueuedAsync はもう同じ Job を返さない。
-        // 状態機械は終端へ向かう一方通行で、Queued へ戻る遷移は無い。
-        // よって候補は減る一方であり、このループは必ず止まる。
+        // Queued へ戻る道は一時停止からの再開（Paused + Resume）だけで、そこへ行くには
+        // どこかのエンジンが実行し、利用者が停止と再開を要求する必要がある。
+        // 負けた候補がこの周回中に戻ってくるとしたら、それは新しい仕事が届いたのと
+        // 同じことで、空転ではない。同一プロセスでは Running を作るのは自分だけなので、
+        // 自分が負けた候補が自分の周回中に Queued へ戻ることも無い。
         while (true)
         {
             Job? job = await _store.FindOldestQueuedAsync(cancellationToken);
@@ -400,10 +403,12 @@ public sealed class JobExecutionEngine
     /// 中断すると完了した Job が Running のまま残り、次の起動で復旧に Failed とされてしまう。
     /// </para>
     /// <para>
-    /// 読み直してから書き戻すまでの間にも状態は動きうる（キャンセル要求が届く、など）ので、
-    /// 書き戻せなければ読み直して評価をやり直す。状態機械は終端へ向かう一方通行で、
-    /// 書き戻せなかったということは相手が状態を先へ進めたということ。
-    /// 終端に達すれば以後は動かず、そこでは遷移が拒否されて抜けるので、やり直しは必ず有限で止まる。
+    /// 読み直してから書き戻すまでの間にも状態は動きうる（キャンセルや一時停止の要求が
+    /// 届く、など）ので、書き戻せなければ読み直して評価をやり直す。相手が動かした先が
+    /// Running / Cancelling / Pausing のどれであっても結末（Complete / Fail）は受理されるので、
+    /// やり直した次の評価は必ず決着に向かう。終端に達していれば拒否されて抜ける。
+    /// 無限にやり直すには書き戻すたびに他所が先に書き続ける必要があり、
+    /// それは停止と再開の要求が無限に交互に届き続けるときだけで、実行の停滞ではない。
     /// </para>
     /// </remarks>
     private async Task<JobStatus?> FinishAsync(JobId id, JobTrigger trigger, string? failureMessage)
