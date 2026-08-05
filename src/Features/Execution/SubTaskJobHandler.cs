@@ -1,5 +1,3 @@
-using System.Globalization;
-
 using Netsoft.Jobs.Domain;
 
 namespace Netsoft.Jobs.Features.Execution;
@@ -19,6 +17,12 @@ namespace Netsoft.Jobs.Features.Execution;
 /// <see cref="OperationCanceledException"/> を投げ直し、Job 自体は既存の経路で
 /// Cancelled として記録される。
 /// </para>
+/// <para>
+/// 一時停止の観測と編集（N と m）の反映は、どちらもサブタスクの<b>境界</b>で行う。
+/// 境界ごとに Job の行を 1 度読み直し、Pausing なら抜け、parameters が変わっていれば
+/// 行を突き合わせる。この突き合わせが「N は着手済みより小さくできない」の本当の守り
+/// （API の検証は利用者への親切で、検証と反映の間に次のサブタスクが走る窓がある）。
+/// </para>
 /// </remarks>
 public sealed class SubTaskJobHandler : IJobHandler
 {
@@ -33,8 +37,8 @@ public sealed class SubTaskJobHandler : IJobHandler
     private readonly TimeProvider _timeProvider;
 
     /// <param name="jobs">
-    /// 境界で自分の Job の状態を読み直すための口。一時停止の効き目は境界と
-    /// 決まっているので、トークンのような即時の伝達は要らず、読み直しで足りる。
+    /// 境界で自分の Job を読み直すための口（一時停止の観測と、編集された parameters の
+    /// 採り直し）。即時の伝達は要らず、読み直しで足りる。
     /// 書くことは無い（結末を書くのはエンジンの仕事）。
     /// </param>
     public SubTaskJobHandler(ISubTaskStore subTasks, IJobStore jobs, TimeProvider timeProvider)
@@ -57,12 +61,11 @@ public sealed class SubTaskJobHandler : IJobHandler
     /// <exception cref="FormatException">「個数 秒数」として読めない場合。</exception>
     public async Task ExecuteAsync(JobId jobId, string parameters, CancellationToken cancellationToken)
     {
-        (int count, int waits) = Parse(parameters);
+        (int count, int waits) = SubTaskParameters.Parse(parameters);
 
         // 行が既にあるなら、それは前回の実行の続き（一時停止からの再開、または
         // 受理前に取り消された停止からの走り直し）。済んだものを飛ばして続きから走る。
-        // 個数と行数のずれをどう直すかは編集の関心で、ここでは既存の行を正とする。
-        IReadOnlyList<SubTask> subTasks = await _subTasks.ListByJobAsync(jobId, cancellationToken);
+        List<SubTask> subTasks = [.. await _subTasks.ListByJobAsync(jobId, cancellationToken)];
         if (subTasks.Count == 0)
         {
             SubTask[] created = [.. Enumerable.Range(0, count).Select(index => SubTask.Create(jobId, index))];
@@ -70,25 +73,25 @@ public sealed class SubTaskJobHandler : IJobHandler
             // 行を作るまでは畳むものが無いので try の外。ここで中断されても
             // AddRange は全件か 0 件かなので、中途半端な行は残らない。
             await _subTasks.AddRangeAsync(created, cancellationToken);
-            subTasks = created;
+            subTasks = [.. created];
         }
 
         try
         {
-            foreach (SubTask subTask in subTasks)
+            while (true)
             {
-                if (subTask.Status.IsTerminal())
+                // 境界。一時停止の観測と編集の反映をここでまとめて行う。
+                // 最後のサブタスクの完了後には境界が無いので、走り切ったら結末が勝つ
+                //（状態機械の Pausing + Complete → Completed と同じ判断）。
+                waits = await ReconcileAtBoundaryAsync(jobId, subTasks, waits, cancellationToken);
+
+                SubTask? next = subTasks.FirstOrDefault(subTask => !subTask.Status.IsTerminal());
+                if (next is null)
                 {
-                    // 再開したときの、前回までに済んだ（または畳まれた）ぶん。やり直さない。
-                    continue;
+                    return;
                 }
 
-                // 一時停止の観測点。次のサブタスクを始める前に 1 度だけ見る。
-                // 最後のサブタスクの完了後には無いので、走り切ったら結末が勝つ
-                //（状態機械の Pausing + Complete → Completed と同じ判断）。
-                await ThrowIfPauseRequestedAsync(jobId, cancellationToken);
-
-                await RecordAsync(subTask, SubTaskTrigger.Start);
+                await RecordAsync(next, SubTaskTrigger.Start);
 
                 for (int i = 0; i < waits; i++)
                 {
@@ -97,7 +100,7 @@ public sealed class SubTaskJobHandler : IJobHandler
                     await Task.Delay(Step, _timeProvider, cancellationToken);
                 }
 
-                await RecordAsync(subTask, SubTaskTrigger.Complete);
+                await RecordAsync(next, SubTaskTrigger.Complete);
             }
         }
         catch (OperationCanceledException)
@@ -106,6 +109,72 @@ public sealed class SubTaskJobHandler : IJobHandler
             await CancelRemainingAsync(subTasks);
             throw;
         }
+    }
+
+    /// <summary>
+    /// 境界の読み直し。一時停止が要求されていれば <see cref="JobPausedException"/> で抜け、
+    /// parameters が編集されていれば行を突き合わせる。次のサブタスクで使う m を返す。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 受理（Paused）を書くのはエンジン（OCE → Cancelled と同じ分担）。ここで書くと
+    /// 結末の書き手が 2 人になる。Job が読めなかった場合は手元の値のまま進む
+    /// （不在はエンジン側の結末記録が拾う）。
+    /// </para>
+    /// <para>
+    /// N の突き合わせ: 増えていれば未着手の行を足し、減っていれば N を超える未着手の行を
+    /// 消す。<b>効かせる N は「編集の N」と「着手済みの数」の大きい方</b>。編集 API も
+    /// 「N ≥ 着手済み」を検証するが、検証と反映の間に次のサブタスクが走り出す窓があり、
+    /// その場合はここが着手済みへ切り上げる。着手済みの行はどの経路でも消えない
+    /// （store の削除口も Pending しか消せない契約）。
+    /// </para>
+    /// <para>
+    /// m は次のサブタスクから効く。走っている最中のサブタスクの残り秒数は変えない
+    /// （m を読むのは境界だけで、待ちのループは手元の値で回り切る）。
+    /// </para>
+    /// </remarks>
+    private async Task<int> ReconcileAtBoundaryAsync(
+        JobId jobId,
+        List<SubTask> subTasks,
+        int waits,
+        CancellationToken cancellationToken)
+    {
+        Job? job = await _jobs.FindAsync(jobId, cancellationToken);
+        if (job is null)
+        {
+            return waits;
+        }
+
+        if (job.Status == JobStatus.Pausing)
+        {
+            throw new JobPausedException(jobId);
+        }
+
+        // 編集後の parameters が読めない形なら、手元の値のまま進む。編集 API が検証して
+        // いるので通常は起きない。ここで Job を落とすと、書式の事故ひとつで走っている
+        // 実行まで巻き添えになる。
+        if (!SubTaskParameters.TryParse(job.Parameters, out int count, out int editedWaits))
+        {
+            return waits;
+        }
+
+        int started = subTasks.Count(subTask => subTask.Status != SubTaskStatus.Pending);
+        int target = Math.Max(count, started);
+
+        if (target > subTasks.Count)
+        {
+            SubTask[] added = [.. Enumerable.Range(subTasks.Count, target - subTasks.Count)
+                .Select(index => SubTask.Create(jobId, index))];
+            await _subTasks.AddRangeAsync(added, cancellationToken);
+            subTasks.AddRange(added);
+        }
+        else if (target < subTasks.Count)
+        {
+            await _subTasks.RemovePendingFromAsync(jobId, target, cancellationToken);
+            subTasks.RemoveAll(subTask => subTask.Index >= target && subTask.Status == SubTaskStatus.Pending);
+        }
+
+        return editedWaits;
     }
 
     /// <summary>
@@ -140,23 +209,6 @@ public sealed class SubTaskJobHandler : IJobHandler
         }
     }
 
-    /// <summary>
-    /// 一時停止が要求されていれば <see cref="JobPausedException"/> で抜ける。
-    /// </summary>
-    /// <remarks>
-    /// 受理を書くのはエンジン（OCE → Cancelled と同じ分担）。ここで Paused を
-    /// 書いてしまうと、結末の書き手が 2 人になり、エンジンの条件付き更新と競合する。
-    /// 読めなかった（行が無い）場合は進む。Job の不在はエンジン側の結末記録が拾う。
-    /// </remarks>
-    private async Task ThrowIfPauseRequestedAsync(JobId jobId, CancellationToken cancellationToken)
-    {
-        Job? job = await _jobs.FindAsync(jobId, cancellationToken);
-        if (job?.Status == JobStatus.Pausing)
-        {
-            throw new JobPausedException(jobId);
-        }
-    }
-
     private async Task CancelRemainingAsync(IReadOnlyList<SubTask> subTasks)
     {
         foreach (SubTask subTask in subTasks)
@@ -167,25 +219,5 @@ public sealed class SubTaskJobHandler : IJobHandler
                 await RecordAsync(subTask, SubTaskTrigger.Cancel);
             }
         }
-    }
-
-    private static (int Count, int Waits) Parse(string parameters)
-    {
-        string[] parts = parameters.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        // 個数と秒数に既定値は置かない。書き損じを既定値で流すと、
-        // 意図と違う長さで走っていることに利用者が気づけない。
-        if (parts.Length != 2
-            || !int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out int count)
-            || !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out int waits)
-            || count < 1
-            || waits < 1)
-        {
-            throw new FormatException(
-                $"サブタスクの指定として解釈できません: \"{parameters}\"。"
-                + "「個数 秒数」を空白区切りの正の整数で指定してください（例: 3 5）。");
-        }
-
-        return (count, waits);
     }
 }

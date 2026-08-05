@@ -37,4 +37,14 @@ public interface ISubTaskStore
 
     /// <summary>指定した Job のサブタスクを連番順で取得する。無ければ空。</summary>
     Task<IReadOnlyList<SubTask>> ListByJobAsync(JobId jobId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 連番が <paramref name="firstIndex"/> 以降の<b>未着手（Pending）の</b>行を消す。
+    /// </summary>
+    /// <remarks>
+    /// 編集で N を減らしたときの畳み方。着手済み（Pending でない）行は条件に合わず残るので、
+    /// この口からは事実を消せない。「編集は定義の変更であって履歴の書き換えではない」を
+    /// 契約として持つのはこの条件で、呼び出し側の行儀に頼らない。
+    /// </remarks>
+    Task RemovePendingFromAsync(JobId jobId, int firstIndex, CancellationToken cancellationToken);
 }

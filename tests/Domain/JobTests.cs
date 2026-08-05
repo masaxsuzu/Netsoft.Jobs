@@ -169,6 +169,39 @@ public sealed class JobTests
         Assert.Equal(StartedAt, job.StartedAt);
     }
 
+    /// <summary>
+    /// パラメータの編集は状態遷移ではない。編集できる状態の定義（終端と Cancelling は不可）は
+    /// CanEditParameters が 1 か所で持ち、エンティティはそれを守る。
+    /// </summary>
+    [Theory]
+    [InlineData(JobStatus.Queued, true)]
+    [InlineData(JobStatus.Running, true)]
+    [InlineData(JobStatus.Pausing, true)]
+    [InlineData(JobStatus.Paused, true)]
+    [InlineData(JobStatus.Cancelling, false)]
+    [InlineData(JobStatus.Completed, false)]
+    [InlineData(JobStatus.Failed, false)]
+    [InlineData(JobStatus.Cancelled, false)]
+    public void パラメータを編集できるのは終端とCancelling以外(JobStatus status, bool editable)
+    {
+        Job job = JobAt(status);
+
+        Assert.Equal(editable, status.CanEditParameters());
+
+        if (editable)
+        {
+            job.ChangeParameters("5 2");
+            Assert.Equal("5 2", job.Parameters);
+            Assert.Equal(status, job.Status);
+        }
+        else
+        {
+            // 呼び出し側の誤り（編集ハンドラは先に確かめて拒否を結果で返す）。
+            Assert.Throws<InvalidOperationException>(() => job.ChangeParameters("5 2"));
+            Assert.Equal("{}", job.Parameters);
+        }
+    }
+
     [Fact]
     public void 復元は状態機械を通さずに保存された状態をそのまま再現する()
     {

@@ -103,6 +103,47 @@ public sealed class SqliteSubTaskStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task 未着手の行だけが指定の連番以降で消える()
+    {
+        SqliteSubTaskStore store = await OpenStoreAsync();
+        await store.AddRangeAsync(
+            [SubTask.Create(JobId.From("job-1"), 0), SubTask.Create(JobId.From("job-1"), 1), SubTask.Create(JobId.From("job-1"), 2)],
+            CancellationToken.None);
+
+        // 0 番だけ着手済みにしておく。
+        SubTask running = (await store.ListByJobAsync(JobId.From("job-1"), CancellationToken.None))[0];
+        SubTaskTransition started = running.Apply(SubTaskTrigger.Start);
+        Assert.True(await store.UpdateAsync(running, started.Previous, CancellationToken.None));
+
+        await store.RemovePendingFromAsync(JobId.From("job-1"), 1, CancellationToken.None);
+
+        IReadOnlyList<SubTask> remaining = await store.ListByJobAsync(JobId.From("job-1"), CancellationToken.None);
+        Assert.Equal([0], remaining.Select(subTask => subTask.Index));
+    }
+
+    [Fact]
+    public async Task 着手済みの行は削除の範囲に入っていても消えない()
+    {
+        // 「編集は定義の変更であって履歴の書き換えではない」を SQL の条件が守る契約。
+        SqliteSubTaskStore store = await OpenStoreAsync();
+        await store.AddRangeAsync(
+            [SubTask.Create(JobId.From("job-1"), 0), SubTask.Create(JobId.From("job-1"), 1)],
+            CancellationToken.None);
+
+        SubTask second = (await store.ListByJobAsync(JobId.From("job-1"), CancellationToken.None))[1];
+        SubTaskTransition started = second.Apply(SubTaskTrigger.Start);
+        Assert.True(await store.UpdateAsync(second, started.Previous, CancellationToken.None));
+
+        // 範囲は 0 以降＝全行。それでも消えるのは Pending の 0 番だけ。
+        await store.RemovePendingFromAsync(JobId.From("job-1"), 0, CancellationToken.None);
+
+        IReadOnlyList<SubTask> remaining = await store.ListByJobAsync(JobId.From("job-1"), CancellationToken.None);
+        SubTask survivor = Assert.Single(remaining);
+        Assert.Equal(1, survivor.Index);
+        Assert.Equal(SubTaskStatus.Running, survivor.Status);
+    }
+
+    [Fact]
     public async Task 状態は数値ではなくenumの名前で保存される()
     {
         // DB を直接覗いたときに読める形で残る契約（Jobs 表と同じ判断）。

@@ -95,6 +95,82 @@ public sealed class JobsApiClient
         return CancelJobResponse.Accepted(await ReadJobAsync(response, cancellationToken));
     }
 
+    /// <summary>Job の一時停止を要求する。404 と 409 は結果型で返す。</summary>
+    public Task<JobControlResponse> PauseJobAsync(string id, CancellationToken cancellationToken) =>
+        ControlAsync(JobApiRoutes.PauseFor(id), cancellationToken);
+
+    /// <summary>Job の再開を要求する。404 と 409 は結果型で返す。</summary>
+    public Task<JobControlResponse> ResumeJobAsync(string id, CancellationToken cancellationToken) =>
+        ControlAsync(JobApiRoutes.ResumeFor(id), cancellationToken);
+
+    /// <summary>Job のパラメータを差し替える。400 / 404 / 409 は結果型で返す。</summary>
+    public async Task<EditJobResponse> EditJobParametersAsync(
+        string id, string parameters, CancellationToken cancellationToken)
+    {
+        // 本文の形はサーバ（EditJobEndpoint の要求型）の写し。ずれたら tests/Ui の結合テストが割れる。
+        using HttpResponseMessage response = await _client.PutAsJsonAsync(
+            JobApiRoutes.ParametersFor(id), new { parameters }, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.BadRequest)
+        {
+            HttpValidationProblemDetails? problem =
+                await response.Content.ReadFromJsonAsync<HttpValidationProblemDetails>(cancellationToken);
+            return EditJobResponse.Invalid(problem?.Errors ?? new Dictionary<string, string[]>());
+        }
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return EditJobResponse.NotFound();
+        }
+
+        if (response.StatusCode == HttpStatusCode.Conflict)
+        {
+            return EditJobResponse.Rejected(await ReadJobAsync(response, cancellationToken));
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        return EditJobResponse.Accepted(await ReadJobAsync(response, cancellationToken));
+    }
+
+    /// <summary>
+    /// Job のサブタスクを連番順で取得する。Job が無い（404）場合は null、
+    /// まだ行が無い場合は空（登録直後の正常な姿）。
+    /// </summary>
+    public async Task<IReadOnlyList<SubTaskDto>?> ListSubTasksAsync(string id, CancellationToken cancellationToken)
+    {
+        using HttpResponseMessage response = await _client.GetAsync(
+            JobApiRoutes.SubTasksFor(id), cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<IReadOnlyList<SubTaskDto>>(cancellationToken) ?? [];
+    }
+
+    private async Task<JobControlResponse> ControlAsync(string route, CancellationToken cancellationToken)
+    {
+        using HttpResponseMessage response = await _client.PostAsync(route, content: null, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return JobControlResponse.NotFound();
+        }
+
+        if (response.StatusCode == HttpStatusCode.Conflict)
+        {
+            return JobControlResponse.Rejected(await ReadJobAsync(response, cancellationToken));
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        return JobControlResponse.Accepted(await ReadJobAsync(response, cancellationToken));
+    }
+
     private static async Task<JobDto> ReadJobAsync(HttpResponseMessage response, CancellationToken cancellationToken) =>
         await response.Content.ReadFromJsonAsync<JobDto>(cancellationToken)
             ?? throw new InvalidOperationException("API の応答に Job が入っていません。");

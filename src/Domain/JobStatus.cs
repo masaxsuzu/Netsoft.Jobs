@@ -61,4 +61,16 @@ public static class JobStatusExtensions
     /// </remarks>
     public static bool IsHandlerActive(this JobStatus status) =>
         status is JobStatus.Running or JobStatus.Cancelling or JobStatus.Pausing;
+
+    /// <summary>
+    /// パラメータを編集できる状態か。
+    /// </summary>
+    /// <remarks>
+    /// 終端は不可（結果が確定した後の書き換えは記録の改竄になる）。
+    /// Cancelling も不可。捨てると決まった Job の定義を直しても、誰の役にも立たない。
+    /// それ以外（Queued / Running / Pausing / Paused）は編集できる。実行中の反映は
+    /// サブタスクの境界の突き合わせが引き受ける。
+    /// </remarks>
+    public static bool CanEditParameters(this JobStatus status) =>
+        !status.IsTerminal() && status != JobStatus.Cancelling;
 }
