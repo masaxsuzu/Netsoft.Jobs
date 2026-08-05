@@ -67,7 +67,7 @@ public sealed class JobStateMachineTests
     }
 
     [Fact]
-    public void ハンドラ稼働中と判定されるのはRunningとCancellingだけ()
+    public void ハンドラ稼働中と判定されるのはRunningとCancellingとPausingだけ()
     {
         // 起動時復旧の対象を決める判定なので、対象がずれないことを明示的に固定する。
         foreach (JobStatus status in JobTransitionTable.AllStatuses)

@@ -20,8 +20,16 @@ namespace Netsoft.Jobs.Features.Execution;
 /// <para>
 /// 一時停止の観測と編集（N と m）の反映は、どちらもサブタスクの<b>境界</b>で行う。
 /// 境界ごとに Job の行を 1 度読み直し、Pausing なら抜け、parameters が変わっていれば
-/// 行を突き合わせる。この突き合わせが「N は着手済みより小さくできない」の本当の守り
-/// （API の検証は利用者への親切で、検証と反映の間に次のサブタスクが走る窓がある）。
+/// 行を突き合わせる。
+/// </para>
+/// <para>
+/// 「N は着手済みより小さくできない」を実際に守っているのは
+/// <see cref="ISubTaskStore.RemovePendingFromAsync"/> の SQL（未着手の行しか消さない）である。
+/// API の検証は利用者への親切で、検証と反映の間に次のサブタスクが走る窓がある。
+/// ここの突き合わせは削除の範囲を決めるだけで、着手済みを守ってはいない
+/// ── かつて範囲を着手済みへ切り上げる計算を置いていたが、着手済みの行は必ず先頭から
+/// 連続するので、切り上げても切り上げなくても消える行は同じだった（守っているのは
+/// 常に SQL の側で、切り上げは観測できる差を 1 つも生まない死んだ守りだった）。
 /// </para>
 /// </remarks>
 public sealed class SubTaskJobHandler : IJobHandler
@@ -158,8 +166,10 @@ public sealed class SubTaskJobHandler : IJobHandler
             return waits;
         }
 
-        int started = subTasks.Count(subTask => subTask.Status != SubTaskStatus.Pending);
-        int target = Math.Max(count, started);
+        // 削除の範囲は編集された N をそのまま使う。着手済みへ切り上げない ── 着手済みは
+        // 必ず先頭から連続するので、範囲を広げても消えるのは未着手の行だけで結果が変わらない。
+        // 守りは RemovePendingFromAsync の SQL が持つ（クラスの注記を参照）。
+        int target = count;
 
         if (target > subTasks.Count)
         {

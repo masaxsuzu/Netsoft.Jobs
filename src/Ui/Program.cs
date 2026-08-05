@@ -27,6 +27,10 @@ builder.Services.AddSingleton<JobChangeFeed>();
 builder.Services.AddHttpClient<JobsApiClient>(JobsApiClient.HttpClientName, client =>
     client.BaseAddress = new Uri(options.ApiBaseUrl));
 
+// 画面の状態と操作。回路（サーキット）ごとに 1 つで、プリレンダリングと対話モードは
+// 別のスコープなので状態は引き継がれない（画面は入口で読み直す作りになっている）。
+builder.Services.AddScoped<JobBoard>();
+
 // SSE 用のクライアントは API 用と分ける。SSE の応答は切断まで終わらないので
 // Timeout を無限にする必要があり、通常の API 呼び出しにその設定を波及させたくない。
 builder.Services.AddHttpClient(JobEventsSubscriptionService.HttpClientName, client =>

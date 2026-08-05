@@ -47,12 +47,31 @@
         .notice {
             color: #b00020;
         }
+
+        /* 回路（WebSocket）が死んだときに Blazor がこの要素を表示する。無いと
+           何も出ず、画面は無言で凍る（操作しても反応しないだけになる）。
+           表示のさせ方は Blazor の JS が id で見つけて display を切り替える仕組み。 */
+        #blazor-error-ui {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #ffe0e0;
+            border-top: 2px solid #b00020;
+            color: #b00020;
+            padding: 0.7rem 1rem;
+        }
     </style>
     <HeadOutlet @rendermode="InteractiveServer" />
 </head>
 
 <body>
     <Routes @rendermode="InteractiveServer" />
+    <div id="blazor-error-ui">
+        画面とサーバの接続が切れました。実行中の Job は動き続けています。
+        <a href="" class="reload">再読み込み</a>
+    </div>
     <script src="_framework/blazor.web.js"></script>
 </body>
 

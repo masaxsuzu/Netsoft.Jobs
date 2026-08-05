@@ -164,6 +164,50 @@ public sealed class PauseResumeExecutionTests : IDisposable
             await SubTaskStatusesAsync());
     }
 
+    /// <summary>
+    /// 受理の窓で他所が終端まで書き切っていたら、エンジンは何も記録せずその終端を受け入れる。
+    /// </summary>
+    /// <remarks>
+    /// 起動時復旧が Failed で閉じた後、といった筋。ここを「走り直す」に間違えると、
+    /// 終端に達した Job のハンドラをもう一度起動してしまう
+    /// （**変異検査でこの分岐が素通りしていた**ので固定する）。
+    /// </remarks>
+    [Fact]
+    public async Task 受理の窓で終端まで書かれていたらエンジンは走り直さない()
+    {
+        await RegisterAsync("3 1");
+
+        InterferingJobStore interfering = new(_jobs);
+        JobExecutionEngine engine = await StartEngineAsync(interfering);
+
+        Task<bool> execution = engine.RunOnceAsync(CancellationToken.None);
+        await _time.WaitForTimersAsync(1).WaitAsync(WaitLimit);
+        Assert.True((await _pause.HandleAsync("job-1", CancellationToken.None)).IsSuccess);
+
+        // 受理を書き戻す直前に、他所が Cancelling を経て終端まで進めてしまう。
+        interfering.BeforeNextUpdate = async () =>
+        {
+            await ApplyAsync(JobTrigger.RequestCancel);
+            await ApplyAsync(JobTrigger.ConfirmCancelled);
+        };
+
+        _time.Advance(SubTaskJobHandler.Step);
+        Assert.True(await execution.WaitAsync(WaitLimit));
+
+        // 終端はそのまま。Paused で上書きもしないし、ハンドラを起動し直しもしない。
+        Assert.Equal(JobStatus.Cancelled, (await FindAsync()).Status);
+        Assert.Equal(
+            [SubTaskStatus.Completed, SubTaskStatus.Pending, SubTaskStatus.Pending],
+            await SubTaskStatusesAsync());
+    }
+
+    private async Task ApplyAsync(JobTrigger trigger)
+    {
+        Job job = await FindAsync();
+        Assert.True(job.Apply(trigger, Now).IsAllowed);
+        Assert.True(await _jobs.UpdateAsync(job, CancellationToken.None));
+    }
+
     private async Task RegisterAsync(string parameters)
     {
         Job job = Job.Create(Job1, "停止試験", SubTaskJobHandler.SubTaskJobType, parameters, Now);

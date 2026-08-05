@@ -55,6 +55,11 @@ public sealed class JobEventsApiTests : IDisposable
             CancellationToken.None);
 
         Assert.Equal("data: changed", await ReadNextEventAsync(reader));
+
+        // イベントは空行で終端する。SSE では空行が来るまで配送されないので、
+        // これが落ちると標準の EventSource から見て通知が一切届かなくなる
+        // （行を読むだけの自前クライアントでは気づけない。実際に変異検査で素通りした）。
+        Assert.Equal(string.Empty, await reader.ReadLineAsync());
     }
 
     /// <summary>
