@@ -1,3 +1,5 @@
+using Netsoft.Jobs.Domain;
+
 using Netsoft.Jobs.Features.Execution;
 
 namespace Netsoft.Jobs.Features.Tests.Execution;
@@ -15,14 +17,14 @@ public sealed class DemoJobHandlerTests
     [Fact]
     public async Task 待ち時間が0なら即座に終わる()
     {
-        await _handler.ExecuteAsync("0", CancellationToken.None);
+        await _handler.ExecuteAsync(JobId.From("job-1"), "0", CancellationToken.None);
     }
 
     [Fact]
     public void パラメータが空なら既定の待ち時間になる()
     {
         // 待ち時間そのものは観測できないので、既定値で待ちに入る（即座に終わらない）ことで確かめる。
-        Task execution = _handler.ExecuteAsync(string.Empty, CancellationToken.None);
+        Task execution = _handler.ExecuteAsync(JobId.From("job-1"), string.Empty, CancellationToken.None);
 
         Assert.False(execution.IsCompleted);
         Assert.True(DemoJobHandler.DefaultDuration > TimeSpan.Zero);
@@ -37,7 +39,7 @@ public sealed class DemoJobHandlerTests
     {
         // 既定値で流すと、書き損じたことに利用者が気づけない。
         await Assert.ThrowsAsync<FormatException>(
-            () => _handler.ExecuteAsync(parameters, CancellationToken.None));
+            () => _handler.ExecuteAsync(JobId.From("job-1"), parameters, CancellationToken.None));
     }
 
     [Fact]
@@ -46,7 +48,7 @@ public sealed class DemoJobHandlerTests
         using CancellationTokenSource cancellation = new();
 
         // 十分に長い待ち時間を指定しても、キャンセルで即座に終わること。
-        Task execution = _handler.ExecuteAsync("600", cancellation.Token);
+        Task execution = _handler.ExecuteAsync(JobId.From("job-1"), "600", cancellation.Token);
         Assert.False(execution.IsCompleted);
 
         await cancellation.CancelAsync();

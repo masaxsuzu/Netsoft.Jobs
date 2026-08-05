@@ -1,3 +1,5 @@
+using Netsoft.Jobs.Domain;
+
 namespace Netsoft.Jobs.Features.Execution;
 
 /// <summary>
@@ -17,6 +19,12 @@ public interface IJobHandler
     /// <summary>
     /// 処理を実行する。
     /// </summary>
+    /// <param name="jobId">
+    /// 実行している Job の識別子。子の記録（サブタスクなど）を Job に紐づけて
+    /// 永続化するハンドラのためにある。かつては渡していなかった（ハンドラは自分が
+    /// どの Job かを知らない設計だった）が、子の行は親の識別子でしか紐づけられない。
+    /// 紐づける物を持たないハンドラは使わなくてよい。
+    /// </param>
     /// <param name="parameters">
     /// <see cref="Domain.Job.Parameters"/> をそのまま渡したもの。
     /// 形式を決めて解釈するのはハンドラの責務で、エンジンは中身を見ない。
@@ -30,5 +38,5 @@ public interface IJobHandler
     /// それ以外の例外は Failed としてエンジンが記録する。
     /// つまり「失敗したこと」を伝える手段は例外を投げることだけで、戻り値では表現しない。
     /// </remarks>
-    Task ExecuteAsync(string parameters, CancellationToken cancellationToken);
+    Task ExecuteAsync(JobId jobId, string parameters, CancellationToken cancellationToken);
 }

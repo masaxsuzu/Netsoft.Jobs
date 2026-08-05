@@ -1,3 +1,5 @@
+using Netsoft.Jobs.Domain;
+
 using Netsoft.Jobs.Features.Execution;
 
 namespace Netsoft.Jobs.Features.Tests.Fakes;
@@ -47,7 +49,7 @@ public sealed class ControllableJobHandler : IJobHandler
     public void Throw(Exception exception) => _released.TrySetException(exception);
 
     /// <inheritdoc />
-    public async Task ExecuteAsync(string parameters, CancellationToken cancellationToken)
+    public async Task ExecuteAsync(JobId jobId, string parameters, CancellationToken cancellationToken)
     {
         _executions.Add(parameters);
         _entered.TrySetResult();

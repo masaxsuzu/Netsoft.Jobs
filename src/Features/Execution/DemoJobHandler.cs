@@ -1,5 +1,7 @@
 using System.Globalization;
 
+using Netsoft.Jobs.Domain;
+
 namespace Netsoft.Jobs.Features.Execution;
 
 /// <summary>
@@ -39,7 +41,7 @@ public sealed class DemoJobHandler : IJobHandler
     /// 待ち時間が指定と違うことに利用者が気づけないため。
     /// </remarks>
     /// <exception cref="FormatException">秒数として読めない、または負の値の場合。</exception>
-    public Task ExecuteAsync(string parameters, CancellationToken cancellationToken)
+    public Task ExecuteAsync(JobId jobId, string parameters, CancellationToken cancellationToken)
     {
         TimeSpan duration = ParseDuration(parameters);
 

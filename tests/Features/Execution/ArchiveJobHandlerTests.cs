@@ -1,5 +1,7 @@
 using System.IO.Compression;
 
+using Netsoft.Jobs.Domain;
+
 using Netsoft.Jobs.Features.Execution;
 using Netsoft.Jobs.Features.Tests.Fakes;
 
@@ -33,7 +35,7 @@ public sealed class ArchiveJobHandlerTests : IDisposable
         _root.WriteFile("data/top.txt", "てっぺん");
         _root.WriteFile("data/inner/nested.txt", "入れ子");
 
-        await _handler.ExecuteAsync(_source, CancellationToken.None);
+        await _handler.ExecuteAsync(JobId.From("job-1"), _source, CancellationToken.None);
 
         IReadOnlyDictionary<string, string> entries = ReadEntries(SingleArchive());
 
@@ -50,7 +52,7 @@ public sealed class ArchiveJobHandlerTests : IDisposable
         _root.WriteFile("data/top.txt", "てっぺん");
         _root.CreateSubdirectory("data/empty");
 
-        await _handler.ExecuteAsync(_source, CancellationToken.None);
+        await _handler.ExecuteAsync(JobId.From("job-1"), _source, CancellationToken.None);
 
         // 空のディレクトリはファイルの一覧に現れないので、明示的に入れないと展開時に消える。
         Assert.Contains("empty/", ReadEntries(SingleArchive()).Keys);
@@ -62,7 +64,7 @@ public sealed class ArchiveJobHandlerTests : IDisposable
         // 既定の列挙は隠しファイルを飛ばす。飛ばすと中身の欠けた zip が完成品として残る。
         _root.WriteFile("data/.hidden", "隠し");
 
-        await _handler.ExecuteAsync(_source, CancellationToken.None);
+        await _handler.ExecuteAsync(JobId.From("job-1"), _source, CancellationToken.None);
 
         Assert.Equal("隠し", ReadEntries(SingleArchive())[".hidden"]);
     }
@@ -72,7 +74,7 @@ public sealed class ArchiveJobHandlerTests : IDisposable
     {
         _root.WriteFile("data/top.txt", "てっぺん");
 
-        await _handler.ExecuteAsync(_source, CancellationToken.None);
+        await _handler.ExecuteAsync(JobId.From("job-1"), _source, CancellationToken.None);
 
         // 日時が入るので、同じディレクトリを 2 回固めても先に作った zip を壊さない。
         Assert.Equal(_root.Combine("data-20260803-010203.zip"), SingleArchive());
@@ -84,7 +86,7 @@ public sealed class ArchiveJobHandlerTests : IDisposable
     public async Task パスが空なら何を固めるか分かる例外になる(string parameters)
     {
         ArgumentException error = await Assert.ThrowsAsync<ArgumentException>(
-            () => _handler.ExecuteAsync(parameters, CancellationToken.None));
+            () => _handler.ExecuteAsync(JobId.From("job-1"), parameters, CancellationToken.None));
 
         Assert.Contains("ディレクトリのパスを指定してください", error.Message);
     }
@@ -95,7 +97,7 @@ public sealed class ArchiveJobHandlerTests : IDisposable
         string missing = _root.Combine("missing");
 
         DirectoryNotFoundException error = await Assert.ThrowsAsync<DirectoryNotFoundException>(
-            () => _handler.ExecuteAsync(missing, CancellationToken.None));
+            () => _handler.ExecuteAsync(JobId.From("job-1"), missing, CancellationToken.None));
 
         Assert.Contains(missing, error.Message);
     }
@@ -106,7 +108,7 @@ public sealed class ArchiveJobHandlerTests : IDisposable
         string driveRoot = Path.GetPathRoot(Path.GetTempPath())!;
 
         ArgumentException error = await Assert.ThrowsAsync<ArgumentException>(
-            () => _handler.ExecuteAsync(driveRoot, CancellationToken.None));
+            () => _handler.ExecuteAsync(JobId.From("job-1"), driveRoot, CancellationToken.None));
 
         Assert.Contains("ドライブ直下", error.Message);
     }
@@ -122,7 +124,7 @@ public sealed class ArchiveJobHandlerTests : IDisposable
         await cancellation.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => _handler.ExecuteAsync(_source, cancellation.Token));
+            () => _handler.ExecuteAsync(JobId.From("job-1"), _source, cancellation.Token));
 
         // 残すと中身の欠けたものが完成した書庫と見分けが付かない。
         Assert.Empty(Directory.GetFiles(_root.FullPath, "*.zip"));
@@ -138,7 +140,7 @@ public sealed class ArchiveJobHandlerTests : IDisposable
         using FileStream holder = new(unreadable, FileMode.Open, FileAccess.Read, FileShare.None);
 
         IOException error = await Assert.ThrowsAsync<IOException>(
-            () => _handler.ExecuteAsync(_source, CancellationToken.None));
+            () => _handler.ExecuteAsync(JobId.From("job-1"), _source, CancellationToken.None));
 
         // 飛ばして続けると欠けたことが誰にも残らない。どれが読めなかったかを伝えて中断する。
         Assert.Contains("読み取れないファイルがあるため中断しました", error.Message);
@@ -153,7 +155,7 @@ public sealed class ArchiveJobHandlerTests : IDisposable
         string existing = _root.WriteFile("data-20260803-010203.zip", "先にあった書庫");
 
         await Assert.ThrowsAsync<IOException>(
-            () => _handler.ExecuteAsync(_source, CancellationToken.None));
+            () => _handler.ExecuteAsync(JobId.From("job-1"), _source, CancellationToken.None));
 
         // 失敗したときの後始末が、他の誰かが置いた完成品を消してしまわないこと。
         Assert.Equal("先にあった書庫", File.ReadAllText(existing));
