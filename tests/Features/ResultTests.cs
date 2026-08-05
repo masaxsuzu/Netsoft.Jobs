@@ -15,4 +15,13 @@ public sealed class ResultTests
         // IsSuccess（理由が無い＝成功）の導出と矛盾する。作る時点で弾く契約。
         Assert.Throws<ArgumentException>(() => Result<string>.Failure([]));
     }
+
+    [Fact]
+    public void 失敗した結果の値は読めない()
+    {
+        Result<string> result = Result<string>.Failure([new ValidationError("name", "空です。")]);
+
+        // 黙って null や default を返すと、失敗の確認漏れが後段まで運ばれてしまう。
+        Assert.Throws<InvalidOperationException>(() => result.Value);
+    }
 }
