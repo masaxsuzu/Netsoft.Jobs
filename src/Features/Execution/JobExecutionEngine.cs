@@ -324,9 +324,9 @@ public sealed class JobExecutionEngine
     /// </param>
     private async Task RunHandlerAsync(Job job, CancellationTokenSource cancellation)
     {
-        // ハンドラは parameters しか受け取らず、自分がどの Job かを知らない（意図的な設計）。
-        // スコープに積んでおけば、ハンドラや await の継続が将来書くログ行すべてに
-        // JobId と JobType が自動で付き、JobId で絞れば Job の一生が並ぶ。
+        // ハンドラには識別子と parameters だけを渡す（Job 全体は渡さない。状態を
+        // 触られる形にしない）。ログへの JobId の付与はこのスコープが担い、
+        // ハンドラや await の継続が将来書くログ行すべてに JobId と JobType が自動で付く。
         using IDisposable? scope = _logger.BeginScope("Job {JobId} ({JobType})", job.Id.Value, job.JobType);
 
         // 購読者がいなければ null が返り、以降の activity?. はすべて no-op になる。
@@ -355,7 +355,7 @@ public sealed class JobExecutionEngine
             }
             else
             {
-                await handler.ExecuteAsync(job.Parameters, cancellation.Token);
+                await handler.ExecuteAsync(job.Id, job.Parameters, cancellation.Token);
 
                 trigger = JobTrigger.Complete;
             }

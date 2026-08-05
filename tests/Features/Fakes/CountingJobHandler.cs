@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 
+using Netsoft.Jobs.Domain;
+
 using Netsoft.Jobs.Features.Execution;
 
 namespace Netsoft.Jobs.Features.Tests.Fakes;
@@ -33,7 +35,7 @@ public sealed class CountingJobHandler : IJobHandler
     public int Yields { get; init; } = 1;
 
     /// <inheritdoc />
-    public async Task ExecuteAsync(string parameters, CancellationToken cancellationToken)
+    public async Task ExecuteAsync(JobId jobId, string parameters, CancellationToken cancellationToken)
     {
         _executions.AddOrUpdate(parameters, 1, (_, count) => count + 1);
 

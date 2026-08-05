@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.IO.Compression;
 
+using Netsoft.Jobs.Domain;
+
 namespace Netsoft.Jobs.Features.Execution;
 
 /// <summary>
@@ -51,7 +53,7 @@ public sealed class ArchiveJobHandler : IJobHandler
     /// <exception cref="DirectoryNotFoundException">対象ディレクトリが存在しない場合。</exception>
     /// <exception cref="IOException">読み取れないファイルがある、または zip を作れない場合。</exception>
     /// <exception cref="OperationCanceledException">キャンセルされた場合。</exception>
-    public async Task ExecuteAsync(string parameters, CancellationToken cancellationToken)
+    public async Task ExecuteAsync(JobId jobId, string parameters, CancellationToken cancellationToken)
     {
         string sourceDirectory = ResolveSourceDirectory(parameters);
         string destinationPath = BuildDestinationPath(sourceDirectory);
