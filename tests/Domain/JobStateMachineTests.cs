@@ -1,5 +1,14 @@
 namespace Netsoft.Jobs.Domain.Tests;
 
+/// <summary>
+/// 状態機械が <see cref="JobTransitionTable"/> の仕様と一致することを、
+/// 状態 × 契機の全組み合わせで確かめる。
+/// </summary>
+/// <remarks>
+/// 行ごとのテストは立てない。表に無い組み合わせを含む全域を 1 本で走査するので、
+/// 行を足したときに検査の側を足し忘れることが起きない。個々の行の意図は
+/// <see cref="JobTransitionTable"/> に書いてある。
+/// </remarks>
 public sealed class JobStateMachineTests
 {
     public static TheoryData<JobStatus, JobTrigger, JobStatus> 遷移表 { get; } = BuildTable();
@@ -7,112 +16,47 @@ public sealed class JobStateMachineTests
     public static TheoryData<JobStatus, JobTrigger> 全組み合わせ { get; } = BuildAllCombinations();
 
     [Theory]
-    [MemberData(nameof(遷移表))]
-    public void 遷移表にある組み合わせは許可され_表どおりの状態になる(JobStatus current, JobTrigger trigger, JobStatus expected)
-    {
-        JobTransitionResult result = JobStateMachine.Evaluate(current, trigger);
-
-        Assert.True(result.IsAllowed);
-        Assert.Equal(expected, result.Status);
-        Assert.Null(result.Rejection);
-    }
-
-    [Theory]
     [MemberData(nameof(全組み合わせ))]
-    public void 遷移表に無い組み合わせはすべて拒否される(JobStatus current, JobTrigger trigger)
+    public void 全組み合わせが遷移表と一致し終端はいかなる契機でも動かない(JobStatus current, JobTrigger trigger)
     {
-        bool 表にある = JobTransitionTable.Allowed.ContainsKey((current, trigger));
+        bool 表にある = JobTransitionTable.Allowed.TryGetValue((current, trigger), out JobStatus expected);
 
         JobTransitionResult result = JobStateMachine.Evaluate(current, trigger);
 
         Assert.Equal(表にある, result.IsAllowed);
-    }
 
-    [Theory]
-    [MemberData(nameof(全組み合わせ))]
-    public void 拒否されたときは現在の状態がそのまま返り_理由が付く(JobStatus current, JobTrigger trigger)
-    {
-        JobTransitionResult result = JobStateMachine.Evaluate(current, trigger);
-
-        if (result.IsAllowed)
+        if (表にある)
         {
+            Assert.Equal(expected, result.Status);
+            Assert.Null(result.Rejection);
             return;
         }
 
+        // 拒否は現在の状態を動かさず、必ず理由が付く。呼び出し側はこの理由で応答を分ける。
         Assert.Equal(current, result.Status);
         Assert.NotNull(result.Rejection);
-    }
 
-    [Theory]
-    [InlineData(JobStatus.Completed)]
-    [InlineData(JobStatus.Failed)]
-    [InlineData(JobStatus.Cancelled)]
-    public void 終端状態はいかなる契機でも遷移しない(JobStatus terminal)
-    {
-        Assert.True(terminal.IsTerminal());
-
-        foreach (JobTrigger trigger in JobTransitionTable.AllTriggers)
+        // 終端は一方通行の行き止まり。表に行が無いことに加えて、理由が
+        // 「もう終わっている」で揃うことまで固定する（409 に写す判断がこれに乗る）。
+        if (current.IsTerminal())
         {
-            JobTransitionResult result = JobStateMachine.Evaluate(terminal, trigger);
-
-            Assert.False(result.IsAllowed);
             Assert.Equal(JobTransitionRejection.JobAlreadyFinished, result.Rejection);
-            Assert.Equal(terminal, result.Status);
         }
     }
 
-    [Fact]
-    public void キャンセル要求後にハンドラが完走したらCompletedになる()
+    /// <summary>
+    /// 終端でない拒否の理由が 2 つに分かれること。「もう効いている」は利用者にとって
+    /// 成功（ボタンを 2 回押しただけ）に写り、「今の状態では無理」は 409 に写る。
+    /// </summary>
+    [Theory]
+    [InlineData(JobStatus.Cancelling, JobTrigger.RequestCancel, JobTransitionRejection.AlreadyInEffect)]
+    [InlineData(JobStatus.Running, JobTrigger.Start, JobTransitionRejection.AlreadyInEffect)]
+    [InlineData(JobStatus.Queued, JobTrigger.Complete, JobTransitionRejection.InvalidForCurrentStatus)]
+    [InlineData(JobStatus.Running, JobTrigger.ConfirmCancelled, JobTransitionRejection.InvalidForCurrentStatus)]
+    public void 終端以外の拒否は既に効いているかどうかで理由が分かれる(
+        JobStatus current, JobTrigger trigger, JobTransitionRejection expected)
     {
-        // 実際に起きたのは「完走」なので、要求されたキャンセルではなく完走を記録する。
-        JobTransitionResult result = JobStateMachine.Evaluate(JobStatus.Cancelling, JobTrigger.Complete);
-
-        Assert.True(result.IsAllowed);
-        Assert.Equal(JobStatus.Completed, result.Status);
-    }
-
-    [Fact]
-    public void 待機中へのキャンセル要求は即座にCancelledになる()
-    {
-        // ハンドラが起動していないので、受理を待つ相手がいない。
-        JobTransitionResult result = JobStateMachine.Evaluate(JobStatus.Queued, JobTrigger.RequestCancel);
-
-        Assert.True(result.IsAllowed);
-        Assert.Equal(JobStatus.Cancelled, result.Status);
-    }
-
-    [Fact]
-    public void 待機中は起動時復旧の対象外()
-    {
-        JobTransitionResult result = JobStateMachine.Evaluate(JobStatus.Queued, JobTrigger.RecoverAfterCrash);
-
-        Assert.False(result.IsAllowed);
-        Assert.Equal(JobStatus.Queued, result.Status);
-        Assert.False(JobStatus.Queued.IsHandlerActive());
-    }
-
-    [Fact]
-    public void 既に効いている要求はAlreadyInEffectとして区別される()
-    {
-        Assert.Equal(
-            JobTransitionRejection.AlreadyInEffect,
-            JobStateMachine.Evaluate(JobStatus.Cancelling, JobTrigger.RequestCancel).Rejection);
-
-        Assert.Equal(
-            JobTransitionRejection.AlreadyInEffect,
-            JobStateMachine.Evaluate(JobStatus.Running, JobTrigger.Start).Rejection);
-    }
-
-    [Fact]
-    public void それ以外の不正はInvalidForCurrentStatusとして区別される()
-    {
-        Assert.Equal(
-            JobTransitionRejection.InvalidForCurrentStatus,
-            JobStateMachine.Evaluate(JobStatus.Queued, JobTrigger.Complete).Rejection);
-
-        Assert.Equal(
-            JobTransitionRejection.InvalidForCurrentStatus,
-            JobStateMachine.Evaluate(JobStatus.Running, JobTrigger.ConfirmCancelled).Rejection);
+        Assert.Equal(expected, JobStateMachine.Evaluate(current, trigger).Rejection);
     }
 
     [Fact]

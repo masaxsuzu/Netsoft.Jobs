@@ -26,13 +26,19 @@
     基準を二重にしても守れるものは増えず、「行を踏むだけで判断を検証しない」
     テストを温存する圧力にだけなる。行の計測と表示は残る。基準にしないだけ。
 
-    ThresholdStat を Total にするのは、既定の Minimum がモジュール単位の最小値を
-    見るため。全体が基準を満たしていても小さなモジュール 1 つで落ちてしまう。
+    ThresholdStat は Minimum。全体の合算ではなく、src の各プロジェクトが
+    それぞれ 80% を満たすことを要求する。合算だと、分岐の多いプロジェクトが
+    基準を押し上げて、小さいプロジェクトが素通りする。実測で Domain 54 に対し
+    Contracts は 2 しか分岐が無く、合算では Contracts が 0% でも総計は落ちない。
+
+    テストがどのプロジェクトのコードを通ったかは、マージ済みの計測結果が
+    そのまま持っている（Web の結合テストが Features を通れば Features に計上される）。
+    プロジェクトごとに測り直すわけではない。基準の当て方だけを変えている。
   -->
   <PropertyGroup Condition="'$(CollectCoverage)' == 'true'">
     <Threshold>80</Threshold>
     <ThresholdType>branch</ThresholdType>
-    <ThresholdStat>Total</ThresholdStat>
+    <ThresholdStat>Minimum</ThresholdStat>
   </PropertyGroup>
 
 </Project>
