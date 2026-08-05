@@ -27,9 +27,10 @@ public sealed class HomePageE2ETests
         await page.FillAsync("#job-name", name);
 
         // 種類は選択式。選べること自体が「選択肢が API から取れている」ことの証拠で、
-        // 取れていなければ demo の option が無く、ここで時間切れになる。
-        await page.SelectOptionAsync("#job-type", "demo");
-        await page.FillAsync("#job-parameters", "2");
+        // 取れていなければ subtasks の option が無く、ここで時間切れになる。
+        // 2 サブタスク × 1 秒。境界（1 つ目の完了 → 2 つ目の開始）を実プロセスで 1 回通す。
+        await page.SelectOptionAsync("#job-type", "subtasks");
+        await page.FillAsync("#job-parameters", "2 1");
         await page.ClickAsync("button[type=submit]");
 
         ILocator row = RowFor(page, name);
@@ -50,8 +51,8 @@ public sealed class HomePageE2ETests
 
         // テストがキャンセルを押すまで確実に実行中でいられるよう、長めに待つ Job にする。
         await page.FillAsync("#job-name", name);
-        await page.SelectOptionAsync("#job-type", "demo");
-        await page.FillAsync("#job-parameters", "60");
+        await page.SelectOptionAsync("#job-type", "subtasks");
+        await page.FillAsync("#job-parameters", "1 60");
         await page.ClickAsync("button[type=submit]");
 
         ILocator row = RowFor(page, name);

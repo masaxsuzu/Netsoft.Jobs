@@ -33,7 +33,7 @@ public sealed class JobExecutionWiringTests : IDisposable
         // 待ち時間 0 秒のデモ Job。エンジンが起きさえすれば即座に完了する。
         HttpResponseMessage response = await _client.PostAsJsonAsync(
             "/api/jobs",
-            new { name = "結線の生存証明", jobType = "demo", parameters = "0" });
+            new { name = "結線の生存証明", jobType = "subtasks", parameters = "1 1" });
 
         response.EnsureSuccessStatusCode();
         JobDto? registered = await response.Content.ReadFromJsonAsync<JobDto>();

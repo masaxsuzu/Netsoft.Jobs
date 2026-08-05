@@ -46,10 +46,12 @@ public sealed class CancelJobServiceCollectionExtensionsTests
         // キャンセルは実行エンジン側の IRunningJobRegistry に依存する。
         // AddCancelJob が自分で登録しない以上、まとめた登録に取りこぼしが無いことを見ておく。
         using TemporaryJobStore store = new();
+        using TemporarySubTaskStore subTasks = new();
         ServiceCollection services = new();
 
         services.AddLogging();
         services.AddSingleton<IJobStore>(store);
+        services.AddSingleton<ISubTaskStore>(subTasks);
         services.AddJobFeatures();
 
         using ServiceProvider provider = services.BuildServiceProvider(new ServiceProviderOptions

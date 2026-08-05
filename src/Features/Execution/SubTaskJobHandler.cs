@@ -130,7 +130,7 @@ public sealed class SubTaskJobHandler : IJobHandler
         string[] parts = parameters.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         // 個数と秒数に既定値は置かない。書き損じを既定値で流すと、
-        // 意図と違う長さで走っていることに利用者が気づけない（DemoJobHandler と同じ判断）。
+        // 意図と違う長さで走っていることに利用者が気づけない。
         if (parts.Length != 2
             || !int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out int count)
             || !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out int waits)

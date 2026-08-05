@@ -36,7 +36,7 @@ public sealed class JobCancelabilityTests
         new(
             Id: "job-1",
             Name: "テスト",
-            JobType: "demo",
+            JobType: "subtasks",
             Parameters: "",
             Status: status,
             CreatedAt: DateTimeOffset.UtcNow,

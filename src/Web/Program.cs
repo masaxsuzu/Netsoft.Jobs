@@ -32,6 +32,10 @@ builder.Services.AddSingleton<IJobStore>(provider => new NotifyingJobStore(
 // 単一解決はこちら（最後の登録）が勝つ。Jobs と同じ DB ファイルの別表を使う。
 // 具象型（Infrastructure）も登録しておくのは、起動時初期化が InitializeAsync を
 // 具象型でしか呼べないため。port への結線はアダプタが担う。
+// サブタスクも同じ DB ファイルに載せる。具象型も登録するのは InitializeAsync のため（上と同じ）。
+builder.Services.AddSingleton(new SqliteSubTaskStore(databasePath));
+builder.Services.AddSingleton<ISubTaskStore>(provider => provider.GetRequiredService<SqliteSubTaskStore>());
+
 builder.Services.AddSingleton(new SqliteJobTraceContextStore(databasePath));
 builder.Services.AddSingleton<IJobTraceContextStore>(
     provider => new JobTraceContextStoreAdapter(provider.GetRequiredService<SqliteJobTraceContextStore>()));
@@ -53,6 +57,7 @@ app.MapJobEvents();
 // スキーマの用意はホストの起動（= 実行エンジンの開始）より前に済ませる。
 // エンジンは起動時復旧で store を読むので、逆順だとテーブルが無いまま読みに行く。
 await app.Services.GetRequiredService<SqliteJobStore>().InitializeAsync(CancellationToken.None);
+await app.Services.GetRequiredService<SqliteSubTaskStore>().InitializeAsync(CancellationToken.None);
 await app.Services.GetRequiredService<SqliteJobTraceContextStore>().InitializeAsync(CancellationToken.None);
 
 await app.RunAsync();

@@ -13,8 +13,13 @@ namespace Netsoft.Jobs.Features.Tests.Execution;
 public sealed class JobExecutionServiceCollectionExtensionsTests : IDisposable
 {
     private readonly TemporaryJobStore _store = new();
+    private readonly TemporarySubTaskStore _subTaskStore = new();
 
-    public void Dispose() => _store.Dispose();
+    public void Dispose()
+    {
+        _subTaskStore.Dispose();
+        _store.Dispose();
+    }
 
     /// <summary>
     /// エンジンではなくファクトリが解決できること。
@@ -87,32 +92,23 @@ public sealed class JobExecutionServiceCollectionExtensionsTests : IDisposable
     }
 
     [Fact]
-    public void デモJobのハンドラが登録される()
+    public void サブタスクJobのハンドラが登録される()
     {
         using ServiceProvider provider = BuildProvider();
 
         JobHandlerRegistry registry = provider.GetRequiredService<JobHandlerRegistry>();
 
-        Assert.IsType<DemoJobHandler>(registry.Find(DemoJobHandler.DemoJobType));
-    }
-
-    [Fact]
-    public void 書庫Jobのハンドラが登録される()
-    {
-        using ServiceProvider provider = BuildProvider();
-
-        JobHandlerRegistry registry = provider.GetRequiredService<JobHandlerRegistry>();
-
-        Assert.IsType<ArchiveJobHandler>(registry.Find(ArchiveJobHandler.ArchiveJobType));
+        Assert.IsType<SubTaskJobHandler>(registry.Find(SubTaskJobHandler.SubTaskJobType));
     }
 
     private ServiceProvider BuildProvider()
     {
         ServiceCollection services = new();
 
-        // Web 側がやることと同じ。IJobStore の実装を選ぶのは Features の関心ではない。
+        // Web 側がやることと同じ。IJobStore / ISubTaskStore の実装を選ぶのは Features の関心ではない。
         services.AddLogging();
         services.AddSingleton<IJobStore>(_store);
+        services.AddSingleton<ISubTaskStore>(_subTaskStore);
 
         services.AddJobExecution();
 

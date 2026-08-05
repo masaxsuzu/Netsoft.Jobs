@@ -96,7 +96,7 @@ public sealed class NotifyingJobStoreTests
     private static Job CreateJob()
     {
         JobId id = JobId.From("job-1");
-        return Job.Create(id, "テスト", "demo", "", T0);
+        return Job.Create(id, "テスト", "subtasks", "", T0);
     }
 
     /// <summary>呼ばれたことだけを記録する内側。デコレータの検証に保存の実体は要らない。</summary>

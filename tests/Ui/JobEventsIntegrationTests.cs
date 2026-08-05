@@ -32,7 +32,7 @@ public sealed class JobEventsIntegrationTests
 
         IJobStore store = factory.Api.Services.GetRequiredService<IJobStore>();
         await store.AddAsync(
-            Job.Create(JobId.From("job-sse-ui-1"), "通知される Job", "demo", "1", T0),
+            Job.Create(JobId.From("job-sse-ui-1"), "通知される Job", "subtasks", "1 1", T0),
             CancellationToken.None);
 
         Assert.True(await signals.WaitAsync(TimeSpan.FromSeconds(10)), "変更の合図が届かない。");
