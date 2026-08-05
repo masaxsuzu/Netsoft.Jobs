@@ -41,6 +41,43 @@ public sealed class SqliteSubTaskStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task 集計はJobごとに完了数と総数を返し行の無いJobは現れない()
+    {
+        SqliteSubTaskStore store = await OpenStoreAsync();
+
+        // job-1: 3 行のうち 1 つ完了・1 つ実行中。job-2: 1 行で完了ゼロ。
+        SubTask first = SubTask.Create(JobId.From("job-1"), 0);
+        SubTask second = SubTask.Create(JobId.From("job-1"), 1);
+        await store.AddRangeAsync(
+            [first, second, SubTask.Create(JobId.From("job-1"), 2)],
+            CancellationToken.None);
+        await store.AddRangeAsync([SubTask.Create(JobId.From("job-2"), 0)], CancellationToken.None);
+
+        await ApplyAsync(store, first, SubTaskTrigger.Start);
+        await ApplyAsync(store, first, SubTaskTrigger.Complete);
+        await ApplyAsync(store, second, SubTaskTrigger.Start);
+
+        IReadOnlyDictionary<JobId, SubTaskProgress> progress =
+            await store.CountByJobAsync(CancellationToken.None);
+
+        // 実行中は完了に数えない。総数は「いま存在する行数」。
+        Assert.Equal(new SubTaskProgress(1, 3), progress[JobId.From("job-1")]);
+        Assert.Equal(new SubTaskProgress(0, 1), progress[JobId.From("job-2")]);
+
+        // 行を持たない Job は組そのものが無い。呼び出し側が「まだ分割されていない」と読む。
+        Assert.False(progress.ContainsKey(JobId.From("job-9")));
+        Assert.Equal(2, progress.Count);
+    }
+
+    [Fact]
+    public async Task 行が1つも無ければ集計は空になる()
+    {
+        SqliteSubTaskStore store = await OpenStoreAsync();
+
+        Assert.Empty(await store.CountByJobAsync(CancellationToken.None));
+    }
+
+    [Fact]
     public async Task 空の保存は何も書かずに終わる()
     {
         SqliteSubTaskStore store = await OpenStoreAsync();
@@ -187,5 +224,11 @@ public sealed class SqliteSubTaskStoreTests : IDisposable
         SqliteSubTaskStore store = new(_database.FilePath);
         await store.InitializeAsync(CancellationToken.None);
         return store;
+    }
+
+    private static async Task ApplyAsync(SqliteSubTaskStore store, SubTask subTask, SubTaskTrigger trigger)
+    {
+        SubTaskTransition transition = subTask.Apply(trigger);
+        Assert.True(await store.UpdateAsync(subTask, transition.Previous, CancellationToken.None));
     }
 }

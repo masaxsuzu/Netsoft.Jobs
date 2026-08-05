@@ -62,4 +62,8 @@ public sealed class NotifyingSubTaskStore : ISubTaskStore
     /// <inheritdoc />
     public Task<IReadOnlyList<SubTask>> ListByJobAsync(JobId jobId, CancellationToken cancellationToken) =>
         _inner.ListByJobAsync(jobId, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<IReadOnlyDictionary<JobId, SubTaskProgress>> CountByJobAsync(CancellationToken cancellationToken) =>
+        _inner.CountByJobAsync(cancellationToken);
 }

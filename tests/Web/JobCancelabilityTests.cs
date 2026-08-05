@@ -3,8 +3,8 @@ using Netsoft.Jobs.Contracts;
 namespace Netsoft.Jobs.Web.Tests;
 
 /// <summary>
-/// キャンセルボタンの可否判定。判断の本体は Domain の状態機械にあるので、
-/// ここで確かめるのは「DTO の文字列状態が正しく写像されるか」と「未知の値の扱い」。
+/// ボタンの可否判定。判断の本体は Domain の状態機械にあるので、
+/// ここで確かめるのは「文字列の状態が正しく写像されるか」と「未知の値の扱い」。
 /// </summary>
 public sealed class JobCancelabilityTests
 {
@@ -19,7 +19,7 @@ public sealed class JobCancelabilityTests
     [InlineData("Cancelled", false)]
     public void 状態機械の判定がそのまま可否になる(string status, bool expected)
     {
-        Assert.Equal(expected, JobCancelability.CanRequestCancel(CreateDto(status)));
+        Assert.Equal(expected, JobCancelability.CanRequestCancel(status));
     }
 
     /// <summary>
@@ -31,7 +31,7 @@ public sealed class JobCancelabilityTests
     [InlineData("queued ")]
     public void 未知の状態では押させない(string status)
     {
-        Assert.False(JobCancelability.CanRequestCancel(CreateDto(status)));
+        Assert.False(JobCancelability.CanRequestCancel(status));
     }
 
     /// <summary>
@@ -47,22 +47,8 @@ public sealed class JobCancelabilityTests
     [InlineData("Unknown", false, false, false)]
     public void 停止再開編集の可否が状態から写る(string status, bool pause, bool resume, bool edit)
     {
-        JobDto job = CreateDto(status);
-
-        Assert.Equal(pause, JobPausability.CanRequestPause(job));
-        Assert.Equal(resume, JobPausability.CanRequestResume(job));
-        Assert.Equal(edit, JobEditability.CanEdit(job));
+        Assert.Equal(pause, JobPausability.CanRequestPause(status));
+        Assert.Equal(resume, JobPausability.CanRequestResume(status));
+        Assert.Equal(edit, JobEditability.CanEdit(status));
     }
-
-    private static JobDto CreateDto(string status) =>
-        new(
-            Id: "job-1",
-            Name: "テスト",
-            JobType: "subtasks",
-            Parameters: "",
-            Status: status,
-            CreatedAt: DateTimeOffset.UtcNow,
-            StartedAt: null,
-            FinishedAt: null,
-            FailureMessage: null);
 }

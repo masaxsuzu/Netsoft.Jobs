@@ -39,6 +39,16 @@ public interface ISubTaskStore
     Task<IReadOnlyList<SubTask>> ListByJobAsync(JobId jobId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// 行を持つすべての Job の進捗を、まとめて 1 回で数える。行の無い Job は含まれない。
+    /// </summary>
+    /// <remarks>
+    /// 一覧の表示のための口。Job ごとに <see cref="ListByJobAsync"/> を呼ぶと問い合わせが
+    /// Job 数に比例して増えるうえ、行の中身は数えるためだけに読み捨てになる。
+    /// 数だけが要るなら数だけを運ぶ。
+    /// </remarks>
+    Task<IReadOnlyDictionary<JobId, SubTaskProgress>> CountByJobAsync(CancellationToken cancellationToken);
+
+    /// <summary>
     /// 連番が <paramref name="firstIndex"/> 以降の<b>未着手（Pending）の</b>行を消す。
     /// </summary>
     /// <remarks>
