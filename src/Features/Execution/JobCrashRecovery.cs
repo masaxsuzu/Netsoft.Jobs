@@ -14,10 +14,13 @@ namespace Netsoft.Jobs.Features.Execution;
 /// ハンドラを起動していないので副作用が無く、このプロセスがそのまま実行する。
 /// </para>
 /// <para>
-/// <b>状態を持たない静的な型にしてある。</b>これは「エンジンが動く前」の仕事で、実行中に
-/// 呼べてはいけない。インスタンスにしてフィールドから store を読める形にすると、
-/// 実行中にも呼べる作りへ戻る余地が残る。呼ぶ相手は
-/// <see cref="JobExecutionEngine.StartAsync"/> ただ 1 か所で、そこが復旧を終えてから
+/// <b>状態を持たない静的な型で、外へは出さない（internal）。</b>これは「エンジンが動く前」の
+/// 仕事で、実行中に呼べてはいけない。インスタンスにしてフィールドから store を読める形にすると
+/// 実行中にも呼べる作りへ戻るし、公開すると外から実行中に呼べてしまう。
+/// エンジンから切り出したときに <c>public</c> にしかけたが、それでは
+/// 「復旧を経ないとエンジンが手に入らない」という #25 の型レベルの保証の隣に、
+/// <b>復旧だけを単独で呼べる別の入口</b>を開けることになる。切り出しで守りを弱めては本末転倒。
+/// 呼ぶ相手は <see cref="JobExecutionEngine.StartAsync"/> ただ 1 か所で、そこが復旧を終えてから
 /// でないとエンジンのインスタンスを作らないことで、二重復旧と呼び忘れの両方を消している
 /// （理由の本体は StartAsync の注記）。
 /// </para>
@@ -28,7 +31,7 @@ namespace Netsoft.Jobs.Features.Execution;
 /// （docs/operating.md）。
 /// </para>
 /// </remarks>
-public static class JobCrashRecovery
+internal static class JobCrashRecovery
 {
     /// <summary>復旧で閉じた Job に記録する失敗理由。</summary>
     private const string CrashRecoveryMessage = "前回のプロセスが異常終了したため、実行結果を確認できません。";
