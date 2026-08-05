@@ -49,10 +49,31 @@ public sealed class Job
     /// 解釈するのは <see cref="JobType"/> に対応するハンドラだけで、
     /// ここで形式を仮定すると Job の種類を増やすたびに Domain が変わってしまう。
     /// </remarks>
-    public string Parameters { get; }
+    public string Parameters { get; private set; }
 
     /// <summary>現在の状態。外から代入する経路は無い。</summary>
     public JobStatus Status { get; private set; }
+
+    /// <summary>
+    /// パラメータを書き換える。編集は状態遷移ではないので <see cref="Apply"/> を通らない。
+    /// </summary>
+    /// <remarks>
+    /// どの状態で編集できるかの定義は <see cref="JobStatusExtensions.CanEditParameters"/> が
+    /// 1 か所で持つ。呼び出し側（編集のハンドラ）は先に確かめて拒否を結果で返し、
+    /// ここまで来て違反していたら呼び出し側の誤りとして例外にする（拒否とは性質が違う）。
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">編集できない状態の場合。</exception>
+    public void ChangeParameters(string parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+
+        if (!Status.CanEditParameters())
+        {
+            throw new InvalidOperationException($"状態 {Status} の Job のパラメータは編集できません。");
+        }
+
+        Parameters = parameters;
+    }
 
     /// <summary>登録された時刻。</summary>
     public DateTimeOffset CreatedAt { get; }

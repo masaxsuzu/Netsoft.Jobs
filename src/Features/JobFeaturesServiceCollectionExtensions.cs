@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Netsoft.Jobs.Features.CancelJob;
+using Netsoft.Jobs.Features.EditJob;
 using Netsoft.Jobs.Features.Execution;
 using Netsoft.Jobs.Features.PauseJob;
 using Netsoft.Jobs.Features.QueryJobs;
@@ -43,6 +44,7 @@ public static class JobFeaturesServiceCollectionExtensions
         // 入れた実体をそのまま解決させたいので、この順に並べておく。
         services.AddCancelJob();
         services.AddPauseJob();
+        services.AddEditJob();
 
         return services;
     }

@@ -148,6 +148,22 @@ public sealed class SqliteSubTaskStore : ISubTaskStore
         return subTasks;
     }
 
+    /// <inheritdoc />
+    public async Task RemovePendingFromAsync(JobId jobId, int firstIndex, CancellationToken cancellationToken)
+    {
+        await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using SqliteCommand command = connection.CreateCommand();
+
+        // Pending 以外は WHERE で残る。着手済みを消せないことは SQL が保証する。
+        command.CommandText =
+            "DELETE FROM SubTasks WHERE JobId = $jobId AND Position >= $firstIndex AND Status = $pending;";
+        command.Parameters.AddWithValue("$jobId", jobId.Value);
+        command.Parameters.AddWithValue("$firstIndex", firstIndex);
+        command.Parameters.AddWithValue("$pending", SubTaskStatusText.ToText(SubTaskStatus.Pending));
+
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     private static async Task<bool> ExistsAsync(
         SqliteConnection connection, SubTask subTask, CancellationToken cancellationToken)
     {
