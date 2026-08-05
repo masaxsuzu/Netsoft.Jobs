@@ -163,6 +163,11 @@ public sealed class JobExecutionEngine
                 return false;
             }
 
+            // 停止から再開した Job は開始時刻を持ったまま戻ってくる（Job.StartedAt の注記）。
+            // 待ち時間を記録してよいのは初回だけで、再開の周回で記録すると
+            // 「登録から実行開始まで」に停止していた時間と 1 回目の実行が丸ごと入る。
+            bool firstStart = job.StartedAt is null;
+
             JobTransitionResult started = job.Apply(JobTrigger.Start, _timeProvider.GetUtcNow());
             if (!started.IsAllowed)
             {
@@ -196,8 +201,11 @@ public sealed class JobExecutionEngine
                     continue;
                 }
 
-                // Running の確定＝待ち行列を抜けた点。待ち時間はここで確定する。
-                _instrumentation.RecordStarted(job);
+                // Running の確定＝待ち行列を抜けた点。待ち時間はここで確定する（初回だけ）。
+                if (firstStart)
+                {
+                    _instrumentation.RecordStarted(job);
+                }
 
                 await RunHandlerAsync(job, cancellation);
                 return true;

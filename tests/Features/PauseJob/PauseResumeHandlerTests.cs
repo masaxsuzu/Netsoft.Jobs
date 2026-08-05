@@ -79,7 +79,7 @@ public sealed class PauseResumeHandlerTests : IDisposable
     }
 
     [Fact]
-    public async Task 停止中からの再開はStartedAtを消して次の開始で入り直す()
+    public async Task 停止中からの再開でも開始時刻は残る()
     {
         await AddAsync(JobAt("job-1", nameof(JobStatus.Paused)));
 
@@ -87,10 +87,10 @@ public sealed class PauseResumeHandlerTests : IDisposable
 
         Assert.True(result.IsSuccess);
 
-        // Queued へ戻った Job は「まだ開始していない」。前回の実行の開始時刻は残さない。
+        // Queued へ戻るが「走ったことがある」事実は残る。開始時刻は最初のまま。
         Job saved = await SavedAsync("job-1");
         Assert.Equal(JobStatus.Queued, saved.Status);
-        Assert.Null(saved.StartedAt);
+        Assert.Equal(Created.AddMinutes(1), saved.StartedAt);
     }
 
     [Theory]
