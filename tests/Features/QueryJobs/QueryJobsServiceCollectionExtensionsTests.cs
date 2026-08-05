@@ -15,10 +15,12 @@ public sealed class QueryJobsServiceCollectionExtensionsTests
     public void 読み出しのハンドラをDIから解決できる()
     {
         using TemporaryJobStore store = new();
+        using TemporarySubTaskStore subTasks = new();
         ServiceCollection services = new();
 
-        // Web 側がやることと同じ。IJobStore の実装を選ぶのは Features の関心ではない。
+        // Web 側がやることと同じ。IJobStore / ISubTaskStore の実装を選ぶのは Features の関心ではない。
         services.AddSingleton<IJobStore>(store);
+        services.AddSingleton<ISubTaskStore>(subTasks);
         services.AddQueryJobs();
 
         using ServiceProvider provider = services.BuildServiceProvider(new ServiceProviderOptions
@@ -30,5 +32,6 @@ public sealed class QueryJobsServiceCollectionExtensionsTests
         using IServiceScope scope = provider.CreateScope();
 
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<QueryJobsHandler>());
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<QuerySubTasksHandler>());
     }
 }

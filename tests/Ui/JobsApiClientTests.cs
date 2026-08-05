@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 
 using Netsoft.Jobs.Contracts;
+using Netsoft.Jobs.Domain;
 
 namespace Netsoft.Jobs.Ui.Tests;
 
@@ -112,5 +113,88 @@ public sealed class JobsApiClientTests : IDisposable
         Assert.False(second.IsSuccess);
         Assert.NotNull(second.Job);
         Assert.Equal("Cancelled", second.Job.Status);
+    }
+
+    /// <summary>
+    /// 一時停止 → 再開の往復が URL と応答の形ごと繋がっていること。
+    /// 実行中は store を直接進めて作る（実行エンジンは止まっている）。
+    /// </summary>
+    [Fact]
+    public async Task 実行中のJobを一時停止し受理前なら再開で実行中に戻せる()
+    {
+        RegisterJobResponse registered = await _client.RegisterJobAsync(
+            "止めたい Job", "subtasks", "3 1", CancellationToken.None);
+        Assert.NotNull(registered.Job);
+        await StartAsync(registered.Job.Id);
+
+        JobControlResponse paused = await _client.PauseJobAsync(registered.Job.Id, CancellationToken.None);
+        Assert.True(paused.IsSuccess);
+        Assert.Equal("Pausing", paused.Job?.Status);
+
+        JobControlResponse resumed = await _client.ResumeJobAsync(registered.Job.Id, CancellationToken.None);
+        Assert.True(resumed.IsSuccess);
+        Assert.Equal("Running", resumed.Job?.Status);
+    }
+
+    [Fact]
+    public async Task 待機中のJobへの一時停止は拒否として写る()
+    {
+        RegisterJobResponse registered = await _client.RegisterJobAsync(
+            "まだの Job", "subtasks", "3 1", CancellationToken.None);
+        Assert.NotNull(registered.Job);
+
+        JobControlResponse result = await _client.PauseJobAsync(registered.Job.Id, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Queued", result.Job?.Status);
+    }
+
+    [Fact]
+    public async Task パラメータの編集は成功と項目別エラーが結果型へ写る()
+    {
+        RegisterJobResponse registered = await _client.RegisterJobAsync(
+            "編集する Job", "subtasks", "3 1", CancellationToken.None);
+        Assert.NotNull(registered.Job);
+
+        EditJobResponse edited = await _client.EditJobParametersAsync(
+            registered.Job.Id, "5 2", CancellationToken.None);
+        Assert.True(edited.IsSuccess);
+        Assert.Equal("5 2", edited.Job?.Parameters);
+
+        EditJobResponse invalid = await _client.EditJobParametersAsync(
+            registered.Job.Id, "junk", CancellationToken.None);
+        Assert.False(invalid.IsSuccess);
+        Assert.True(invalid.Errors.ContainsKey("parameters"));
+    }
+
+    [Fact]
+    public async Task サブタスクの一覧は連番順で写り対象なしはnull()
+    {
+        RegisterJobResponse registered = await _client.RegisterJobAsync(
+            "進捗を見る Job", "subtasks", "2 1", CancellationToken.None);
+        Assert.NotNull(registered.Job);
+
+        ISubTaskStore subTasks = _factory.Api.Services.GetRequiredService<ISubTaskStore>();
+        await subTasks.AddRangeAsync(
+            [SubTask.Create(JobId.From(registered.Job.Id), 0), SubTask.Create(JobId.From(registered.Job.Id), 1)],
+            CancellationToken.None);
+
+        IReadOnlyList<SubTaskDto>? listed =
+            await _client.ListSubTasksAsync(registered.Job.Id, CancellationToken.None);
+        Assert.Equal([new SubTaskDto(0, "Pending"), new SubTaskDto(1, "Pending")], listed);
+
+        Assert.Null(await _client.ListSubTasksAsync("does-not-exist", CancellationToken.None));
+    }
+
+    /// <summary>store を直接進めて実行中にする。エンジンは止まっているのでこれが唯一の道。</summary>
+    private async Task StartAsync(string id)
+    {
+        IJobStore store = _factory.Api.Services.GetRequiredService<IJobStore>();
+        Job job = await store.FindAsync(JobId.From(id), CancellationToken.None)
+            ?? throw new InvalidOperationException($"Job {id} が保存されていません。");
+
+        JobTransitionResult result = job.Apply(JobTrigger.Start, DateTimeOffset.UtcNow);
+        Assert.True(result.IsAllowed);
+        Assert.True(await store.UpdateAsync(job, result.Previous, CancellationToken.None));
     }
 }

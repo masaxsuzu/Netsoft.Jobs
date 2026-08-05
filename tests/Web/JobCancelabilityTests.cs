@@ -34,6 +34,26 @@ public sealed class JobCancelabilityTests
         Assert.False(JobCancelability.CanRequestCancel(CreateDto(status)));
     }
 
+    /// <summary>
+    /// 一時停止・再開・編集の可否も同じ流儀（判断は Domain、ここは写像と未知の値の検査）。
+    /// </summary>
+    [Theory]
+    [InlineData("Queued", false, false, true)]
+    [InlineData("Running", true, false, true)]
+    [InlineData("Pausing", false, true, true)]
+    [InlineData("Paused", false, true, true)]
+    [InlineData("Cancelling", false, false, false)]
+    [InlineData("Completed", false, false, false)]
+    [InlineData("Unknown", false, false, false)]
+    public void 停止再開編集の可否が状態から写る(string status, bool pause, bool resume, bool edit)
+    {
+        JobDto job = CreateDto(status);
+
+        Assert.Equal(pause, JobPausability.CanRequestPause(job));
+        Assert.Equal(resume, JobPausability.CanRequestResume(job));
+        Assert.Equal(edit, JobEditability.CanEdit(job));
+    }
+
     private static JobDto CreateDto(string status) =>
         new(
             Id: "job-1",

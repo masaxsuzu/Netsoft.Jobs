@@ -34,7 +34,9 @@ builder.Services.AddSingleton<IJobStore>(provider => new NotifyingJobStore(
 // 具象型でしか呼べないため。port への結線はアダプタが担う。
 // サブタスクも同じ DB ファイルに載せる。具象型も登録するのは InitializeAsync のため（上と同じ）。
 builder.Services.AddSingleton(new SqliteSubTaskStore(databasePath));
-builder.Services.AddSingleton<ISubTaskStore>(provider => provider.GetRequiredService<SqliteSubTaskStore>());
+builder.Services.AddSingleton<ISubTaskStore>(provider => new NotifyingSubTaskStore(
+    provider.GetRequiredService<SqliteSubTaskStore>(),
+    provider.GetRequiredService<JobChangeFeed>()));
 
 builder.Services.AddSingleton(new SqliteJobTraceContextStore(databasePath));
 builder.Services.AddSingleton<IJobTraceContextStore>(

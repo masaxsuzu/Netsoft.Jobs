@@ -80,10 +80,12 @@
                     <th>名前</th>
                     <th>種類</th>
                     <th>状態</th>
+                    <th>進捗</th>
                     <th>作成日時</th>
                     <th>開始日時</th>
                     <th>終了日時</th>
                     <th>失敗理由</th>
+                    <th>パラメータ</th>
                     <th></th>
                 </tr>
             </thead>
@@ -94,14 +96,43 @@
                         <td>@job.Name</td>
                         <td>@job.JobType</td>
                         <td>@job.Status</td>
+                        @* サブタスクの進捗（完了 / 総数）。行がまだ無い（登録直後）は「-」。
+                           個々の状態まで並べるほどの幅は無いので、数字だけを出す。 *@
+                        <td class="progress">@ProgressFor(job.Id)</td>
                         <td>@Format(job.CreatedAt)</td>
                         <td>@Format(job.StartedAt)</td>
                         <td>@Format(job.FinishedAt)</td>
                         <td>@job.FailureMessage</td>
                         <td>
+                            @* 実行中でも編集できる（反映はサブタスクの境界）。入力中の値は
+                               通知の再読み込みで消えないよう、行の再描画から独立に保持する。
+                               get を辞書の indexer にしない。描画は変更通知や回路接続の合図で
+                               いつでも走るので、ここで例外を出す式を書くと回路ごと死ぬ
+                               （画面全体が二度と操作できなくなる）。get は常に値を返す形にする。 *@
+                            <input class="edit-parameters"
+                                   disabled="@(!_interactive || !JobEditability.CanEdit(job))"
+                                   @bind:get="EditValueFor(job)"
+                                   @bind:set="value => _edits[job.Id] = value ?? string.Empty" />
+                            <button type="button"
+                                    disabled="@(!_interactive || !JobEditability.CanEdit(job))"
+                                    @onclick="() => EditAsync(job.Id)">
+                                保存
+                            </button>
+                        </td>
+                        <td>
                             @* 押せるかどうかは Domain の状態機械に聞く。ここで状態名を並べて
                                判定すると、状態が増えたときに直し忘れたボタンができる。
                                回路が繋がる前はそれ以前の問題として全部押せない（上の説明を参照）。 *@
+                            <button type="button"
+                                    disabled="@(!_interactive || !JobPausability.CanRequestPause(job))"
+                                    @onclick="() => PauseAsync(job.Id)">
+                                一時停止
+                            </button>
+                            <button type="button"
+                                    disabled="@(!_interactive || !JobPausability.CanRequestResume(job))"
+                                    @onclick="() => ResumeAsync(job.Id)">
+                                再開
+                            </button>
                             <button type="button"
                                     disabled="@(!_interactive || !JobCancelability.CanRequestCancel(job))"
                                     @onclick="() => CancelAsync(job.Id)">
@@ -118,6 +149,8 @@
 @code {
     private IReadOnlyList<JobDto> _jobs = [];
     private IReadOnlyList<JobTypeDto> _jobTypes = [];
+    private readonly Dictionary<string, IReadOnlyList<SubTaskDto>> _subTasks = [];
+    private readonly Dictionary<string, string> _edits = [];
     private IDictionary<string, string[]> _registrationErrors = new Dictionary<string, string[]>();
     private string? _notice;
     private string? _jobTypesNotice;
@@ -178,8 +211,38 @@
         });
     }
 
-    private async Task LoadAsync() =>
+    private async Task LoadAsync()
+    {
         _jobs = await Api.ListJobsAsync(CancellationToken.None);
+
+        foreach (JobDto job in _jobs)
+        {
+            // 404（読んでいる間に消えた）は「行なし」と同じ扱いでよい。
+            _subTasks[job.Id] = await Api.ListSubTasksAsync(job.Id, CancellationToken.None) ?? [];
+        }
+    }
+
+    /// <summary>
+    /// 編集欄に出す値。入力中の値があればそれを、無ければサーバの現在値を出す。
+    /// </summary>
+    /// <remarks>
+    /// _edits は「利用者が打った値」だけを持ち、読み込みでの種まきをしない。
+    /// 種まき方式だと、_jobs の差し替えと種まきの間に描画が走った瞬間に
+    /// 辞書の取りこぼしが起きる（描画は await のたびに割り込める）。
+    /// </remarks>
+    private string EditValueFor(JobDto job) =>
+        _edits.TryGetValue(job.Id, out string? edited) ? edited : job.Parameters;
+
+    private string ProgressFor(string id)
+    {
+        if (!_subTasks.TryGetValue(id, out IReadOnlyList<SubTaskDto>? subTasks) || subTasks.Count == 0)
+        {
+            return "-";
+        }
+
+        int completed = subTasks.Count(subTask => subTask.Status == "Completed");
+        return $"{completed}/{subTasks.Count}";
+    }
 
     /// <summary>
     /// 選択肢に出す種類を取り直す。
@@ -224,6 +287,59 @@
         _parameters = string.Empty;
 
         // 一覧は store の変更通知でも更新されるが、自分の操作の結果は通知を待たずに反映する。
+        await LoadAsync();
+    }
+
+    private async Task PauseAsync(string id)
+    {
+        JobControlResponse result = await Api.PauseJobAsync(id, CancellationToken.None);
+
+        _notice = result switch
+        {
+            { Job: null } => "対象の Job が見つかりませんでした。",
+            { IsSuccess: false } => $"一時停止できませんでした。現在の状態: {result.Job.Status}",
+            _ => null,
+        };
+
+        await LoadAsync();
+    }
+
+    private async Task ResumeAsync(string id)
+    {
+        JobControlResponse result = await Api.ResumeJobAsync(id, CancellationToken.None);
+
+        _notice = result switch
+        {
+            { Job: null } => "対象の Job が見つかりませんでした。",
+            { IsSuccess: false } => $"再開できませんでした。現在の状態: {result.Job.Status}",
+            _ => null,
+        };
+
+        await LoadAsync();
+    }
+
+    private async Task EditAsync(string id)
+    {
+        // 打っていなければ欄にはサーバ値が出ているので、それをそのまま送る（実質の無変更）。
+        string parameters = _edits.TryGetValue(id, out string? edited)
+            ? edited
+            : _jobs.FirstOrDefault(job => job.Id == id)?.Parameters ?? string.Empty;
+        EditJobResponse result = await Api.EditJobParametersAsync(id, parameters, CancellationToken.None);
+
+        _notice = result switch
+        {
+            { IsSuccess: true } => null,
+            { Errors.Count: > 0 } => $"編集できませんでした: {result.Errors.Values.SelectMany(m => m).FirstOrDefault()}",
+            { Job: null } => "対象の Job が見つかりませんでした。",
+            _ => $"編集できませんでした。現在の状態: {result.Job.Status}",
+        };
+
+        if (result.IsSuccess)
+        {
+            // 入力中の値を破棄して、欄をサーバの現在値（受理された形）へ戻す。
+            _edits.Remove(id);
+        }
+
         await LoadAsync();
     }
 
