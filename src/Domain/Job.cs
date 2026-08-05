@@ -101,7 +101,15 @@ public sealed class Job
     /// <summary>登録された時刻。</summary>
     public DateTimeOffset CreatedAt { get; }
 
-    /// <summary>ハンドラを起動した時刻。まだ起動していなければ null。</summary>
+    /// <summary>
+    /// ハンドラを<b>最初に</b>起動した時刻。一度も起動していなければ null。
+    /// </summary>
+    /// <remarks>
+    /// 一度立ったら二度と動かない（停止して待ち行列へ戻っても消えないし、再開後の
+    /// 起動でも書き直さない）。したがって「値がある ⟺ 一度でも走った」が成り立つ。
+    /// 状態からは導けない事実で、たとえば Queued に値があるなら「走ったあと停止して
+    /// 再開待ち」を意味する。理由は <see cref="Apply"/> の注記に。
+    /// </remarks>
     public DateTimeOffset? StartedAt { get; private set; }
 
     /// <summary>終端に達した時刻。まだ終わっていなければ null。</summary>
@@ -187,20 +195,21 @@ public sealed class Job
             FailureMessage = failureMessage;
         }
 
+        // 開始時刻は「最初にハンドラが起動した時刻」で、一度立ったら二度と動かない。
+        //
         // Running へ入る契機は Start（初回・再開後とも）と Resume（Pausing の揺り戻し）の
-        // 2 つある。開始時刻を書くのは Start だけ。揺り戻しは実行が途切れていないので、
-        // 時刻を触ると「走り続けているのに開始し直した」という嘘になる。
-        if (trigger == JobTrigger.Start)
+        // 2 つあるが、どちらでも書き直さない。揺り戻しは実行が途切れていないので触れば
+        // 「走り続けているのに開始し直した」という嘘になるし、再開後の Start で書き直すと
+        // 停止をまたいだ Job の「いつから走っているか」が失われる。
+        //
+        // かつては待ち行列へ戻るときに消していた（Queued は開始時刻を持たない、という
+        // 不変条件のため）。やめたのは、消すと「実際に走ったのに走った記録が無い」行が
+        // 作れてしまうから ── 停止して再開待ちのまま中止すると、サブタスクが進んでいるのに
+        // 開始時刻が空の終端が残る。いまの不変条件は
+        // 「StartedAt がある ⟺ ハンドラが一度でも起動した」で、単調（倒れない）。
+        if (trigger == JobTrigger.Start && StartedAt is null)
         {
             StartedAt = at;
-        }
-
-        // 再開で待ち行列へ戻るとき、前回の実行の開始時刻を消す。Queued は
-        // 「まだ開始していない」状態で、時刻が残ると不変条件（Queued に StartedAt は無い）が
-        // 破れる。次の Start が新しい時刻を書く。
-        if (next == JobStatus.Queued)
-        {
-            StartedAt = null;
         }
 
         if (next.IsTerminal())

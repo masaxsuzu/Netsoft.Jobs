@@ -75,12 +75,20 @@ public sealed class JobInvariantsTests
         Assert.Contains("StartedAt", JobInvariants.FindViolation(broken));
     }
 
+    /// <summary>
+    /// 待機中に開始時刻があるのは違反ではない ── 走ったあと停止して再開待ちの姿。
+    /// </summary>
+    /// <remarks>
+    /// かつては違反としていた（Queued は開始時刻を持たない）が、開始時刻を
+    /// 「最初に起動した時刻」にして消さなくしたので、この形が正常になった。
+    /// 逆転（開始が登録より前）だけは今も違反で、それは下のテストが持つ。
+    /// </remarks>
     [Fact]
-    public void 待機中なのにStartedAtがあれば見つかる()
+    public void 待機中に開始時刻があっても違反ではない()
     {
-        Job broken = Rehydrate(JobStatus.Queued, startedAt: Created, finishedAt: null);
+        Job resumed = Rehydrate(JobStatus.Queued, startedAt: Created.AddMinutes(1), finishedAt: null);
 
-        Assert.Contains("StartedAt", JobInvariants.FindViolation(broken));
+        Assert.Null(JobInvariants.FindViolation(resumed));
     }
 
     [Fact]

@@ -14,8 +14,10 @@ namespace Netsoft.Jobs.Features.Tests.Concurrency;
 /// <para>
 /// 判定は 1 件の Job から読み取れることに限る。「一度でも Running 以降に進んだか」は
 /// 履歴を持たないと分からないので、状態ごとに <see cref="Job.StartedAt"/> が
-/// 在るべきか無いべきかへ言い換えてある。<c>Cancelled</c> だけは Queued からと
-/// Cancelling からの両方があるため、どちらでもよいとする。
+/// 在るべきか無いべきかへ言い換えてある。<c>Queued</c> と <c>Cancelled</c> は
+/// どちらでもよいとする ── 前者は「まだ走っていない」と「走ったあと停止して再開待ち」の
+/// 両方が居るため、後者は Queued からの即時キャンセルと Cancelling からの受理の
+/// 両方があるため。<b>「無いはず」と言える状態はもう無い</b>（開始時刻は消えない）。
 /// </para>
 /// </remarks>
 public static class JobInvariants
@@ -79,8 +81,10 @@ public static class JobInvariants
     {
         bool? expected = job.Status switch
         {
-            // ハンドラをまだ起動していない。
-            JobStatus.Queued => false,
+            // 一度も起動していない Job も、停止して再開待ちの Job もここに居る。
+            // 開始時刻は「最初に起動した時刻」で消えないので、状態だけからは決まらない
+            // （Job.StartedAt の注記を参照）。
+            JobStatus.Queued => null,
 
             // ハンドラを起動した（していた）状態からしか来られない。
             // Paused も同じ。停止の受理は実行の途中でしか起きない。

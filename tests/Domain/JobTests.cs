@@ -129,11 +129,15 @@ public sealed class JobTests
     }
 
     /// <summary>
-    /// 一時停止と再開の時刻の規則。停止中も「開始した」事実は保ち、
-    /// 待ち行列へ戻る瞬間だけ消す（Queued は StartedAt を持たないという不変条件を守る）。
+    /// 一時停止と再開をまたいでも開始時刻は動かない。
     /// </summary>
+    /// <remarks>
+    /// 「最初に起動した時刻」なので、待ち行列へ戻っても消えず、再開後の Start でも
+    /// 書き直さない。以前は Queued へ戻る瞬間に消していたが、それだと
+    /// 「実際に走ったのに走った記録が無い」行を作れてしまう（下のテスト）。
+    /// </remarks>
     [Fact]
-    public void 再開でQueuedへ戻るとStartedAtが消え次のStartで入り直す()
+    public void 停止と再開をまたいでも開始時刻は最初のまま動かない()
     {
         Job job = JobAt(JobStatus.Running);
 
@@ -145,13 +149,36 @@ public sealed class JobTests
         Assert.Equal(StartedAt, job.StartedAt);
         Assert.Null(job.FinishedAt);
 
+        // 待ち行列へ戻っても消えない。ここが「走ったことがある Queued」。
         Assert.True(job.Apply(JobTrigger.Resume, FinishedAt).IsAllowed);
         Assert.Equal(JobStatus.Queued, job.Status);
-        Assert.Null(job.StartedAt);
+        Assert.Equal(StartedAt, job.StartedAt);
 
-        DateTimeOffset restartedAt = FinishedAt.AddMinutes(1);
-        Assert.True(job.Apply(JobTrigger.Start, restartedAt).IsAllowed);
-        Assert.Equal(restartedAt, job.StartedAt);
+        // 再開後の起動でも書き直さない。
+        Assert.True(job.Apply(JobTrigger.Start, FinishedAt.AddMinutes(1)).IsAllowed);
+        Assert.Equal(StartedAt, job.StartedAt);
+    }
+
+    /// <summary>
+    /// 走ったあと停止して、再開待ちのまま中止された Job にも「走った」記録が残る。
+    /// </summary>
+    /// <remarks>
+    /// 開始時刻を消していた頃は、サブタスクが進んでいるのに開始時刻が空の終端ができた。
+    /// 実際に走ったことを記録から読み取れないのは、実行基盤としては嘘に近い。
+    /// </remarks>
+    [Fact]
+    public void 停止して再開待ちのまま中止しても走った記録は残る()
+    {
+        Job job = JobAt(JobStatus.Running);
+
+        Assert.True(job.Apply(JobTrigger.RequestPause, FinishedAt).IsAllowed);
+        Assert.True(job.Apply(JobTrigger.ConfirmPaused, FinishedAt).IsAllowed);
+        Assert.True(job.Apply(JobTrigger.Resume, FinishedAt).IsAllowed);
+        Assert.True(job.Apply(JobTrigger.RequestCancel, FinishedAt.AddMinutes(2)).IsAllowed);
+
+        Assert.Equal(JobStatus.Cancelled, job.Status);
+        Assert.Equal(StartedAt, job.StartedAt);
+        Assert.Equal(FinishedAt.AddMinutes(2), job.FinishedAt);
     }
 
     /// <summary>
