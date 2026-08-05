@@ -39,14 +39,6 @@ namespace Netsoft.Jobs.Features.Execution;
 /// </remarks>
 public sealed class JobExecutionEngine
 {
-    /// <summary>起動時復旧で記録する失敗理由。</summary>
-    private const string CrashRecoveryMessage = "前回のプロセスが異常終了したため、実行結果を確認できません。";
-
-    // ハンドラが動いていたはずの状態。Queued を含めないことの理由は
-    // JobStatusExtensions.IsHandlerActive に書いてある。
-    private static readonly JobStatus[] HandlerActiveStatuses =
-        [.. Enum.GetValues<JobStatus>().Where(status => status.IsHandlerActive())];
-
     private readonly IJobStore _store;
     private readonly JobHandlerRegistry _handlers;
     private readonly RunningJobRegistry _runningJobs;
@@ -84,14 +76,9 @@ public sealed class JobExecutionEngine
     }
 
     /// <summary>
-    /// 起動時復旧をやり切ってから、実行できるエンジンを返す。
+    /// 起動時復旧（<see cref="JobCrashRecovery"/>）をやり切ってから、実行できるエンジンを返す。
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// 前回のプロセスが異常終了すると、実際には誰も動いていないのに
-    /// Running / Cancelling のまま残った Job ができる。結果が分からない以上 Failed で閉じる。
-    /// Queued は対象外。ハンドラを起動していないので副作用が無く、このプロセスがそのまま実行する。
-    /// </para>
     /// <para>
     /// <b>復旧を経ないとインスタンスが手に入らない形にしてある。</b>
     /// 以前は「済んだか」の bool を持ち、実行の入口で毎回それを見ていた。その作りだと
@@ -106,11 +93,8 @@ public sealed class JobExecutionEngine
     /// 排他で守るのではなく、表現できなくする。「復旧を呼び忘れたまま実行する」も同時に消える。
     /// </para>
     /// <para>
-    /// 復旧は Running / Cancelling をすべて「前回の残骸」とみなす。条件付き更新はこの見立て自体は
-    /// 守ってくれないので、既に別のエンジンが動いている最中に新しいエンジンを立てると、
-    /// 本当に走っている Job まで Failed で閉じてしまう。復旧はプロセスの立ち上げ時、
-    /// つまり誰も走っていないところから始めるときのものである。
-    /// <b>これはインスタンスを 2 つ作らないという運用の前提で、型では守れない。</b>
+    /// 復旧が置く前提（走っている Job が無いところから始める）は型では守れない。
+    /// 詳しくは <see cref="JobCrashRecovery"/> と docs/operating.md に書いてある。
     /// </para>
     /// </remarks>
     public static async Task<JobExecutionEngine> StartAsync(
@@ -127,52 +111,13 @@ public sealed class JobExecutionEngine
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
 
-        await RecoverAsync(store, timeProvider, logger, cancellationToken);
+        // 復旧そのものは JobCrashRecovery が持つ。ここに残しているのは呼ぶ順序
+        // ── 「復旧を終えてからでないとインスタンスを作らない」── の方で、
+        // それがこのメソッドの存在理由だから。
+        await JobCrashRecovery.RecoverAsync(store, timeProvider, logger, cancellationToken);
 
         return new JobExecutionEngine(
             store, handlers, runningJobs, signal, timeProvider, instrumentation, logger);
-    }
-
-    /// <summary>
-    /// 前回のプロセスがやり残した Job を Failed で閉じる。
-    /// </summary>
-    /// <remarks>
-    /// インスタンスを取らない static にしてあるのは、これが「エンジンが動く前」の仕事だから。
-    /// フィールドから読めてしまうと、実行中にも呼べる形に戻る余地が残る。
-    /// </remarks>
-    private static async Task RecoverAsync(
-        IJobStore store,
-        TimeProvider timeProvider,
-        ILogger<JobExecutionEngine> logger,
-        CancellationToken cancellationToken)
-    {
-        foreach (JobStatus status in HandlerActiveStatuses)
-        {
-            IReadOnlyList<Job> jobs = await store.ListByStatusAsync(status, cancellationToken);
-
-            foreach (Job job in jobs)
-            {
-                JobTransitionResult result = job.Apply(
-                    JobTrigger.RecoverAfterCrash,
-                    timeProvider.GetUtcNow(),
-                    CrashRecoveryMessage);
-
-                if (!result.IsAllowed)
-                {
-                    continue;
-                }
-
-                // 書き戻せなかったのは他が先にこの Job を処理したということなので、
-                // 復旧の対象ではなくなっている。読み直して試し直さずに次へ進む。
-                if (await store.UpdateAsync(job, cancellationToken))
-                {
-                    logger.LogWarning("Job {JobId} を前回プロセスの異常終了として Failed にしました。", job.Id.Value);
-                }
-            }
-        }
-
-        // 例外が出たらそのまま外へ出す。StartAsync がインスタンスを返さないので、
-        // 復旧しそこねたまま実行が始まることはない。呼び出し側は作り直せばやり直せる。
     }
 
     /// <summary>
