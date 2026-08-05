@@ -289,43 +289,6 @@ public sealed class SqliteJobStoreTests
         Assert.Equal(JobStatus.Completed, (await LoadAsync(store, "job-1")).Status);
     }
 
-    /// <summary>
-    /// 版を持たない古い DB ファイルでも開けて、以後は版で守れるようになること。
-    /// </summary>
-    [Fact]
-    public async Task 版の無いDBファイルは列が足されて開ける()
-    {
-        using TemporaryDatabase database = new();
-
-        // 版を導入する前のスキーマを手で作る。
-        await using (SqliteConnection connection = new(
-            new SqliteConnectionStringBuilder { DataSource = database.FilePath }.ToString()))
-        {
-            await connection.OpenAsync();
-            await using SqliteCommand create = connection.CreateCommand();
-            create.CommandText =
-                """
-                CREATE TABLE Jobs (
-                    Id TEXT NOT NULL PRIMARY KEY, Name TEXT NOT NULL, JobType TEXT NOT NULL,
-                    Parameters TEXT NOT NULL, Status TEXT NOT NULL, CreatedAt TEXT NOT NULL,
-                    StartedAt TEXT NULL, FinishedAt TEXT NULL, FailureMessage TEXT NULL
-                );
-                INSERT INTO Jobs VALUES ('job-1', '古い行', 'subtasks', '3 1', 'Queued', '2026-08-05T09:00:00.0000000+00:00', NULL, NULL, NULL);
-                """;
-            await create.ExecuteNonQueryAsync();
-        }
-
-        SqliteJobStore store = await database.OpenStoreAsync();
-
-        Job loaded = await LoadAsync(store, "job-1");
-        Assert.Equal("3 1", loaded.Parameters);
-
-        // 以後は普通に書けて、版の守りも効く。
-        loaded.Apply(JobTrigger.Start, BaseTime.AddMinutes(1));
-        Assert.True(await store.UpdateAsync(loaded, None));
-        Assert.False(await store.UpdateAsync(loaded, None));
-    }
-
     [Fact]
     public async Task UpdateAsyncは存在しないIdなら例外になる()
     {

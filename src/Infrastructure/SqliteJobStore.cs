@@ -68,39 +68,11 @@ public sealed class SqliteJobStore : IJobStore
             """,
             cancellationToken).ConfigureAwait(false);
 
-        await AddVersionColumnIfMissingAsync(connection, cancellationToken).ConfigureAwait(false);
-
         // FindOldestQueuedAsync と ListByStatusAsync はどちらも
         // 「状態で絞って作成日時で並べる」形なので、この 1 本で両方が賄える。
         await ExecuteAsync(
             connection,
             "CREATE INDEX IF NOT EXISTS IX_Jobs_Status_CreatedAt ON Jobs (Status, CreatedAt);",
-            cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// 版を持たない古い DB ファイルに Version 列を足す。
-    /// </summary>
-    /// <remarks>
-    /// CREATE TABLE IF NOT EXISTS は既にある表を作り直さないので、版を導入する前に
-    /// 作られたファイルは列が無いまま開かれる。既定値 1 で足せば、既存の行は
-    /// 「まだ一度も書き戻されていない」と同じ扱いになり、次の書き戻しから版が進む。
-    /// ALTER TABLE を無条件に撃たないのは、2 回目以降がエラーになるため。
-    /// </remarks>
-    private static async Task AddVersionColumnIfMissingAsync(
-        SqliteConnection connection, CancellationToken cancellationToken)
-    {
-        await using SqliteCommand probe = connection.CreateCommand();
-        probe.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Jobs') WHERE name = 'Version';";
-
-        if (Convert.ToInt64(await probe.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false)) != 0)
-        {
-            return;
-        }
-
-        await ExecuteAsync(
-            connection,
-            "ALTER TABLE Jobs ADD COLUMN Version INTEGER NOT NULL DEFAULT 1;",
             cancellationToken).ConfigureAwait(false);
     }
 
