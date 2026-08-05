@@ -49,6 +49,11 @@ public sealed class CancelJobHandler
     /// （<see cref="JobTransitionRejection.AlreadyInEffect"/>）、終端なら
     /// <see cref="JobTransitionRejection.JobAlreadyFinished"/> として拒否されて抜ける。
     /// 読み直した先がどこであれ、次の評価で必ず止まるか書ける。
+    /// <para>
+    /// 期待値が版になったので、状態が動かない書き込み（編集）でもやり直しが起きる。
+    /// このとき読み直した先は同じ状態なので、上の議論はそのまま通り、次の周回で書ける
+    /// （やり直しの回数が編集の回数だけ増えるが、それは利用者の操作の回数で頭打ちになる）。
+    /// </para>
     /// </remarks>
     public async Task<CancelJobResult> HandleAsync(string id, CancellationToken cancellationToken)
     {
@@ -94,7 +99,7 @@ public sealed class CancelJobHandler
             // 条件付き更新にしたことで、その追い越しが起きても上書きは成立しなくなった。
             // 順序自体は保つ。伝達を先にすると、上書きこそ防げても
             // 「まだ Cancelling を書けていない Job にキャンセルが届く」ことになる。
-            if (!await _store.UpdateAsync(job, transition.Previous, cancellationToken))
+            if (!await _store.UpdateAsync(job, cancellationToken))
             {
                 // 読み出しから保存までの間に他所が状態を進めた。前提が崩れただけなので、
                 // 読み直して評価をやり直す。相手が終端まで進めていたなら、

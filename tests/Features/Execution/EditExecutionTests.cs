@@ -152,7 +152,7 @@ public sealed class EditExecutionTests : IDisposable
         await _time.WaitForTimersAsync(2).WaitAsync(WaitLimit);
         Job raced = await FindAsync();
         raced.ChangeParameters("1 1");
-        Assert.True(await _jobs.UpdateAsync(raced, raced.Status, CancellationToken.None));
+        Assert.True(await _jobs.UpdateAsync(raced, CancellationToken.None));
 
         _time.Advance(SubTaskJobHandler.Step);
         Assert.True(await execution.WaitAsync(WaitLimit));
@@ -164,15 +164,52 @@ public sealed class EditExecutionTests : IDisposable
             await SubTaskStatusesAsync());
     }
 
+    /// <summary>
+    /// 待機中に編集が入ると、エンジンの claim は成立せず、読み直して編集後の内容で走る。
+    /// </summary>
+    /// <remarks>
+    /// エンジンが候補を読んでから Running を書き戻すまでの窓を、割り込みフックで決定的に作る。
+    /// 編集は遷移ではないので状態は Queued のまま動かない。期待値が状態だったころは
+    /// 「状態は変わっていない」として書き戻しが通り、全列の書き戻しで編集が消えていた。
+    /// 版で守ると claim が一度負け、読み直して編集後の parameters で走る。
+    /// </remarks>
+    [Fact]
+    public async Task 待機中の編集はエンジンのclaimに巻き戻されない()
+    {
+        await RegisterAsync("1 5");
+
+        InterferingJobStore interfering = new(_jobs);
+        JobExecutionEngine engine = await StartEngineAsync(interfering);
+
+        // エンジンが候補を読んだ後、Running を書き戻す直前に編集を差し込む。
+        interfering.BeforeNextUpdate = async () =>
+            Assert.True((await _edit.HandleAsync("job-1", "1 1", CancellationToken.None)).IsSuccess);
+
+        Task<bool> execution = engine.RunOnceAsync(CancellationToken.None);
+
+        // 編集後の m=1 で走る。1 秒進めれば完走する（編集前の m=5 なら足りない）。
+        await _time.WaitForTimersAsync(1).WaitAsync(WaitLimit);
+        _time.Advance(SubTaskJobHandler.Step);
+        Assert.True(await execution.WaitAsync(WaitLimit));
+
+        Job settled = await FindAsync();
+        Assert.Equal(JobStatus.Completed, settled.Status);
+        Assert.Equal("1 1", settled.Parameters);
+
+        // 書き戻しは 3 回。弾かれた claim、読み直してからの claim、そして結末。
+        // 編集はこの store を通さない（生の store を持つハンドラが書く）ので数に入らない。
+        Assert.Equal(3, interfering.UpdateAttempts);
+    }
+
     private async Task RegisterAsync(string parameters)
     {
         Job job = Job.Create(Job1, "編集試験", SubTaskJobHandler.SubTaskJobType, parameters, Now);
         await _jobs.AddAsync(job, CancellationToken.None);
     }
 
-    private async Task<JobExecutionEngine> StartEngineAsync() =>
+    private async Task<JobExecutionEngine> StartEngineAsync(IJobStore? store = null) =>
         await JobExecutionEngine.StartAsync(
-            _jobs,
+            store ?? _jobs,
             new JobHandlerRegistry([new SubTaskJobHandler(_subTasks, _jobs, _time)]),
             _runningJobs,
             new JobQueueSignal(),

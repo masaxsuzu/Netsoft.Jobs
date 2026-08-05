@@ -65,7 +65,7 @@ public sealed class PauseJobHandler
                 return JobControlResult.Rejected(JobDto.From(job), rejection);
             }
 
-            if (!await _store.UpdateAsync(job, transition.Previous, cancellationToken))
+            if (!await _store.UpdateAsync(job, cancellationToken))
             {
                 // 読み出しから保存までの間に他所が状態を進めた。読み直して評価をやり直す。
                 continue;

@@ -195,6 +195,6 @@ public sealed class JobsApiClientTests : IDisposable
 
         JobTransitionResult result = job.Apply(JobTrigger.Start, DateTimeOffset.UtcNow);
         Assert.True(result.IsAllowed);
-        Assert.True(await store.UpdateAsync(job, result.Previous, CancellationToken.None));
+        Assert.True(await store.UpdateAsync(job, CancellationToken.None));
     }
 }

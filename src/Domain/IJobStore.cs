@@ -13,15 +13,14 @@ public interface IJobStore
     Task AddAsync(Job job, CancellationToken cancellationToken);
 
     /// <summary>
-    /// 読み出した時点の状態が変わっていない場合にだけ、Job を書き戻す。
+    /// 読み出してから誰も書いていない場合にだけ、Job を書き戻す。
     /// </summary>
-    /// <param name="job">遷移を適用した後の Job。</param>
-    /// <param name="expectedStatus">
-    /// 呼び出し側が読み出したときの状態。<see cref="Job.Apply"/> は Job を破壊的に変えるので、
-    /// Apply を呼ぶ<b>前</b>の <see cref="Job.Status"/> を控えておいて渡すこと。
+    /// <param name="job">
+    /// 遷移や編集を適用した後の Job。期待値は <see cref="Job.Version"/> が自分で運ぶので、
+    /// 呼び出し側が控えて渡すものは無い。
     /// </param>
     /// <param name="cancellationToken">I/O の中断に使う。</param>
-    /// <returns>書き戻せたなら true。他から状態が進められていたなら false。</returns>
+    /// <returns>書き戻せたなら true。読み出してから他所が書いていたなら false。</returns>
     /// <exception cref="JobNotFoundException">
     /// その Id の Job が保存されていない場合。状態の食い違い（false）とは区別する。
     /// 取り違えまで false にすると、呼び出し側は「競合に負けただけ」と読んで読み直し、
@@ -29,9 +28,20 @@ public interface IJobStore
     /// </exception>
     /// <remarks>
     /// <para>
-    /// false は失敗ではない。「書き戻す前提（読んだときの状態）が崩れた。読み直して評価をやり直せ」
+    /// false は失敗ではない。「書き戻す前提（読んだときの内容）が崩れた。読み直して評価をやり直せ」
     /// という意味である。呼び出し側は読み直して遷移をもう一度評価する。
     /// 例外にしないのは、これが異常ではなく同時実行のもとで普通に起きることだから。
+    /// </para>
+    /// <para>
+    /// 守るのは状態ではなく版である。編集は遷移ではないので状態を動かさず、状態を期待値にすると
+    /// 「読む → 誰かが編集する → 状態は同じなので書き戻しが通る → 全列を書くので編集が消える」
+    /// が起きる。版はどの書き込みでも進むので、この窓が原理的に開かない。
+    /// </para>
+    /// <para>
+    /// 書き戻しに成功したインスタンスは、その瞬間に古くなる（保存されている版が 1 つ進み、
+    /// 手元の <see cref="Job.Version"/> は据え置かれるため）。同じインスタンスで続けて書くと
+    /// false が返るので、続けて書きたい場合は読み直す。呼び出し側の再試行ループは
+    /// もともと先頭で読み直すので、この性質は既存の書き方をそのまま通す。
     /// </para>
     /// <para>
     /// 無条件に書き戻す口は用意しない。用意すると「読む → 遷移を適用 → 無条件に書く」が
@@ -41,13 +51,13 @@ public interface IJobStore
     /// <para>
     /// 「Queued の 1 件を予約する」ような専用の操作も置かない。予約は
     /// 「<see cref="FindOldestQueuedAsync"/> で候補を取る → <see cref="Job.Apply"/> で Start を適用する
-    /// → <c>expectedStatus: Queued</c> で書き戻す」と呼び出し側が組み立てる。
+    /// → 書き戻す」と呼び出し側が組み立てる。
     /// こうすれば Queued → Running を認めるかどうかの判断が <see cref="JobStateMachine"/> に残る。
     /// store 側に予約を置くと、実装が状態機械を迂回して <see cref="Job.Rehydrate"/> で
     /// Running を組み立てることになり、遷移の定義が 2 か所に分かれる。
     /// </para>
     /// </remarks>
-    Task<bool> UpdateAsync(Job job, JobStatus expectedStatus, CancellationToken cancellationToken);
+    Task<bool> UpdateAsync(Job job, CancellationToken cancellationToken);
 
     /// <summary>識別子で 1 件取得する。見つからなければ null。</summary>
     Task<Job?> FindAsync(JobId id, CancellationToken cancellationToken);

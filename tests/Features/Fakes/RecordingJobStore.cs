@@ -24,15 +24,27 @@ internal sealed class RecordingJobStore : IJobStore
     }
 
     /// <inheritdoc />
-    public async Task<bool> UpdateAsync(Job job, JobStatus expectedStatus, CancellationToken cancellationToken)
+    /// <remarks>
+    /// 遷移前の状態は、書き戻しの直前に自分で読んで得る。store の口が版だけを期待値に
+    /// 取るようになったので、呼び出し側からは渡ってこない。
+    /// <para>
+    /// この読みが遷移前の状態を正しく捉えることは版から言える。書き戻しが成立したなら、
+    /// その時点の保存された版は <see cref="Job.Version"/> と等しい。版は書き込みのたびに
+    /// 増えるだけなので、それより前に読んだこの一手が別の版を見ていたなら、間の書き込みが
+    /// 版を戻したことになり、ありえない。つまり成立した書き戻しについては、
+    /// ここで読んだ状態が遷移前の状態そのものである。
+    /// </para>
+    /// </remarks>
+    public async Task<bool> UpdateAsync(Job job, CancellationToken cancellationToken)
     {
         // Job は書き戻しの前に Apply 済みなので、ここで読む Status が遷移後の状態になる。
         JobStatus next = job.Status;
+        Job? current = await _inner.FindAsync(job.Id, cancellationToken);
 
-        bool updated = await _inner.UpdateAsync(job, expectedStatus, cancellationToken);
-        if (updated)
+        bool updated = await _inner.UpdateAsync(job, cancellationToken);
+        if (updated && current is not null)
         {
-            _log.RecordAcceptedUpdate(job.Id, expectedStatus, next);
+            _log.RecordAcceptedUpdate(job.Id, current.Status, next);
         }
 
         return updated;

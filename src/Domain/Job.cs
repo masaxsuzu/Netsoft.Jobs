@@ -10,6 +10,9 @@ namespace Netsoft.Jobs.Domain;
 /// </remarks>
 public sealed class Job
 {
+    /// <summary>まだ一度も書き戻されていない Job の版。</summary>
+    private const long InitialVersion = 1;
+
     private Job(
         JobId id,
         string name,
@@ -19,7 +22,8 @@ public sealed class Job
         DateTimeOffset createdAt,
         DateTimeOffset? startedAt,
         DateTimeOffset? finishedAt,
-        string? failureMessage)
+        string? failureMessage,
+        long version)
     {
         Id = id;
         Name = name;
@@ -30,10 +34,29 @@ public sealed class Job
         StartedAt = startedAt;
         FinishedAt = finishedAt;
         FailureMessage = failureMessage;
+        Version = version;
     }
 
     /// <summary>識別子。</summary>
     public JobId Id { get; }
+
+    /// <summary>
+    /// このインスタンスを読み出した時点の版。書き戻しの期待値になる。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 状態ではなく版で守るのは、<b>状態を変えない書き込みがあるから</b>。編集
+    /// （<see cref="ChangeParameters"/>）は遷移ではないので状態が動かず、状態を期待値にすると
+    /// 素通りする。書き戻しは全列を書くので、素通りした先で編集が黙って巻き戻る。
+    /// 版はどの書き込みでも進むので、この穴が原理的に無い。
+    /// </para>
+    /// <para>
+    /// <see cref="Apply"/> でも <see cref="ChangeParameters"/> でも版は動かない。版を進めるのは
+    /// 保存が成功したときだけで、それを知っているのは store だけだから
+    /// （<see cref="IJobStore.UpdateAsync"/> の契約を参照）。
+    /// </para>
+    /// </remarks>
+    public long Version { get; }
 
     /// <summary>利用者が付けた名前。</summary>
     public string Name { get; }
@@ -103,7 +126,8 @@ public sealed class Job
         // Parameters は空でもよい（引数を取らない Job がある）が、null は許さない。
         ArgumentNullException.ThrowIfNull(parameters);
 
-        return new Job(id, name, jobType, parameters, JobStatus.Queued, createdAt, null, null, null);
+        return new Job(
+            id, name, jobType, parameters, JobStatus.Queued, createdAt, null, null, null, InitialVersion);
     }
 
     /// <summary>
@@ -114,6 +138,10 @@ public sealed class Job
     /// アプリケーションのロジックからこれを呼ぶと、状態機械を迂回して任意の状態を作れてしまう。
     /// 呼んでよいのは <see cref="IJobStore"/> の実装だけ。
     /// </remarks>
+    /// <param name="version">
+    /// 保存されている版。既定は新規と同じ初期値で、版を持たない古い呼び出し
+    /// （テストの組み立てなど）がそのまま書ける。実際の store は必ず読んだ値を渡す。
+    /// </param>
     public static Job Rehydrate(
         JobId id,
         string name,
@@ -123,8 +151,9 @@ public sealed class Job
         DateTimeOffset createdAt,
         DateTimeOffset? startedAt,
         DateTimeOffset? finishedAt,
-        string? failureMessage) =>
-        new(id, name, jobType, parameters, status, createdAt, startedAt, finishedAt, failureMessage);
+        string? failureMessage,
+        long version = InitialVersion) =>
+        new(id, name, jobType, parameters, status, createdAt, startedAt, finishedAt, failureMessage, version);
 
     /// <summary>
     /// 契機を適用する。許可されれば状態と時刻を更新し、拒否されれば何も変更しない。

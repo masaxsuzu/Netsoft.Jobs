@@ -46,7 +46,7 @@ public sealed class JobExecutionServiceCollectionExtensionsTests : IDisposable
         Job leftover = Job.Create(JobId.From("job-1"), "残骸", "demo", string.Empty, DateTimeOffset.UnixEpoch);
         await _store.AddAsync(leftover, CancellationToken.None);
         Assert.True(leftover.Apply(JobTrigger.Start, DateTimeOffset.UnixEpoch).IsAllowed);
-        Assert.True(await _store.UpdateAsync(leftover, JobStatus.Queued, CancellationToken.None));
+        Assert.True(await _store.UpdateAsync(leftover, CancellationToken.None));
 
         using ServiceProvider provider = BuildProvider();
 

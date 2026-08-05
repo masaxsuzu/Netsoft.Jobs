@@ -91,7 +91,7 @@ public sealed class JobStoreConcurrencyStressTests : IDisposable
                 // 読み出しまでを全員が済ませてから、書き戻しを一斉に始める。
                 await gate.SignalAndWaitAsync();
 
-                if (await _store.UpdateAsync(job, expected, CancellationToken.None))
+                if (await _store.UpdateAsync(job, CancellationToken.None))
                 {
                     Interlocked.Increment(ref winners);
                 }
@@ -145,7 +145,7 @@ public sealed class JobStoreConcurrencyStressTests : IDisposable
                     if (job.Apply(JobTrigger.Start, Origin.AddSeconds(1)).IsAllowed
                         || job.Apply(JobTrigger.RequestCancel, Origin.AddSeconds(2)).IsAllowed)
                     {
-                        await _store.UpdateAsync(job, expected, CancellationToken.None);
+                        await _store.UpdateAsync(job, CancellationToken.None);
                     }
                 }
                 catch (Exception exception)

@@ -49,7 +49,7 @@ internal sealed class InterferingJobStore : IJobStore
         _inner.AddAsync(job, cancellationToken);
 
     /// <inheritdoc />
-    public async Task<bool> UpdateAsync(Job job, JobStatus expectedStatus, CancellationToken cancellationToken)
+    public async Task<bool> UpdateAsync(Job job, CancellationToken cancellationToken)
     {
         if (BeforeNextUpdate is { } interference)
         {
@@ -60,7 +60,7 @@ internal sealed class InterferingJobStore : IJobStore
         }
 
         UpdateAttempts++;
-        bool updated = await _inner.UpdateAsync(job, expectedStatus, cancellationToken);
+        bool updated = await _inner.UpdateAsync(job, cancellationToken);
 
         if (updated && AfterNextUpdate is { } after)
         {
