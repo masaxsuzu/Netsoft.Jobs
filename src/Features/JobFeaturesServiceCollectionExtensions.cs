@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Netsoft.Jobs.Features.CancelJob;
 using Netsoft.Jobs.Features.Execution;
+using Netsoft.Jobs.Features.PauseJob;
 using Netsoft.Jobs.Features.QueryJobs;
 using Netsoft.Jobs.Features.QueryJobTypes;
 using Netsoft.Jobs.Features.RegisterJob;
@@ -41,6 +42,7 @@ public static class JobFeaturesServiceCollectionExtensions
         // キャンセルは実行エンジンの IRunningJobRegistry を使う。上の AddJobExecution が
         // 入れた実体をそのまま解決させたいので、この順に並べておく。
         services.AddCancelJob();
+        services.AddPauseJob();
 
         return services;
     }

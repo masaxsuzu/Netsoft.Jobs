@@ -19,12 +19,17 @@ public sealed class SubTaskJobHandlerTests : IDisposable
     private static readonly JobId Job1 = JobId.From("job-1");
 
     private readonly TemporarySubTaskStore _store = new();
+    private readonly TemporaryJobStore _jobs = new();
     private readonly ManualTimeProvider _time = new();
     private readonly SubTaskJobHandler _handler;
 
-    public SubTaskJobHandlerTests() => _handler = new SubTaskJobHandler(_store, _time);
+    public SubTaskJobHandlerTests() => _handler = new SubTaskJobHandler(_store, _jobs, _time);
 
-    public void Dispose() => _store.Dispose();
+    public void Dispose()
+    {
+        _jobs.Dispose();
+        _store.Dispose();
+    }
 
     [Fact]
     public async Task サブタスクは連番順に進み遷移のたびに永続化される()
