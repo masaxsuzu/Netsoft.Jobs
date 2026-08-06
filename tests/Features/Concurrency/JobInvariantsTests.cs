@@ -12,7 +12,7 @@ public sealed class JobInvariantsTests
     [Fact]
     public void 登録直後のJobは不変条件を満たす()
     {
-        Assert.Null(JobInvariants.FindViolation(CreateQueued()));
+        Assert.Null(JobInvariants.FindViolation(CreateRegistered()));
     }
 
     /// <summary>
@@ -21,7 +21,7 @@ public sealed class JobInvariantsTests
     /// <remarks>
     /// 個別のケースを並べるのではなく総当たりにするのは、状態機械に遷移を足したときに
     /// テストを書き足さなくても検査が追随するようにするため。
-    /// 一時停止と再開で Queued へ戻る閉路ができたので、終端だけでは列挙が止まらない
+    /// 一時停止と再開で待ち行列へ戻る閉路ができたので、終端だけでは列挙が止まらない
     /// （実際に無限再帰で落ちた）。既に通った状態へ 2 度目に入る枝は、その節を検査してから
     /// 打ち切る。不変条件は状態と時刻の前後関係にしか依存せず、時刻は単調に進むので、
     /// 閉路の 2 周目に 1 周目と違う破れ方は現れない。
@@ -30,7 +30,7 @@ public sealed class JobInvariantsTests
     public void 状態機械を通して作れるJobはすべて不変条件を満たす()
     {
         List<string> violations = [];
-        Walk(CreateQueued(), [], [JobStatus.Queued], violations);
+        Walk(CreateRegistered(), [], [JobStatus.Registered], violations);
 
         Assert.Empty(violations);
     }
@@ -76,19 +76,28 @@ public sealed class JobInvariantsTests
     }
 
     /// <summary>
-    /// 待機中に開始時刻があるのは違反ではない ── 走ったあと停止して再開待ちの姿。
+    /// 待機中の 2 状態は、開始時刻の有無まで含めて言い切れる。
     /// </summary>
     /// <remarks>
-    /// かつては違反としていた（Queued は開始時刻を持たない）が、開始時刻を
-    /// 「最初に起動した時刻」にして消さなくしたので、この形が正常になった。
-    /// 逆転（開始が登録より前）だけは今も違反で、それは下のテストが持つ。
+    /// 待ち行列を Registered と Resumed に分けたので、「まだ走っていない」と
+    /// 「走ったあと停止して再開待ち」を状態で見分けられる。かつては同じ待ち行列の状態に
+    /// 両方が居たため、開始時刻の有無はどちらでもよいとするしかなかった。
     /// </remarks>
     [Fact]
-    public void 待機中に開始時刻があっても違反ではない()
+    public void 再開待ちは開始時刻を持ち登録直後は持たない()
     {
-        Job resumed = Rehydrate(JobStatus.Queued, startedAt: Created.AddMinutes(1), finishedAt: null);
+        Assert.Null(JobInvariants.FindViolation(
+            Rehydrate(JobStatus.Resumed, startedAt: Created.AddMinutes(1), finishedAt: null)));
+        Assert.Null(JobInvariants.FindViolation(
+            Rehydrate(JobStatus.Registered, startedAt: null, finishedAt: null)));
 
-        Assert.Null(JobInvariants.FindViolation(resumed));
+        Assert.Contains(
+            "StartedAt",
+            JobInvariants.FindViolation(Rehydrate(JobStatus.Resumed, startedAt: null, finishedAt: null)));
+        Assert.Contains(
+            "StartedAt",
+            JobInvariants.FindViolation(
+                Rehydrate(JobStatus.Registered, startedAt: Created.AddMinutes(1), finishedAt: null)));
     }
 
     [Fact]
@@ -161,7 +170,7 @@ public sealed class JobInvariantsTests
     /// </summary>
     private static Job Replay(List<JobTrigger> path)
     {
-        Job job = CreateQueued();
+        Job job = CreateRegistered();
         for (int i = 0; i < path.Count; i++)
         {
             job.Apply(path[i], Created.AddMinutes(i + 1), $"{path[i]} による失敗");
@@ -170,7 +179,7 @@ public sealed class JobInvariantsTests
         return job;
     }
 
-    private static Job CreateQueued() =>
+    private static Job CreateRegistered() =>
         Job.Create(JobId.From("job-1"), "検査対象", "test-job", string.Empty, Created);
 
     private static Job Rehydrate(

@@ -215,7 +215,7 @@ public sealed class JobChangeFeedConcurrencyTests
         public Task<IReadOnlyList<Job>> ListAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<Job>>([]);
 
-        public Task<Job?> FindOldestQueuedAsync(CancellationToken cancellationToken) =>
+        public Task<Job?> FindOldestWaitingAsync(CancellationToken cancellationToken) =>
             Task.FromResult<Job?>(null);
 
         public Task<IReadOnlyList<Job>> ListByStatusAsync(JobStatus status, CancellationToken cancellationToken) =>

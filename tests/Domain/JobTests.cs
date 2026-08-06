@@ -17,11 +17,11 @@ public sealed class JobTests
     public static TheoryData<JobStatus, JobTrigger, JobStatus> 遷移表 => JobStateMachineTests.遷移表;
 
     [Fact]
-    public void 作成直後はQueuedで開始時刻も終了時刻も無い()
+    public void 作成直後はRegisteredで開始時刻も終了時刻も無い()
     {
         Job job = CreateJob();
 
-        Assert.Equal(JobStatus.Queued, job.Status);
+        Assert.Equal(JobStatus.Registered, job.Status);
         Assert.Equal(CreatedAt, job.CreatedAt);
         Assert.Null(job.StartedAt);
         Assert.Null(job.FinishedAt);
@@ -62,8 +62,8 @@ public sealed class JobTests
     /// 待機中のキャンセルは Running を経ないので、開始時刻を持たないまま終端に達する。
     /// </summary>
     [Theory]
-    [InlineData(JobStatus.Queued, JobTrigger.Start, false, false)]
-    [InlineData(JobStatus.Queued, JobTrigger.RequestCancel, false, true)]
+    [InlineData(JobStatus.Registered, JobTrigger.Start, false, false)]
+    [InlineData(JobStatus.Registered, JobTrigger.RequestCancel, false, true)]
     [InlineData(JobStatus.Running, JobTrigger.RequestCancel, true, false)]
     [InlineData(JobStatus.Running, JobTrigger.Complete, true, true)]
     [InlineData(JobStatus.Running, JobTrigger.RecoverAfterCrash, true, true)]
@@ -73,7 +73,7 @@ public sealed class JobTests
     {
         Job job = JobAt(current);
 
-        Assert.True(job.Apply(trigger, current == JobStatus.Queued && trigger == JobTrigger.Start
+        Assert.True(job.Apply(trigger, current == JobStatus.Registered && trigger == JobTrigger.Start
             ? StartedAt
             : FinishedAt, "失敗理由").IsAllowed);
 
@@ -123,9 +123,9 @@ public sealed class JobTests
 
         // 例外になるのは Failed へ「遷移する」ときだけ。拒否される契機は想定内の分岐で、
         // 理由が無くても結果で返る。
-        Job queued = CreateJob();
-        Assert.False(queued.Apply(JobTrigger.Fail, FinishedAt).IsAllowed);
-        Assert.Equal(JobStatus.Queued, queued.Status);
+        Job registered = CreateJob();
+        Assert.False(registered.Apply(JobTrigger.Fail, FinishedAt).IsAllowed);
+        Assert.Equal(JobStatus.Registered, registered.Status);
     }
 
     /// <summary>
@@ -133,7 +133,7 @@ public sealed class JobTests
     /// </summary>
     /// <remarks>
     /// 「最初に起動した時刻」なので、待ち行列へ戻っても消えず、再開後の Start でも
-    /// 書き直さない。以前は Queued へ戻る瞬間に消していたが、それだと
+    /// 書き直さない。以前は待ち行列へ戻る瞬間に消していたが、それだと
     /// 「実際に走ったのに走った記録が無い」行を作れてしまう（下のテスト）。
     /// </remarks>
     [Fact]
@@ -149,9 +149,9 @@ public sealed class JobTests
         Assert.Equal(StartedAt, job.StartedAt);
         Assert.Null(job.FinishedAt);
 
-        // 待ち行列へ戻っても消えない。ここが「走ったことがある Queued」。
+        // 待ち行列へ戻っても消えない。戻り先は Registered ではなく Resumed。
         Assert.True(job.Apply(JobTrigger.Resume, FinishedAt).IsAllowed);
-        Assert.Equal(JobStatus.Queued, job.Status);
+        Assert.Equal(JobStatus.Resumed, job.Status);
         Assert.Equal(StartedAt, job.StartedAt);
 
         // 再開後の起動でも書き直さない。
@@ -201,7 +201,8 @@ public sealed class JobTests
     /// CanEditParameters が 1 か所で持ち、エンティティはそれを守る。
     /// </summary>
     [Theory]
-    [InlineData(JobStatus.Queued, true)]
+    [InlineData(JobStatus.Registered, true)]
+    [InlineData(JobStatus.Resumed, true)]
     [InlineData(JobStatus.Running, true)]
     [InlineData(JobStatus.Pausing, true)]
     [InlineData(JobStatus.Paused, true)]
@@ -263,7 +264,7 @@ public sealed class JobTests
         "{}",
         status,
         CreatedAt,
-        status == JobStatus.Queued ? null : StartedAt,
+        status == JobStatus.Registered ? null : StartedAt,
         status.IsTerminal() ? FinishedAt : null,
         null);
 }

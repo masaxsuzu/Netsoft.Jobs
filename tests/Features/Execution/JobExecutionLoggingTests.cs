@@ -44,7 +44,7 @@ public sealed class JobExecutionLoggingTests : IDisposable
     public async Task 実行開始のログにJobIdとJobTypeが残る()
     {
         JobExecutionEngine engine = await CreateEngineAsync(Released(new ControllableJobHandler(HandledJobType)));
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
 
         await engine.RunOnceAsync(CancellationToken.None);
 
@@ -58,7 +58,7 @@ public sealed class JobExecutionLoggingTests : IDisposable
     public async Task 結末のログにJobIdと確定した状態が残る()
     {
         JobExecutionEngine engine = await CreateEngineAsync(Released(new ControllableJobHandler(HandledJobType)));
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
 
         await engine.RunOnceAsync(CancellationToken.None);
 
@@ -75,7 +75,7 @@ public sealed class JobExecutionLoggingTests : IDisposable
         ControllableJobHandler handler = new(HandledJobType);
         handler.Throw(new InvalidOperationException("集計元のファイルがありません。"));
         JobExecutionEngine engine = await CreateEngineAsync(handler);
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
 
         await engine.RunOnceAsync(CancellationToken.None);
 
@@ -93,7 +93,7 @@ public sealed class JobExecutionLoggingTests : IDisposable
         // RunHandlerAsync のスコープに積んであるから。エンジン自身がスコープの中で書く
         // 開始・結末の行で、スコープの中身を確かめる。
         JobExecutionEngine engine = await CreateEngineAsync(Released(new ControllableJobHandler(HandledJobType)));
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
 
         await engine.RunOnceAsync(CancellationToken.None);
 
@@ -117,7 +117,7 @@ public sealed class JobExecutionLoggingTests : IDisposable
     {
         ControllableJobHandler handler = new(HandledJobType);
         JobExecutionEngine engine = await CreateEngineAsync(handler);
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
 
         // 伝達は記録用に差し替える。本物の registry に伝えるとトークンが発火してハンドラが
         // 止まり、「完走が勝つ」状況を作れない。別プロセスで走っている Job への要求
@@ -172,7 +172,7 @@ public sealed class JobExecutionLoggingTests : IDisposable
         return handler;
     }
 
-    private async Task AddQueuedAsync(string id)
+    private async Task AddRegisteredAsync(string id)
     {
         Job job = Job.Create(JobId.From(id), $"Job {id}", HandledJobType, "", Now);
         await _store.AddAsync(job, CancellationToken.None);

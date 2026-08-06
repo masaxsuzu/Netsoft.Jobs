@@ -6,12 +6,12 @@ using Netsoft.Jobs.Domain;
 namespace Netsoft.Jobs.Features.PauseJob;
 
 /// <summary>
-/// Job の再開を要求する。停止中（Paused）なら Queued へ戻して既存のディスパッチに乗せ、
+/// Job の再開を要求する。停止中（Paused）なら Resumed へ戻して既存のディスパッチに乗せ、
 /// 受理前（Pausing）なら Running へ揺り戻すだけで済ませる。
 /// </summary>
 /// <remarks>
 /// どちらへ進むかは状態機械が決める。ここでは分岐しない。
-/// Queued へ戻った Job を実行エンジンが拾えるのは、書き込みがホストの結線
+/// 待ち行列へ戻った Job を実行エンジンが拾えるのは、書き込みがホストの結線
 /// （NotifyingJobStore → JobChangeFeed → JobQueueSignal）を通って合図になるから。
 /// このハンドラが合図を鳴らすのではない。
 /// </remarks>
@@ -67,7 +67,7 @@ public sealed class ResumeJobHandler
                 continue;
             }
 
-            // Queued（停止中からの再開）か Running（受理前の取り消し）かは遷移後の状態で読み取れる。
+            // Resumed（停止中からの再開）か Running（受理前の取り消し）かは遷移後の状態で読み取れる。
             _logger.LogInformation(
                 "Job {JobId} の再開要求を受理しました。状態は {Status} になりました。",
                 jobId.Value,

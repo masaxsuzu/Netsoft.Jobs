@@ -16,7 +16,7 @@ namespace Netsoft.Jobs.Ui.Tests;
 /// 目印にする（WebApplicationFactory は型が属するアセンブリしか見ない）。
 /// </para>
 /// <para>
-/// エンジンを止めるのは、UI 側のテストが「登録した Job は Queued のまま」を
+/// エンジンを止めるのは、UI 側のテストが「登録した Job は Registered のまま」を
 /// 前提にするため。DI の検証（ValidateOnBuild / ValidateScopes）は常に有効にして、
 /// 登録漏れがホストを立てるすべてのテストで露見するようにする。
 /// </para>

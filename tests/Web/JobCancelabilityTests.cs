@@ -9,7 +9,7 @@ namespace Netsoft.Jobs.Web.Tests;
 public sealed class JobCancelabilityTests
 {
     [Theory]
-    [InlineData("Queued", true)]
+    [InlineData("Registered", true)]
     [InlineData("Running", true)]
     [InlineData("Cancelling", false)]
     [InlineData("Pausing", true)]
@@ -28,7 +28,7 @@ public sealed class JobCancelabilityTests
     [Theory]
     [InlineData("")]
     [InlineData("Unknown")]
-    [InlineData("queued ")]
+    [InlineData("registered ")]
     public void 未知の状態では押させない(string status)
     {
         Assert.False(JobCancelability.CanRequestCancel(status));
@@ -38,7 +38,8 @@ public sealed class JobCancelabilityTests
     /// 一時停止・再開・編集の可否も同じ流儀（判断は Domain、ここは写像と未知の値の検査）。
     /// </summary>
     [Theory]
-    [InlineData("Queued", true, false, true)]
+    [InlineData("Registered", false, false, true)]
+    [InlineData("Resumed", true, false, true)]
     [InlineData("Running", true, false, true)]
     [InlineData("Pausing", false, true, true)]
     [InlineData("Paused", false, true, true)]

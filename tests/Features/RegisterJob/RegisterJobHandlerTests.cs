@@ -41,7 +41,7 @@ public sealed class RegisterJobHandlerTests : IDisposable
 
         Job saved = Assert.Single(await ListAsync());
         Assert.Equal(JobId.From("job-1"), saved.Id);
-        Assert.Equal(JobStatus.Queued, saved.Status);
+        Assert.Equal(JobStatus.Registered, saved.Status);
         Assert.Equal("毎晩の集計", saved.Name);
         Assert.Equal("Demo", saved.JobType);
 
@@ -55,7 +55,7 @@ public sealed class RegisterJobHandlerTests : IDisposable
 
         // 応答は保存されたものの写し。読み直させない。
         Assert.Equal("job-1", result.Value.Id);
-        Assert.Equal(nameof(JobStatus.Queued), result.Value.Status);
+        Assert.Equal(nameof(JobStatus.Registered), result.Value.Status);
         Assert.Equal(saved.Name, result.Value.Name);
         Assert.Equal(saved.JobType, result.Value.JobType);
         Assert.Equal(saved.Parameters, result.Value.Parameters);

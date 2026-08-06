@@ -19,7 +19,7 @@ public interface IRunningJobRegistry
     /// </summary>
     /// <returns>
     /// このプロセスでその Job が実行中で、キャンセルを伝えられたなら true。
-    /// 実行中でなければ false。false は失敗ではない（まだ Queued、既に終わった、
+    /// 実行中でなければ false。false は失敗ではない（まだ待ち行列、既に終わった、
     /// 別プロセスが実行している、のいずれか）ので、呼び出し側はこれを理由に
     /// 状態遷移を巻き戻さないこと。
     /// <para>

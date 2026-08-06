@@ -187,7 +187,7 @@ public sealed class JobStoreStressHarness
     /// 契機を選ぶ。多くは今の状態で通るものから選び、たまに通らないものも混ぜる。
     /// </summary>
     /// <remarks>
-    /// 全体から一様に選ぶと、ほとんどが拒否されて Job が Queued のまま動かない。
+    /// 全体から一様に選ぶと、ほとんどが拒否されて Job が Registered のまま動かない。
     /// 逆に通るものだけにすると、拒否された契機を書き込んでしまう誤りを見逃す。
     /// </remarks>
     private static JobTrigger ChooseTrigger(Random random, JobStatus status)

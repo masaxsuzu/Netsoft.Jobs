@@ -50,8 +50,8 @@ public sealed class TemporaryJobStore : IJobStore, IDisposable
         _store.ListAsync(cancellationToken);
 
     /// <inheritdoc />
-    public Task<Job?> FindOldestQueuedAsync(CancellationToken cancellationToken) =>
-        _store.FindOldestQueuedAsync(cancellationToken);
+    public Task<Job?> FindOldestWaitingAsync(CancellationToken cancellationToken) =>
+        _store.FindOldestWaitingAsync(cancellationToken);
 
     /// <inheritdoc />
     public Task<IReadOnlyList<Job>> ListByStatusAsync(JobStatus status, CancellationToken cancellationToken) =>

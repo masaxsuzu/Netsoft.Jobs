@@ -36,9 +36,9 @@ public sealed class QueryJobsHandlerTests : IDisposable
     [Fact]
     public async Task 一覧は作成日時の新しい順で返る()
     {
-        await AddAsync(Queued("job-old", Created));
-        await AddAsync(Queued("job-new", Created.AddHours(2)));
-        await AddAsync(Queued("job-middle", Created.AddHours(1)));
+        await AddAsync(Registered("job-old", Created));
+        await AddAsync(Registered("job-new", Created.AddHours(2)));
+        await AddAsync(Registered("job-middle", Created.AddHours(1)));
 
         IReadOnlyList<JobListItemDto> jobs = await _handler.ListAsync(CancellationToken.None);
 
@@ -48,8 +48,8 @@ public sealed class QueryJobsHandlerTests : IDisposable
     [Fact]
     public async Task 詳細は指定した識別子のJobを返す()
     {
-        await AddAsync(Queued("job-1", Created));
-        await AddAsync(Queued("job-2", Created.AddHours(1)));
+        await AddAsync(Registered("job-1", Created));
+        await AddAsync(Registered("job-2", Created.AddHours(1)));
 
         JobDto? job = await _handler.FindAsync("job-2", CancellationToken.None);
 
@@ -68,7 +68,7 @@ public sealed class QueryJobsHandlerTests : IDisposable
     [InlineData(null)]
     public async Task 対象が無ければnullが返る(string? id)
     {
-        await AddAsync(Queued("job-1", Created));
+        await AddAsync(Registered("job-1", Created));
 
         Assert.Null(await _handler.FindAsync(id!, CancellationToken.None));
     }
@@ -79,7 +79,7 @@ public sealed class QueryJobsHandlerTests : IDisposable
     /// FinishedAt を持ち、理由は Failed だけが持つ）ので、行ごとに書き並べない。
     /// </summary>
     [Theory]
-    [InlineData(nameof(JobStatus.Queued))]
+    [InlineData(nameof(JobStatus.Registered))]
     [InlineData(nameof(JobStatus.Running))]
     [InlineData(nameof(JobStatus.Cancelling))]
     [InlineData(nameof(JobStatus.Completed))]
@@ -93,7 +93,7 @@ public sealed class QueryJobsHandlerTests : IDisposable
 
         Assert.NotNull(job);
         Assert.Equal(status, job.Status);
-        Assert.Equal(status == nameof(JobStatus.Queued) ? null : Started, job.StartedAt);
+        Assert.Equal(status == nameof(JobStatus.Registered) ? null : Started, job.StartedAt);
 
         bool terminal = status
             is nameof(JobStatus.Completed)
@@ -128,8 +128,8 @@ public sealed class QueryJobsHandlerTests : IDisposable
     [Fact]
     public async Task 一覧は各Jobのサブタスクの進捗を添えて返る()
     {
-        await AddAsync(Queued("job-1", Created));
-        await AddAsync(Queued("job-2", Created.AddMinutes(1)));
+        await AddAsync(Registered("job-1", Created));
+        await AddAsync(Registered("job-2", Created.AddMinutes(1)));
 
         // job-1 は 3 行で 1 つ完了。job-2 は行を作らない（登録しただけの Job）。
         SubTask first = SubTask.Create(JobId.From("job-1"), 0);
@@ -173,12 +173,12 @@ public sealed class QueryJobsHandlerTests : IDisposable
         Assert.True(await _subTasks.UpdateAsync(subTask, transition.Previous, CancellationToken.None));
     }
 
-    private static Job Queued(string id, DateTimeOffset createdAt) =>
+    private static Job Registered(string id, DateTimeOffset createdAt) =>
         Job.Create(JobId.From(id), $"集計 {id}", "Demo", "{}", createdAt);
 
     private static Job Running(string id, DateTimeOffset createdAt)
     {
-        Job job = Queued(id, createdAt);
+        Job job = Registered(id, createdAt);
         job.Apply(JobTrigger.Start, Started);
         return job;
     }
@@ -199,11 +199,11 @@ public sealed class QueryJobsHandlerTests : IDisposable
 
     private static Job InState(string id, string status)
     {
-        Job job = Queued(id, Created);
+        Job job = Registered(id, Created);
 
         switch (status)
         {
-            case nameof(JobStatus.Queued):
+            case nameof(JobStatus.Registered):
                 break;
             case nameof(JobStatus.Running):
                 job.Apply(JobTrigger.Start, Started);

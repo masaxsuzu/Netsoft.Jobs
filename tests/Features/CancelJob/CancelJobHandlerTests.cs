@@ -46,7 +46,7 @@ public sealed class CancelJobHandlerTests : IDisposable
     public async Task 待機中へのキャンセルはCancelledへ直行し保存とログが残る()
     {
         // ハンドラを起動していないので、受理を待つ相手がいない。
-        await AddAsync(Queued("job-1"));
+        await AddAsync(Registered("job-1"));
 
         CancelJobResult result = await CancelAsync("job-1");
 
@@ -97,7 +97,7 @@ public sealed class CancelJobHandlerTests : IDisposable
     }
 
     /// <summary>
-    /// TryRequestCancel の false は失敗ではない（まだ Queued、既に終わった、
+    /// TryRequestCancel の false は失敗ではない（まだ待機中、既に終わった、
     /// 別プロセスが実行している）。これを理由に状態遷移を巻き戻すと、
     /// 受理された事実が消えて画面と DB が食い違う。
     /// </summary>
@@ -107,7 +107,7 @@ public sealed class CancelJobHandlerTests : IDisposable
     public async Task 伝達の戻り値がfalseでも状態遷移は巻き戻らない(bool running, string expected)
     {
         _runningJobs.Result = false;
-        await AddAsync(running ? Running("job-1") : Queued("job-1"));
+        await AddAsync(running ? Running("job-1") : Registered("job-1"));
 
         CancelJobResult result = await CancelAsync("job-1");
 
@@ -192,7 +192,7 @@ public sealed class CancelJobHandlerTests : IDisposable
     [Fact]
     public async Task 読み出しと保存の間に実行が始まったら読み直して要求し直す()
     {
-        await AddAsync(Queued("job-1"));
+        await AddAsync(Registered("job-1"));
 
         _interference.BeforeNextUpdate = async () =>
         {
@@ -222,7 +222,7 @@ public sealed class CancelJobHandlerTests : IDisposable
     [InlineData(null)]
     public async Task 対象が無ければ何もせずに対象なしとして返る(string? id)
     {
-        await AddAsync(Queued("job-1"));
+        await AddAsync(Registered("job-1"));
 
         CancelJobResult result = await _handler.HandleAsync(id!, CancellationToken.None);
 
@@ -241,12 +241,12 @@ public sealed class CancelJobHandlerTests : IDisposable
         await _jobs.FindAsync(JobId.From(id), CancellationToken.None)
         ?? throw new InvalidOperationException($"Job {id} が保存されていません。");
 
-    private static Job Queued(string id) =>
+    private static Job Registered(string id) =>
         Job.Create(JobId.From(id), $"集計 {id}", "Demo", "{}", Created);
 
     private static Job Running(string id)
     {
-        Job job = Queued(id);
+        Job job = Registered(id);
         job.Apply(JobTrigger.Start, Started);
         return job;
     }

@@ -63,7 +63,7 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
         {
             // 登録は実行より前に起きたことにする。固定時計より後の CreatedAt を作ると、
             // StartedAt が CreatedAt より前になり、実装ではなく試験の作り方で不変条件が破れる。
-            await AddQueuedAsync($"job-{i:D3}", parameters: $"job-{i:D3}", createdAt: Now.AddSeconds(i - Jobs));
+            await AddRegisteredAsync($"job-{i:D3}", parameters: $"job-{i:D3}", createdAt: Now.AddSeconds(i - Jobs));
         }
 
         AsyncStartGate start = new(Engines);
@@ -101,7 +101,7 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
     public async Task 結末の記録が競合し続けても読み直しのループは止まる()
     {
         ControllableJobHandler handler = new(HandledJobType);
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
 
         RelentlessJobStore hostile = new(_store, Now);
         JobExecutionEngine engine = await CreateEngineAsync(hostile, handler);
@@ -137,7 +137,7 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
         CountingJobHandler handler = new(HandledJobType);
         for (int i = 0; i < Jobs; i++)
         {
-            await AddQueuedAsync($"job-{i:D3}", createdAt: Now.AddSeconds(i - Jobs));
+            await AddRegisteredAsync($"job-{i:D3}", createdAt: Now.AddSeconds(i - Jobs));
         }
 
         RelentlessJobStore hostile = new(_store, Now) { Interfering = true };
@@ -187,7 +187,7 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
 
         // エンジンが立った後に現れた Running。誰かが今まさに動かしている、という想定。
         await AddRunningAsync("job-1");
-        await AddQueuedAsync("job-2", createdAt: Now.AddSeconds(1));
+        await AddRegisteredAsync("job-2", createdAt: Now.AddSeconds(1));
 
         // 同じエンジンに何度も実行を頼む。以前は実行の入口が毎回復旧を通っていたので、
         // ここが復旧を呼び直す経路になっていた。
@@ -227,7 +227,7 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
         Assert.True(await _store.UpdateAsync(job, CancellationToken.None));
     }
 
-    private async Task AddQueuedAsync(
+    private async Task AddRegisteredAsync(
         string id,
         string parameters = "",
         DateTimeOffset? createdAt = null)

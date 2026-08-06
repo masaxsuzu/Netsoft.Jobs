@@ -86,11 +86,11 @@ public sealed class NotifyingJobStoreTests
     {
         _ = await _store.FindAsync(JobId.From("job-1"), CancellationToken.None);
         _ = await _store.ListAsync(CancellationToken.None);
-        _ = await _store.FindOldestQueuedAsync(CancellationToken.None);
-        _ = await _store.ListByStatusAsync(JobStatus.Queued, CancellationToken.None);
+        _ = await _store.FindOldestWaitingAsync(CancellationToken.None);
+        _ = await _store.ListByStatusAsync(JobStatus.Registered, CancellationToken.None);
 
         Assert.Equal(0, _published);
-        Assert.Equal(["Find", "List", "FindOldestQueued", "ListByStatus"], _inner.Calls);
+        Assert.Equal(["Find", "List", "FindOldestWaiting", "ListByStatus"], _inner.Calls);
     }
 
     private static Job CreateJob()
@@ -135,9 +135,9 @@ public sealed class NotifyingJobStoreTests
             return Task.FromResult<IReadOnlyList<Job>>([]);
         }
 
-        public Task<Job?> FindOldestQueuedAsync(CancellationToken cancellationToken)
+        public Task<Job?> FindOldestWaitingAsync(CancellationToken cancellationToken)
         {
-            Calls.Add("FindOldestQueued");
+            Calls.Add("FindOldestWaiting");
             return Task.FromResult<Job?>(null);
         }
 

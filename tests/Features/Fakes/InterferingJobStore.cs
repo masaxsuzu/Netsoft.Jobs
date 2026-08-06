@@ -29,7 +29,7 @@ internal sealed class InterferingJobStore : IJobStore
     public Func<Task>? BeforeNextUpdate { get; set; }
 
     /// <summary>
-    /// 次に <see cref="FindOldestQueuedAsync"/> が「候補なし (null)」を返す直前に
+    /// 次に <see cref="FindOldestWaitingAsync"/> が「候補なし (null)」を返す直前に
     /// 1 度だけ実行する処理。呼び出し側から見ると「null を見た直後、
     /// それを受けて動く前」に他所の書き込みが割り込んだ状況になる。
     /// 合図待ちの取りこぼし窓（null 確認と待機開始の間）を決定的に作るのに使う。
@@ -83,9 +83,9 @@ internal sealed class InterferingJobStore : IJobStore
         _inner.ListAsync(cancellationToken);
 
     /// <inheritdoc />
-    public async Task<Job?> FindOldestQueuedAsync(CancellationToken cancellationToken)
+    public async Task<Job?> FindOldestWaitingAsync(CancellationToken cancellationToken)
     {
-        Job? job = await _inner.FindOldestQueuedAsync(cancellationToken);
+        Job? job = await _inner.FindOldestWaitingAsync(cancellationToken);
 
         if (job is null && OnNextEmptyFind is { } interference)
         {

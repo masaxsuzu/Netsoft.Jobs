@@ -13,7 +13,7 @@ namespace Netsoft.Jobs.Ui.Tests;
 /// クライアントが持つルートと本文の形はサーバ側（Features）の写しなので、
 /// ずれるとここが 404 や逆立ちした結果で割れる。それがこのテストの主目的
 /// （JobApiRoutes の注記が言う検出網）。API 自体の仕様は tests/Web の JobApiTests の領分。
-/// 実行エンジンは API 側ファクトリが止めているので、登録した Job は Queued のまま動かない。
+/// 実行エンジンは API 側ファクトリが止めているので、登録した Job は Registered のまま動かない。
 /// </remarks>
 public sealed class JobsApiClientTests : IDisposable
 {
@@ -35,7 +35,7 @@ public sealed class JobsApiClientTests : IDisposable
 
         Assert.True(response.IsSuccess);
         Assert.NotNull(response.Job);
-        Assert.Equal("Queued", response.Job.Status);
+        Assert.Equal("Registered", response.Job.Status);
 
         IReadOnlyList<JobListItemDto> jobs = await _client.ListJobsAsync(CancellationToken.None);
         Assert.Contains(jobs, job => job.Id == response.Job.Id && job.Name == "夜間バッチ");
@@ -104,7 +104,7 @@ public sealed class JobsApiClientTests : IDisposable
             "既に終わる Job", "subtasks", "1 1", CancellationToken.None);
         Assert.NotNull(registered.Job);
 
-        // エンジンは止まっているので、Queued へのキャンセルで即座に終端（Cancelled）へ落とせる。
+        // エンジンは止まっているので、待機中へのキャンセルで即座に終端（Cancelled）へ落とせる。
         CancelJobResponse first = await _client.CancelJobAsync(registered.Job.Id, CancellationToken.None);
         Assert.True(first.IsSuccess);
 
@@ -137,17 +137,17 @@ public sealed class JobsApiClientTests : IDisposable
     }
 
     [Fact]
-    public async Task 待機中のJobへの一時停止は保留として写る()
+    public async Task 一度も走っていないJobへの一時停止は拒否として写る()
     {
         RegisterJobResponse registered = await _client.RegisterJobAsync(
             "まだの Job", "subtasks", "3 1", CancellationToken.None);
         Assert.NotNull(registered.Job);
 
-        // 走り出す前なので受理を待つ相手がいない。Pausing を経ずに直接 Paused。
+        // 守るべき進捗が無いので保留は認めない（要らないならキャンセルすればよい）。
         JobControlResponse result = await _client.PauseJobAsync(registered.Job.Id, CancellationToken.None);
 
-        Assert.True(result.IsSuccess);
-        Assert.Equal("Paused", result.Job?.Status);
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Registered", result.Job?.Status);
     }
 
     [Fact]

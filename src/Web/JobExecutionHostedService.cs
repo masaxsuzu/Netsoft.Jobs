@@ -15,7 +15,7 @@ namespace Netsoft.Jobs.Web;
 /// <b>この結線は「Job の全書き込みが IJobStore として登録された NotifyingJobStore を通る」
 /// ことに依存する。</b>登録・キャンセル・エンジン自身の遷移はすべてそこを通って
 /// <see cref="JobChangeFeed"/> を発火するので、合図はここ経由で必ずエンジンに届く。
-/// 将来 store を迂回して DB へ直接書く経路を作ると、その Job は Queued のまま
+/// 将来 store を迂回して DB へ直接書く経路を作ると、その Job は待ち行列に居るまま
 /// 誰にも気づかれずに止まる（エラーはどこにも出ない）。安全網のポーリングは
 /// 意図的に置いていない（利用者の決定。合図 + 起動時スキャンのみ）。
 /// </para>
@@ -67,7 +67,7 @@ public sealed class JobExecutionHostedService : BackgroundService, IHostedLifecy
     /// Failed へ畳む。この前提は単一プロセスなら常に真だが、<b>API は別の書き手</b>である。
     /// 受付が開いた後に復旧が走ると、利用者の編集（Running のまま版だけ進む）と衝突して
     /// 書き戻しが弾かれ、その Job は Running のまま誰にも閉じられなくなる
-    /// ── エンジンは Queued しか拾わず、キャンセルは Cancelling、一時停止は Pausing で
+    /// ── エンジンは待ち行列しか拾わず、キャンセルは Cancelling、一時停止は Pausing で
     /// 固着し、復旧はこのプロセスで二度と走らない。実測で再現した回帰である。
     /// かつては <see cref="ExecuteAsync"/> で <c>Task.Yield</c> してから復旧しており、
     /// この窓が開いていた（<c>Task.Yield</c> を外しても閉じない。Kestrel の

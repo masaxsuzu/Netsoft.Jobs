@@ -77,10 +77,10 @@ public sealed class JobExecutionInstrumentation : IDisposable
         // この計器は「Job の全書き込みは NotifyingJobStore を通り、その合図がエンジンを起こす」
         // という不変条件が破れて Job が黙って止まる故障の唯一の警報。安全網ポーリングを
         // 廃止したときに引き受けたリスクで、結線が切れてもエラーはどこにも出ず
-        // Queued が滞留するだけなので、滞留時間そのものを外へ出して監視で気づけるようにする。
+        // 待ち行列が滞留するだけなので、滞留時間そのものを外へ出して監視で気づけるようにする。
         meter.CreateObservableGauge(
-            "netsoft.jobs.oldest_queued_age",
-            ObserveOldestQueuedAge,
+            "netsoft.jobs.oldest_waiting_age",
+            ObserveOldestWaitingAge,
             unit: "s",
             description: "最も古い待機中 Job の滞留時間。待機中が無ければ 0。");
 
@@ -188,20 +188,20 @@ public sealed class JobExecutionInstrumentation : IDisposable
     /// <remarks>
     /// <para>
     /// コールバックは同期で <see cref="IJobStore"/> は非同期なので、観測のたびに
-    /// <see cref="IJobStore.FindOldestQueuedAsync"/> を同期待ちで読む。エンジンに値を
+    /// <see cref="IJobStore.FindOldestWaitingAsync"/> を同期待ちで読む。エンジンに値を
     /// キャッシュさせる案は採らなかった。この計器は「エンジン（や合図の結線）が壊れて
     /// Job が黙って止まる」ことの警報であり、警報の値を疑っている当のエンジンに作らせると、
     /// エンジンが止まった瞬間に警報も一緒に止まる。真実の置き場（store）を直接読むから、
-    /// どこが壊れていても Queued の滞留が見える。
+    /// どこが壊れていても待ち行列の滞留が見える。
     /// </para>
     /// <para>
     /// 同期待ちのコストは SQLite の 1 行読みで実測 30 µs 程度、走るのも購読者が
     /// スクレイプしたときだけなので、実行経路には影響しない。
     /// </para>
     /// </remarks>
-    private double ObserveOldestQueuedAge()
+    private double ObserveOldestWaitingAge()
     {
-        Job? oldest = _store.FindOldestQueuedAsync(CancellationToken.None).GetAwaiter().GetResult();
+        Job? oldest = _store.FindOldestWaitingAsync(CancellationToken.None).GetAwaiter().GetResult();
 
         return oldest is null ? 0 : (_timeProvider.GetUtcNow() - oldest.CreatedAt).TotalSeconds;
     }

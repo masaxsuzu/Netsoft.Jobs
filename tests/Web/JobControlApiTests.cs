@@ -46,25 +46,38 @@ public sealed class JobControlApiTests : IDisposable
     }
 
     [Fact]
-    public async Task 待機中のJobは200で保留でき再開すると待ち行列へ戻る()
+    public async Task 一度も走っていないJobへの一時停止は409で現在のJobが返る()
     {
         JobDto registered = await RegisterAsync();
 
-        // 走り出す前は受理を待つ相手がいないので、Pausing を経ずに直接 Paused。
+        // 守るべき進捗が無いので保留は認めない。要らないならキャンセルすればよい。
+        HttpResponseMessage response = await _client.PostAsync($"/api/jobs/{registered.Id}/pause", content: null);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("Registered", (await response.Content.ReadFromJsonAsync<JobDto>())?.Status);
+    }
+
+    [Fact]
+    public async Task 再開待ちのJobは200で保留でき再開すると待ち行列へ戻る()
+    {
+        JobDto registered = await RegisterAsync();
+        await AdvanceAsync(
+            registered.Id, JobTrigger.Start, JobTrigger.RequestPause, JobTrigger.ConfirmPaused, JobTrigger.Resume);
+
+        // 走ったことがあるので進捗がある。消さずに止められる必要がある。
         HttpResponseMessage paused = await _client.PostAsync($"/api/jobs/{registered.Id}/pause", content: null);
 
         Assert.Equal(HttpStatusCode.OK, paused.StatusCode);
         Assert.Equal("Paused", (await paused.Content.ReadFromJsonAsync<JobDto>())?.Status);
 
-        // 消さずに保留できることに意味があるので、戻せるところまで見る。
         HttpResponseMessage resumed = await _client.PostAsync($"/api/jobs/{registered.Id}/resume", content: null);
 
         Assert.Equal(HttpStatusCode.OK, resumed.StatusCode);
-        Assert.Equal("Queued", (await resumed.Content.ReadFromJsonAsync<JobDto>())?.Status);
+        Assert.Equal("Resumed", (await resumed.Content.ReadFromJsonAsync<JobDto>())?.Status);
     }
 
     [Fact]
-    public async Task 停止中のJobは200で再開できQueuedへ戻る()
+    public async Task 停止中のJobは200で再開でき待ち行列へ戻る()
     {
         JobDto registered = await RegisterAsync();
         await AdvanceAsync(registered.Id, JobTrigger.Start, JobTrigger.RequestPause, JobTrigger.ConfirmPaused);
@@ -73,7 +86,7 @@ public sealed class JobControlApiTests : IDisposable
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         JobDto? job = await response.Content.ReadFromJsonAsync<JobDto>();
-        Assert.Equal("Queued", job?.Status);
+        Assert.Equal("Resumed", job?.Status);
     }
 
     [Fact]

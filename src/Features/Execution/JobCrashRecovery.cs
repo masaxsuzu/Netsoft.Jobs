@@ -10,7 +10,7 @@ namespace Netsoft.Jobs.Features.Execution;
 /// <remarks>
 /// <para>
 /// 前回のプロセスが異常終了すると、実際には誰も動いていないのに Running / Cancelling / Pausing の
-/// まま残った Job ができる。結果が分からない以上 Failed で閉じる。Queued は対象外で、
+/// まま残った Job ができる。結果が分からない以上 Failed で閉じる。待ち行列は対象外で、
 /// ハンドラを起動していないので副作用が無く、このプロセスがそのまま実行する。
 /// </para>
 /// <para>
@@ -36,7 +36,7 @@ internal static class JobCrashRecovery
     /// <summary>復旧で閉じた Job に記録する失敗理由。</summary>
     private const string CrashRecoveryMessage = "前回のプロセスが異常終了したため、実行結果を確認できません。";
 
-    // ハンドラが動いていたはずの状態。Queued を含めないことの理由は
+    // ハンドラが動いていたはずの状態。待ち行列を含めないことの理由は
     // JobStatusExtensions.IsHandlerActive に書いてある。
     private static readonly JobStatus[] HandlerActiveStatuses =
         [.. Enum.GetValues<JobStatus>().Where(status => status.IsHandlerActive())];

@@ -23,16 +23,22 @@ public static class JobStateMachine
 
         return (current, trigger) switch
         {
-            (JobStatus.Queued, JobTrigger.Start) => JobTransitionResult.Allowed(current, JobStatus.Running),
+            (JobStatus.Registered, JobTrigger.Start) => JobTransitionResult.Allowed(current, JobStatus.Running),
+            (JobStatus.Resumed, JobTrigger.Start) => JobTransitionResult.Allowed(current, JobStatus.Running),
 
             // ハンドラをまだ起動していないので、受理を待つ相手がいない。即座に終端へ落とす。
-            (JobStatus.Queued, JobTrigger.RequestCancel) => JobTransitionResult.Allowed(current, JobStatus.Cancelled),
+            (JobStatus.Registered, JobTrigger.RequestCancel) => JobTransitionResult.Allowed(current, JobStatus.Cancelled),
+            (JobStatus.Resumed, JobTrigger.RequestCancel) => JobTransitionResult.Allowed(current, JobStatus.Cancelled),
 
-            // 待ち行列の保留。ここも受理を待つ相手がいないので、要求と受理の 2 段を踏まずに
-            // 直接 Paused へ。エンジンは Queued しか claim しないので、これだけで走り出さなくなる。
-            // これが無いと Queued は「消す（キャンセル）」以外に止める手が無く、
-            // Paused + Resume で戻した Job を止め直せない（Paused → Queued の片側通行になる）。
-            (JobStatus.Queued, JobTrigger.RequestPause) => JobTransitionResult.Allowed(current, JobStatus.Paused),
+            // 走ったことのある Job の保留。ここも受理を待つ相手がいないので、要求と受理の
+            // 2 段を踏まずに直接 Paused へ。エンジンは待ち行列しか claim しないので、
+            // これだけで走り出さなくなる。
+            //
+            // Registered には同じ行を作らない。**一度も走っていない Job を保留しても意味が無い**
+            // ── 守るべき進捗が無く、要らないなら消せばよい。逆に走ったことがある Job には
+            // 進捗があるので、消さずに止められる必要がある（無いと Paused → Resumed の片側通行になり、
+            // 再開したあとで気が変わっても走り出すまで止め直せない）。
+            (JobStatus.Resumed, JobTrigger.RequestPause) => JobTransitionResult.Allowed(current, JobStatus.Paused),
 
             (JobStatus.Running, JobTrigger.Complete) => JobTransitionResult.Allowed(current, JobStatus.Completed),
             (JobStatus.Running, JobTrigger.Fail) => JobTransitionResult.Allowed(current, JobStatus.Failed),
@@ -48,7 +54,7 @@ public static class JobStateMachine
 
             // 前回プロセスの異常終了。ハンドラが動いていたはずの状態は、
             // 結果が分からない以上 Failed として閉じるしかない。
-            // Queued はハンドラを起動していないため対象外で、次のプロセスがそのまま実行する。
+            // 待ち行列はハンドラを起動していないため対象外で、次のプロセスがそのまま実行する。
             (JobStatus.Running, JobTrigger.RecoverAfterCrash) => JobTransitionResult.Allowed(current, JobStatus.Failed),
             (JobStatus.Cancelling, JobTrigger.RecoverAfterCrash) => JobTransitionResult.Allowed(current, JobStatus.Failed),
             (JobStatus.Pausing, JobTrigger.RecoverAfterCrash) => JobTransitionResult.Allowed(current, JobStatus.Failed),
@@ -69,11 +75,12 @@ public static class JobStateMachine
             // ハンドラは境界で Pausing を見たときだけ抜けるから、この揺り戻しに気づく必要も無い。
             (JobStatus.Pausing, JobTrigger.Resume) => JobTransitionResult.Allowed(current, JobStatus.Running),
 
-            // 再開は Queued へ戻す。専用の再実行経路は作らず、既存のディスパッチに乗せる。
+            // 再開は待ち行列へ戻す。専用の再実行経路は作らず、既存のディスパッチに乗せる。
             // 進捗はサブタスクの行が持っているので、ハンドラは続きから走れる。
-            (JobStatus.Paused, JobTrigger.Resume) => JobTransitionResult.Allowed(current, JobStatus.Queued),
+            // 戻り先が Registered ではなく Resumed なのは、また止められる必要があるため。
+            (JobStatus.Paused, JobTrigger.Resume) => JobTransitionResult.Allowed(current, JobStatus.Resumed),
 
-            // 停止中は誰も走っていない。Queued への要求と同じく、受理を待つ相手がいないので即終端。
+            // 停止中は誰も走っていない。待ち行列への要求と同じく、受理を待つ相手がいないので即終端。
             (JobStatus.Paused, JobTrigger.RequestCancel) => JobTransitionResult.Allowed(current, JobStatus.Cancelled),
 
             _ => JobTransitionResult.Rejected(current, Classify(current, trigger)),
@@ -95,7 +102,8 @@ public static class JobStateMachine
         (JobStatus.Pausing or JobStatus.Paused, JobTrigger.RequestPause) => JobTransitionRejection.AlreadyInEffect,
 
         // 動いている（これから動く）ものへの再開要求。意図は満たされている。
-        (JobStatus.Queued or JobStatus.Running, JobTrigger.Resume) => JobTransitionRejection.AlreadyInEffect,
+        (JobStatus.Registered or JobStatus.Resumed or JobStatus.Running, JobTrigger.Resume) =>
+            JobTransitionRejection.AlreadyInEffect,
 
         _ => JobTransitionRejection.InvalidForCurrentStatus,
     };

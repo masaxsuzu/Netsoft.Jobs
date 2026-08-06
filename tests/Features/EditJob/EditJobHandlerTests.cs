@@ -32,7 +32,7 @@ public sealed class EditJobHandlerTests : IDisposable
     }
 
     [Theory]
-    [InlineData(nameof(JobStatus.Queued))]
+    [InlineData(nameof(JobStatus.Registered))]
     [InlineData(nameof(JobStatus.Running))]
     [InlineData(nameof(JobStatus.Pausing))]
     [InlineData(nameof(JobStatus.Paused))]
@@ -166,7 +166,7 @@ public sealed class EditJobHandlerTests : IDisposable
             parameters,
             target,
             Created,
-            target == JobStatus.Queued ? null : Created.AddMinutes(1),
+            target == JobStatus.Registered ? null : Created.AddMinutes(1),
             target.IsTerminal() ? Created.AddMinutes(2) : null,
             null);
 

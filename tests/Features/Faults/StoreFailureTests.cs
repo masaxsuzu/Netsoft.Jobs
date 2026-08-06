@@ -56,13 +56,13 @@ public sealed class StoreFailureTests : IDisposable
     /// ハンドラは完走しているのに、それを記録できないという最も嫌な形。ここで嘘
     /// （記録できていないのに Completed を返す、握りつぶして次へ進む）を書かないことと、
     /// 取り残された Job に必ず出口があることの 2 つを押さえる。
-    /// 出口は起動時復旧しかない ── エンジンは Queued しか拾わないので、
+    /// 出口は起動時復旧しかない ── エンジンは待ち行列しか拾わないので、
     /// この Job を動かせるものは他に無い。
     /// </remarks>
     [Fact]
     public async Task 結末を書けなかったJobは次の起動の復旧が閉じる()
     {
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
         ControllableJobHandler handler = new(HandledJobType);
         JobExecutionEngine engine = await CreateEngineAsync(handler);
 
@@ -93,16 +93,16 @@ public sealed class StoreFailureTests : IDisposable
     /// </summary>
     /// <remarks>
     /// ここでループを抜けると、store が直った後も Job を 1 件も動かさないプロセスが残る。
-    /// 画面には Queued が並び続け、エラーはどこにも出ない（利用者から見て最も分かりにくい壊れ方）。
+    /// 画面には待機中の Job が並び続け、エラーはどこにも出ない（利用者から見て最も分かりにくい壊れ方）。
     /// </remarks>
     [Fact]
     public async Task 読み出しが落ちてもループは死なず次の合図で再開する()
     {
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
         JobExecutionEngine engine = await CreateEngineAsync(handler);
 
-        _failing.FindOldestQueuedFailures = 1;
+        _failing.FindOldestWaitingFailures = 1;
 
         using CancellationTokenSource stopping = new();
         Task loop = engine.RunAsync(stopping.Token);
@@ -115,7 +115,7 @@ public sealed class StoreFailureTests : IDisposable
         Job job = await WaitForStatusAsync("job-1", JobStatus.Completed, loop);
 
         Assert.Equal(JobStatus.Completed, job.Status);
-        Assert.Equal(0, _failing.FindOldestQueuedFailures);
+        Assert.Equal(0, _failing.FindOldestWaitingFailures);
 
         await stopping.CancelAsync();
         await loop;
@@ -135,7 +135,7 @@ public sealed class StoreFailureTests : IDisposable
         FailingSubTaskStore failingSubTasks = new(subTasks);
         ManualTimeProvider time = new();
 
-        await AddQueuedAsync("job-1", SubTaskJobHandler.SubTaskJobType, parameters: "3 1");
+        await AddRegisteredAsync("job-1", SubTaskJobHandler.SubTaskJobType, parameters: "3 1");
 
         SubTaskJobHandler handler = new(failingSubTasks, _store, time);
         JobExecutionEngine engine = await CreateEngineAsync(handler);
@@ -194,7 +194,7 @@ public sealed class StoreFailureTests : IDisposable
         return handler;
     }
 
-    private async Task AddQueuedAsync(string id, string jobType = HandledJobType, string parameters = "")
+    private async Task AddRegisteredAsync(string id, string jobType = HandledJobType, string parameters = "")
     {
         Job job = Job.Create(JobId.From(id), $"Job {id}", jobType, parameters, Now);
         await _store.AddAsync(job, CancellationToken.None);

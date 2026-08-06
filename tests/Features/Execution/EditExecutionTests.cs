@@ -174,7 +174,7 @@ public sealed class EditExecutionTests : IDisposable
     /// </summary>
     /// <remarks>
     /// エンジンが候補を読んでから Running を書き戻すまでの窓を、割り込みフックで決定的に作る。
-    /// 編集は遷移ではないので状態は Queued のまま動かない。期待値が状態だったころは
+    /// 編集は遷移ではないので状態は Registered のまま動かない。期待値が状態だったころは
     /// 「状態は変わっていない」として書き戻しが通り、全列の書き戻しで編集が消えていた。
     /// 版で守ると claim が一度負け、読み直して編集後の parameters で走る。
     /// </remarks>

@@ -107,8 +107,9 @@ public sealed class Job
     /// <remarks>
     /// 一度立ったら二度と動かない（停止して待ち行列へ戻っても消えないし、再開後の
     /// 起動でも書き直さない）。したがって「値がある ⟺ 一度でも走った」が成り立つ。
-    /// 状態からは導けない事実で、たとえば Queued に値があるなら「走ったあと停止して
-    /// 再開待ち」を意味する。理由は <see cref="Apply"/> の注記に。
+    /// 状態からは完全には導けない事実。<see cref="JobStatus.Resumed"/> は必ず値を持ち、
+    /// <see cref="JobStatus.Registered"/> は必ず持たないが、終端はどちらもありうる
+    /// （理由は <see cref="Apply"/> の注記に）。
     /// </remarks>
     public DateTimeOffset? StartedAt { get; private set; }
 
@@ -119,7 +120,7 @@ public sealed class Job
     public string? FailureMessage { get; private set; }
 
     /// <summary>
-    /// 新しい Job を作る。状態は必ず <see cref="JobStatus.Queued"/> から始まる。
+    /// 新しい Job を作る。状態は必ず <see cref="JobStatus.Registered"/> から始まる。
     /// </summary>
     public static Job Create(JobId id, string name, string jobType, string parameters, DateTimeOffset createdAt)
     {
@@ -135,7 +136,7 @@ public sealed class Job
         ArgumentNullException.ThrowIfNull(parameters);
 
         return new Job(
-            id, name, jobType, parameters, JobStatus.Queued, createdAt, null, null, null, InitialVersion);
+            id, name, jobType, parameters, JobStatus.Registered, createdAt, null, null, null, InitialVersion);
     }
 
     /// <summary>
@@ -202,7 +203,7 @@ public sealed class Job
         // 「走り続けているのに開始し直した」という嘘になるし、再開後の Start で書き直すと
         // 停止をまたいだ Job の「いつから走っているか」が失われる。
         //
-        // かつては待ち行列へ戻るときに消していた（Queued は開始時刻を持たない、という
+        // かつては待ち行列へ戻るときに消していた（待ち行列は開始時刻を持たない、という
         // 不変条件のため）。やめたのは、消すと「実際に走ったのに走った記録が無い」行が
         // 作れてしまうから ── 停止して再開待ちのまま中止すると、サブタスクが進んでいるのに
         // 開始時刻が空の終端が残る。いまの不変条件は

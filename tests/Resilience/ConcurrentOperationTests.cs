@@ -178,11 +178,11 @@ public sealed class ConcurrentOperationTests : IAsyncLifetime
     /// <para>
     /// これがこの基盤で最も避けたい形。<c>Running</c> / <c>Cancelling</c> / <c>Pausing</c> は
     /// 「今どこかのハンドラが動いている」ことを意味する状態なので、ハンドラが居ないのに
-    /// この状態で残ると誰も動かせない。エンジンは <c>Queued</c> しか拾わず、キャンセルも
+    /// この状態で残ると誰も動かせない。エンジンは待ち行列しか拾わず、キャンセルも
     /// 一時停止も届く先が無い。
     /// </para>
     /// <para>
-    /// <c>Paused</c> と <c>Queued</c> は固着ではない（利用者が再開できる／エンジンが拾う）。
+    /// <c>Paused</c> と待ち行列（<c>Registered</c> / <c>Resumed</c>）は固着ではない（利用者が再開できる／エンジンが拾う）。
     /// </para>
     /// </remarks>
     [Fact]
@@ -223,7 +223,7 @@ public sealed class ConcurrentOperationTests : IAsyncLifetime
         foreach (JobsApi.JobDto job in jobs)
         {
             JobsApi.JobDto current = await Api.WaitForAsync(
-                job.Id, "Completed", "Failed", "Cancelled", "Paused", "Queued", "Running");
+                job.Id, "Completed", "Failed", "Cancelled", "Paused", "Registered", "Running");
 
             Assert.False(
                 current.Status is "Cancelling" or "Pausing",

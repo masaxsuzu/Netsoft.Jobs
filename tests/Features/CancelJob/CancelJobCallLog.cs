@@ -64,8 +64,8 @@ internal sealed class CallLoggingJobStore : IJobStore
         _inner.ListAsync(cancellationToken);
 
     /// <inheritdoc />
-    public Task<Job?> FindOldestQueuedAsync(CancellationToken cancellationToken) =>
-        _inner.FindOldestQueuedAsync(cancellationToken);
+    public Task<Job?> FindOldestWaitingAsync(CancellationToken cancellationToken) =>
+        _inner.FindOldestWaitingAsync(cancellationToken);
 
     /// <inheritdoc />
     public Task<IReadOnlyList<Job>> ListByStatusAsync(JobStatus status, CancellationToken cancellationToken) =>

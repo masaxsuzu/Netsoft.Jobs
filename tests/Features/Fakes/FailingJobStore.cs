@@ -25,7 +25,7 @@ internal sealed class FailingJobStore : IJobStore
     private readonly IJobStore _inner;
 
     private int _updateFailures;
-    private int _findOldestQueuedFailures;
+    private int _findOldestWaitingFailures;
 
     public FailingJobStore(IJobStore inner) => _inner = inner;
 
@@ -36,11 +36,11 @@ internal sealed class FailingJobStore : IJobStore
         set => Volatile.Write(ref _updateFailures, value);
     }
 
-    /// <summary>これから <see cref="FindOldestQueuedAsync"/> を失敗させる回数。</summary>
-    public int FindOldestQueuedFailures
+    /// <summary>これから <see cref="FindOldestWaitingAsync"/> を失敗させる回数。</summary>
+    public int FindOldestWaitingFailures
     {
-        get => Volatile.Read(ref _findOldestQueuedFailures);
-        set => Volatile.Write(ref _findOldestQueuedFailures, value);
+        get => Volatile.Read(ref _findOldestWaitingFailures);
+        set => Volatile.Write(ref _findOldestWaitingFailures, value);
     }
 
     public Task AddAsync(Job job, CancellationToken cancellationToken) =>
@@ -54,10 +54,10 @@ internal sealed class FailingJobStore : IJobStore
     public Task<Job?> FindAsync(JobId id, CancellationToken cancellationToken) =>
         _inner.FindAsync(id, cancellationToken);
 
-    public Task<Job?> FindOldestQueuedAsync(CancellationToken cancellationToken) =>
-        Consume(ref _findOldestQueuedFailures)
+    public Task<Job?> FindOldestWaitingAsync(CancellationToken cancellationToken) =>
+        Consume(ref _findOldestWaitingFailures)
             ? throw new IOException(FailureMessage)
-            : _inner.FindOldestQueuedAsync(cancellationToken);
+            : _inner.FindOldestWaitingAsync(cancellationToken);
 
     public Task<IReadOnlyList<Job>> ListAsync(CancellationToken cancellationToken) =>
         _inner.ListAsync(cancellationToken);

@@ -35,16 +35,18 @@ public sealed class PauseResumeHandlerTests : IDisposable
     /// <summary>
     /// 一時停止要求の状態ごとの結末。要求済み・停止済みへの再要求は
     /// ボタンを 2 回押しただけなので成功として写る（キャンセルと同じ判断）。
-    /// 待機中は受理を待つ相手がいないので、2 段を踏まず直接 Paused になる。
+    /// 走ったことがある待機（Resumed）は受理を待つ相手がいないので、2 段を踏まず直接 Paused。
+    /// 一度も走っていない待機（Registered）は保留しても意味が無いので受け付けない。
     /// </summary>
     [Theory]
     [InlineData(nameof(JobStatus.Running), true, nameof(JobStatus.Pausing))]
     [InlineData(nameof(JobStatus.Pausing), true, nameof(JobStatus.Pausing))]
     [InlineData(nameof(JobStatus.Paused), true, nameof(JobStatus.Paused))]
-    [InlineData(nameof(JobStatus.Queued), true, nameof(JobStatus.Paused))]
+    [InlineData(nameof(JobStatus.Registered), false, nameof(JobStatus.Registered))]
+    [InlineData(nameof(JobStatus.Resumed), true, nameof(JobStatus.Paused))]
     [InlineData(nameof(JobStatus.Cancelling), false, nameof(JobStatus.Cancelling))]
     [InlineData(nameof(JobStatus.Completed), false, nameof(JobStatus.Completed))]
-    public async Task 一時停止要求は実行中と待機中を受理し要求済みには冪等に成功する(
+    public async Task 一時停止要求は実行中と再開待ちを受理し要求済みには冪等に成功する(
         string current, bool success, string expected)
     {
         await AddAsync(JobAt("job-1", current));
@@ -57,13 +59,14 @@ public sealed class PauseResumeHandlerTests : IDisposable
     }
 
     /// <summary>
-    /// 再開要求の状態ごとの結末。停止中は Queued へ、受理前は Running へ揺り戻す。
+    /// 再開要求の状態ごとの結末。停止中は Resumed へ、受理前は Running へ揺り戻す。
     /// 既に動いている（これから動く）ものへの要求は冪等に成功する。
     /// </summary>
     [Theory]
-    [InlineData(nameof(JobStatus.Paused), true, nameof(JobStatus.Queued))]
+    [InlineData(nameof(JobStatus.Paused), true, nameof(JobStatus.Resumed))]
     [InlineData(nameof(JobStatus.Pausing), true, nameof(JobStatus.Running))]
-    [InlineData(nameof(JobStatus.Queued), true, nameof(JobStatus.Queued))]
+    [InlineData(nameof(JobStatus.Registered), true, nameof(JobStatus.Registered))]
+    [InlineData(nameof(JobStatus.Resumed), true, nameof(JobStatus.Resumed))]
     [InlineData(nameof(JobStatus.Running), true, nameof(JobStatus.Running))]
     [InlineData(nameof(JobStatus.Cancelling), false, nameof(JobStatus.Cancelling))]
     [InlineData(nameof(JobStatus.Cancelled), false, nameof(JobStatus.Cancelled))]
@@ -88,9 +91,9 @@ public sealed class PauseResumeHandlerTests : IDisposable
 
         Assert.True(result.IsSuccess);
 
-        // Queued へ戻るが「走ったことがある」事実は残る。開始時刻は最初のまま。
+        // 待ち行列へ戻るが「走ったことがある」事実は残る。開始時刻は最初のまま。
         Job saved = await SavedAsync("job-1");
-        Assert.Equal(JobStatus.Queued, saved.Status);
+        Assert.Equal(JobStatus.Resumed, saved.Status);
         Assert.Equal(Created.AddMinutes(1), saved.StartedAt);
     }
 
@@ -169,7 +172,7 @@ public sealed class PauseResumeHandlerTests : IDisposable
         JobControlResult result = await resume.HandleAsync("job-1", CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(nameof(JobStatus.Queued), (await SavedAsync("job-1")).Status.ToString());
+        Assert.Equal(nameof(JobStatus.Resumed), (await SavedAsync("job-1")).Status.ToString());
         Assert.Equal(2, interfering.UpdateAttempts);
     }
 
@@ -190,7 +193,7 @@ public sealed class PauseResumeHandlerTests : IDisposable
             "2 1",
             target,
             Created,
-            target == JobStatus.Queued ? null : Created.AddMinutes(1),
+            target == JobStatus.Registered ? null : Created.AddMinutes(1),
             target.IsTerminal() ? Created.AddMinutes(2) : null,
             null);
     }

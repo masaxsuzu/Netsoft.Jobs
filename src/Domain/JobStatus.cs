@@ -10,8 +10,8 @@ namespace Netsoft.Jobs.Domain;
 /// </remarks>
 public enum JobStatus
 {
-    /// <summary>待機中。まだ実行スロットが割り当てられていない。</summary>
-    Queued,
+    /// <summary>登録済み。まだ一度も実行されていない。</summary>
+    Registered,
 
     /// <summary>実行中。</summary>
     Running,
@@ -33,6 +33,18 @@ public enum JobStatus
 
     /// <summary>一時停止中。ハンドラは居らず、再開されるまで誰も走らせない。</summary>
     Paused,
+
+    /// <summary>
+    /// 再開待ち。一度は走っており、待ち行列で実行を待っている。
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Registered"/> と分けてあるのは、止められるかどうかが違うため。
+    /// 走ったことがある Job には守るべき進捗があるので保留（<see cref="Paused"/> へ戻す）を
+    /// 認めるが、一度も走っていない Job を保留しても意味が無い ── 要らないなら消せばよく、
+    /// 失うものが無い。<b>待ち行列としての扱いはどちらも同じ</b>で、
+    /// <see cref="JobStatusExtensions.IsWaiting"/> がその 2 つをまとめている。
+    /// </remarks>
+    Resumed,
 }
 
 /// <summary>
@@ -50,8 +62,8 @@ public static class JobStatusExtensions
     /// ハンドラが動いている（動いていたはずの）状態か。
     /// </summary>
     /// <remarks>
-    /// Queued は含めない。この判定は起動時復旧の基準に使う。
-    /// プロセスが落ちた時点で Queued だった Job はハンドラを起動していないので、
+    /// 待ち行列（<see cref="IsWaiting"/>）は含めない。この判定は起動時復旧の基準に使う。
+    /// プロセスが落ちた時点で待っていた Job はハンドラを起動していないので、
     /// 次のプロセスがそのまま拾って実行すればよく、Failed にしてはいけない。
     /// </remarks>
     /// <remarks>
@@ -63,12 +75,23 @@ public static class JobStatusExtensions
         status is JobStatus.Running or JobStatus.Cancelling or JobStatus.Pausing;
 
     /// <summary>
+    /// 実行を待っている状態か。エンジンが拾う対象はこれ。
+    /// </summary>
+    /// <remarks>
+    /// 一度も走っていない（<see cref="JobStatus.Registered"/>）か、走ったことがあって
+    /// 待ち行列へ戻った（<see cref="JobStatus.Resumed"/>）か。<b>ディスパッチから見れば同じ</b>で、
+    /// 違うのは保留を認めるかどうかだけ（<see cref="JobStatus.Resumed"/> の注記を参照）。
+    /// </remarks>
+    public static bool IsWaiting(this JobStatus status) =>
+        status is JobStatus.Registered or JobStatus.Resumed;
+
+    /// <summary>
     /// パラメータを編集できる状態か。
     /// </summary>
     /// <remarks>
     /// 終端は不可（結果が確定した後の書き換えは記録の改竄になる）。
     /// Cancelling も不可。捨てると決まった Job の定義を直しても、誰の役にも立たない。
-    /// それ以外（Queued / Running / Pausing / Paused）は編集できる。実行中の反映は
+    /// それ以外（Registered / Resumed / Running / Pausing / Paused）は編集できる。実行中の反映は
     /// サブタスクの境界の突き合わせが引き受ける。
     /// </remarks>
     public static bool CanEditParameters(this JobStatus status) =>

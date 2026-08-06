@@ -14,10 +14,10 @@ namespace Netsoft.Jobs.Features.Tests.Concurrency;
 /// <para>
 /// 判定は 1 件の Job から読み取れることに限る。「一度でも Running 以降に進んだか」は
 /// 履歴を持たないと分からないので、状態ごとに <see cref="Job.StartedAt"/> が
-/// 在るべきか無いべきかへ言い換えてある。<c>Queued</c> と <c>Cancelled</c> は
-/// どちらでもよいとする ── 前者は「まだ走っていない」と「走ったあと停止して再開待ち」の
-/// 両方が居るため、後者は Queued からの即時キャンセルと Cancelling からの受理の
-/// 両方があるため。<b>「無いはず」と言える状態はもう無い</b>（開始時刻は消えない）。
+/// 在るべきか無いべきかへ言い換えてある。どちらでもよいとするのは <c>Cancelled</c> だけ ──
+/// 待機中からの即時キャンセルと <c>Cancelling</c> からの受理の両方があるため。
+/// 待機中を <c>Registered</c> と <c>Resumed</c> に分けたので、
+/// 「まだ走っていない」と「走ったあと停止して再開待ち」は状態で見分けられる。
 /// </para>
 /// </remarks>
 public static class JobInvariants
@@ -81,20 +81,15 @@ public static class JobInvariants
     {
         bool? expected = job.Status switch
         {
-            // 一度も起動していない Job も、停止して再開待ちの Job もここに居る。
-            // 開始時刻は「最初に起動した時刻」で消えないので、状態だけからは決まらない
-            // （Job.StartedAt の注記を参照）。
-            JobStatus.Queued => null,
+            // 登録直後の状態で、ここへ戻ってくる道は無い。走ったことがあるなら Resumed に居る。
+            JobStatus.Registered => false,
 
             // ハンドラを起動した（していた）状態からしか来られない。
+            // Resumed は Paused からしか来ず、Paused は実行の途中でしか作られない。
             JobStatus.Running or JobStatus.Cancelling or JobStatus.Completed or JobStatus.Failed
-                or JobStatus.Pausing => true,
+                or JobStatus.Pausing or JobStatus.Paused or JobStatus.Resumed => true,
 
-            // 実行の途中で受理された停止と、走り出す前の保留（Queued からの直行）の
-            // 両方が居る。Queued と同じく、状態だけからは決まらない。
-            JobStatus.Paused => null,
-
-            // Queued からの即時キャンセルと、Cancelling からの受理の両方がある。
+            // 待機中からの即時キャンセルと、Cancelling からの受理の両方がある。
             JobStatus.Cancelled => null,
 
             _ => null,

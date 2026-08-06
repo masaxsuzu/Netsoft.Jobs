@@ -47,7 +47,7 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
         Job job = await FindAsync("job-1");
         Assert.Null(JobInvariants.FindViolation(job));
 
-        // Queued → Running → Cancelling と進む間に高々 3 回。上限を置いて青天井でないことを示す。
+        // Registered → Running → Cancelling と進む間に高々 3 回。上限を置いて青天井でないことを示す。
         Assert.InRange(hostile.UpdateAttempts, 1, 5);
     }
 

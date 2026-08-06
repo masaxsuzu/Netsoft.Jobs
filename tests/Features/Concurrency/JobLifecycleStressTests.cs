@@ -106,7 +106,7 @@ public sealed class JobLifecycleStressTests : IDisposable
         int operatorsLeft = Operators;
 
         // 最初の 1 操作が済むまでエンジンとキャンセルを待たせる。この時点では全部が待機中
-        // なので、編集も一時停止も再開も必ず受理される（Queued はどれも受け付ける状態）。
+        // なので、編集も一時停止も再開も必ず受理される（待機中はどれも受け付ける状態）。
         // 待たせないと、操作が始まる前に全部終端へ行き着く回ができて
         // 「1 度も受け付けられていません」でフレークする（実際に 8 回中 4 回落ちた）。
         // 残りの操作は今までどおり全部と重なるので、見ている窓は狭まらない。
@@ -114,7 +114,7 @@ public sealed class JobLifecycleStressTests : IDisposable
         List<Exception> failures = [];
         AsyncStartGate start = new(Engines + Cancellers + Operators + 1);
 
-        // 待機中の Job が尽きても、操作が続いている限り降りない。保留（Queued → Paused）が
+        // 待機中の Job が尽きても、操作が続いている限り降りない。保留（Resumed → Paused）が
         // 入ると待ち行列は一瞬で空になるので、枯れたら即降りる作りだと操作の窓が消える
         //（実際に「1 度も受け付けられていません」でフレークした）。
         Task running = Task.WhenAll(engines.Select(engine => Task.Run(async () =>
@@ -292,7 +292,7 @@ public sealed class JobLifecycleStressTests : IDisposable
         Random random)
     {
         Job? job = await store.FindAsync(id, CancellationToken.None);
-        if (job is { Status: JobStatus.Queued } && random.Next(8) != 0)
+        if (job is { Status: JobStatus.Registered } && random.Next(8) != 0)
         {
             return;
         }

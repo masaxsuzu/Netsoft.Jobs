@@ -44,7 +44,7 @@ public sealed class CancelJobHandler
     /// <remarks>
     /// 読み出しと保存の間に実行エンジンが結末を書き込むことがある。条件付き更新で書き戻せなければ
     /// 先頭から（読み直しから）やり直す。やり直しが決着するのは、どの状態でもキャンセルの
-    /// 評価が答えを持つから ── 非終端なら受理される（Queued / Paused は即終端へ、
+    /// 評価が答えを持つから ── 非終端なら受理される（待ち行列 / Paused は即終端へ、
     /// Running / Pausing は Cancelling へ）か既に効いていて
     /// （<see cref="JobTransitionRejection.AlreadyInEffect"/>）、終端なら
     /// <see cref="JobTransitionRejection.JobAlreadyFinished"/> として拒否されて抜ける。

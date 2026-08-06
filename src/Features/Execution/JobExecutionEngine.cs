@@ -17,7 +17,7 @@ namespace Netsoft.Jobs.Features.Execution;
 /// </para>
 /// <para>
 /// 二重実行が起きないことと、状態が壊れないことは <see cref="IJobStore.UpdateAsync"/> の
-/// 条件付き更新が保証する。Queued の候補を取ってから Running を書き戻すまでに他が先に取っていれば
+/// 条件付き更新が保証する。待ち行列の候補を取ってから Running を書き戻すまでに他が先に取っていれば
 /// 書き戻しに失敗するので、エンジンが複数動いても（別プロセスでも）同じ Job を 2 回は実行しない。
 /// 正しさをエンジンの数の前提に置いていない
 /// （起動時復旧だけは別の前提を置いている。<see cref="StartAsync"/> の注記を参照）。
@@ -142,14 +142,14 @@ public sealed class JobExecutionEngine
         // 取れる候補が無くなるまで繰り返す。書き戻せなかったということは、読み出しから
         // 書き込みまでの間に誰かが書いたということで、行き先は 2 つしかない。
         //
-        // 1. 状態が Queued から先へ進んだ（他のエンジンが取った・利用者が中止した）。
-        //    次の FindOldestQueuedAsync はもう同じ Job を返さない。Queued へ戻る道は
+        // 1. 状態が待ち行列から先へ進んだ（他のエンジンが取った・利用者が中止した）。
+        //    次の FindOldestWaitingAsync はもう同じ Job を返さない。待ち行列へ戻る道は
         //    一時停止からの再開（Paused + Resume）だけで、そこへ行くにはどこかのエンジンが
         //    実行し、利用者が停止と再開を要求する必要がある。戻ってきたなら、それは
         //    新しい仕事が届いたのと同じことで空転ではない。同一プロセスでは Running を
-        //    作るのは自分だけなので、自分が負けた候補が自分の周回中に Queued へ戻ることも無い。
+        //    作るのは自分だけなので、自分が負けた候補が自分の周回中に待ち行列へ戻ることも無い。
         //
-        // 2. 状態は Queued のまま、内容だけが書き換わった（利用者の編集）。この場合は
+        // 2. 状態は待ち行列のまま、内容だけが書き換わった（利用者の編集）。この場合は
         //    同じ Job がもう一度返ってくる。空転に見えるが、読み直した手元の内容は
         //    編集後のもので、次の書き戻しは（さらに編集が重ならない限り）成立する。
         //    繰り返す回数は利用者が編集した回数までで、こちらの都合では増えない。
@@ -157,7 +157,7 @@ public sealed class JobExecutionEngine
         //    黙って巻き戻ることでこの周回が「成功」していた（IJobStore.UpdateAsync の注記）。
         while (true)
         {
-            Job? job = await _store.FindOldestQueuedAsync(cancellationToken);
+            Job? job = await _store.FindOldestWaitingAsync(cancellationToken);
             if (job is null)
             {
                 return false;
@@ -171,7 +171,7 @@ public sealed class JobExecutionEngine
             JobTransitionResult started = job.Apply(JobTrigger.Start, _timeProvider.GetUtcNow());
             if (!started.IsAllowed)
             {
-                // Queued で絞って取ったものが Queued でない。store の実装が契約を守っていない。
+                // 待ち行列で絞って取ったものが待ち行列でない。store の実装が契約を守っていない。
                 // ここで次の候補へ進むと同じ Job を延々と拾い続けるので、今回の周回を諦める。
                 _logger.LogWarning("Job {JobId} は既に他から開始されています。今回は実行しません。", job.Id.Value);
                 return false;
@@ -259,7 +259,7 @@ public sealed class JobExecutionEngine
                 continue;
             }
 
-            // 待つのは FindOldestQueuedAsync が null を返した後（executed が false になった後）
+            // 待つのは FindOldestWaitingAsync が null を返した後（executed が false になった後）
             // であって、待ちに入る前に確認し直すことはしない。「null を見た直後に登録された」
             // 場合、その合図はこの WaitAsync より先に発火しているが、トークンが箱に残るので
             // この待ちは即座に返る。確認と待機の間に取りこぼしの窓は無い。

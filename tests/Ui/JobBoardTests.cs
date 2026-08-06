@@ -352,7 +352,7 @@ public sealed class JobBoardTests : IDisposable
     }
 
     private static JobListItemDto Row(int completed, int total) =>
-        new("job-1", "行", "subtasks", "3 1", "Queued", DateTimeOffset.UtcNow, null, null, null, completed, total);
+        new("job-1", "行", "subtasks", "3 1", "Registered", DateTimeOffset.UtcNow, null, null, null, completed, total);
 
     private static JobBoard BrokenBoard(Exception? failure = null) =>
         new(new JobsApiClient(new HttpClient(new ThrowingHandler(failure))
