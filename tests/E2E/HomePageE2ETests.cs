@@ -18,6 +18,29 @@ public sealed class HomePageE2ETests
         _fixture = fixture;
     }
 
+    /// <summary>
+    /// 終端の表示を待つ。**届かなかったときは API から見た状態を添えて投げ直す。**
+    /// </summary>
+    /// <remarks>
+    /// 素の <c>Expect</c> だと、落ちたときに分かるのは「画面がこう見えていた」だけで、
+    /// Job が進まなかったのか、進んだのに通知が届かなかったのかを区別できない。
+    /// 区別が付かないと、次の一手（エンジンを見るのか通知を見るのか）が決まらない。
+    /// </remarks>
+    private async Task ExpectTerminalAsync(ILocator row, string text)
+    {
+        try
+        {
+            await Expect(row).ToContainTextAsync(text);
+        }
+        catch (Exception exception)
+        {
+            throw new InvalidOperationException(
+                $"画面が「{text}」に到達しなかった。API から見た状態:{Environment.NewLine}"
+                + await _fixture.DescribeJobsAsync(),
+                exception);
+        }
+    }
+
     [Fact]
     public async Task 登録したJobはリロードなしで完了まで進む()
     {
@@ -38,7 +61,7 @@ public sealed class HomePageE2ETests
 
         // ここでリロードしないことが検証の核心。状態の変化はサーバ側の実行エンジンが
         // 起こし、変更通知 → 回路の再描画（push 更新）だけで画面に届くはずである。
-        await Expect(row).ToContainTextAsync("完了");
+        await ExpectTerminalAsync(row, "完了");
 
         await page.CloseAsync();
     }
@@ -63,7 +86,7 @@ public sealed class HomePageE2ETests
 
         // Running → 中止要求中 → 中止済み と進む。途中状態は速すぎて見えないことが
         // あるため、終端だけを待つ。
-        await Expect(row).ToContainTextAsync("中止済み");
+        await ExpectTerminalAsync(row, "中止済み");
         await Expect(cancelButton).ToBeDisabledAsync();
 
         await page.CloseAsync();

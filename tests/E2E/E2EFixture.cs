@@ -51,6 +51,32 @@ public sealed class E2EFixture : IAsyncLifetime
     /// <summary>API ホストの URL。UI の ApiBaseUrl はここを指す。</summary>
     public string ApiBaseUrl { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// API から見た Job の一覧を返す。**失敗したときの切り分けにだけ使う。**
+    /// </summary>
+    /// <remarks>
+    /// 画面が終端まで進まなかったとき、原因は 2 つある。Job が本当に進まなかったか、
+    /// 進んだのに変更通知が画面へ届かなかったかで、**どちらなのかは DOM からは読めない**。
+    /// 落ちてから調べようとしても、そのときにはホストが終了していて手が無い。
+    ///
+    /// CI で 1 度だけ、キャンセルが Cancelling のまま 30 秒進まない形で落ちた
+    /// （run 31098403904）。手元では 10 回連続で再現せず、この切り分けが無いために
+    /// 原因を特定できなかった。次に落ちたときは判断できるようにしてある。
+    /// </remarks>
+    public async Task<string> DescribeJobsAsync()
+    {
+        try
+        {
+            using HttpClient client = new() { Timeout = TimeSpan.FromSeconds(5) };
+            return await client.GetStringAsync($"{ApiBaseUrl}/api/jobs");
+        }
+        catch (Exception exception)
+        {
+            // ここで投げ直すと、本来の失敗が診断の失敗に置き換わって見えなくなる。
+            return $"（API から取得できなかった: {exception.Message}）";
+        }
+    }
+
     public async Task InitializeAsync()
     {
         string repositoryRoot = FindRepositoryRoot();
