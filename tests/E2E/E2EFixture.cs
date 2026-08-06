@@ -36,6 +36,11 @@ public sealed class E2EFixture : IAsyncLifetime
     // 2 プロセス分を 1 つに混ぜ、行頭の [api] / [ui] で見分ける。
     private readonly StringBuilder _appOutput = new();
 
+    // 走りながら書き出す先。溜めたものは失敗した 1 件にしか付かず、
+    // CI では実行が終わるとホストごと消えて追いようが無くなる。
+    // ここへ落としておけば artifact として後から読める（.github/workflows/ci.yml）。
+    private StreamWriter? _log;
+
     private Process? _api;
     private Process? _ui;
     private IPlaywright? _playwright;
@@ -51,6 +56,58 @@ public sealed class E2EFixture : IAsyncLifetime
     /// <summary>API ホストの URL。UI の ApiBaseUrl はここを指す。</summary>
     public string ApiBaseUrl { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// 2 つのホストの出力の末尾を返す。**失敗したときの切り分けにだけ使う。**
+    /// </summary>
+    /// <remarks>
+    /// 行頭の <c>[api]</c> / <c>[ui]</c> で発生源が分かる。構造化ログは JobId を持つので
+    /// （src/Features の各 handler）、落ちた Job の一生をこの中から追える。
+    /// API の状態が「何になったか」しか答えないのに対し、こちらは「なぜそうなったか」を持つ。
+    ///
+    /// 全部ではなく末尾だけ返す。起動時のログが数百行あり、全部載せると
+    /// **肝心の失敗直前が流れて読めなくなる**。
+    ///
+    /// 末尾は**ホストごとに**取る。混ぜて 1 本の末尾を取ると、UI の HttpClient が
+    /// 1 回の描画ごとに 6 行吐くせいで、**JobId を持つ api 側が丸ごと押し出される**
+    /// （実際にそうなった）。切り分けに要るのは押し出される方である。
+    /// </remarks>
+    public string ReadRecentAppOutput(int linesPerHost = 40)
+    {
+        string[] all = ReadOutput().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        return string.Join(
+            Environment.NewLine,
+            new[] { "api", "ui" }.SelectMany(label =>
+                all.Where(line => line.StartsWith($"[{label}]", StringComparison.Ordinal))
+                    .TakeLast(linesPerHost)));
+    }
+
+    /// <summary>
+    /// API から見た Job の一覧を返す。**失敗したときの切り分けにだけ使う。**
+    /// </summary>
+    /// <remarks>
+    /// 画面が終端まで進まなかったとき、原因は 2 つある。Job が本当に進まなかったか、
+    /// 進んだのに変更通知が画面へ届かなかったかで、**どちらなのかは DOM からは読めない**。
+    /// 落ちてから調べようとしても、そのときにはホストが終了していて手が無い。
+    ///
+    /// CI で 1 度だけ、キャンセルが Cancelling のまま 30 秒進まない形で落ちた
+    /// （run 31098403904）。手元では 10 回連続で再現せず、この切り分けが無いために
+    /// 原因を特定できなかった。次に落ちたときは判断できるようにしてある。
+    /// </remarks>
+    public async Task<string> DescribeJobsAsync()
+    {
+        try
+        {
+            using HttpClient client = new() { Timeout = TimeSpan.FromSeconds(5) };
+            return await client.GetStringAsync($"{ApiBaseUrl}/api/jobs");
+        }
+        catch (Exception exception)
+        {
+            // ここで投げ直すと、本来の失敗が診断の失敗に置き換わって見えなくなる。
+            return $"（API から取得できなかった: {exception.Message}）";
+        }
+    }
+
     public async Task InitializeAsync()
     {
         string repositoryRoot = FindRepositoryRoot();
@@ -58,6 +115,7 @@ public sealed class E2EFixture : IAsyncLifetime
         string uiDll = FindHostDll(repositoryRoot, "Ui");
 
         Directory.CreateDirectory(_tempDirectory);
+        _log = OpenLog(repositoryRoot, "e2e");
 
         ApiBaseUrl = $"http://127.0.0.1:{GetFreePort()}";
         BaseUrl = $"http://127.0.0.1:{GetFreePort()}";
@@ -66,6 +124,10 @@ public sealed class E2EFixture : IAsyncLifetime
         {
             // DB は使い捨ての一時ディレクトリへ。開発用の DB を汚さず、テスト間の残骸も残らない。
             startInfo.Environment["Jobs__DatabasePath"] = Path.Combine(_tempDirectory, "jobs.db");
+
+            // スパンを出力に混ぜる。計装は購読者が居ないとスパンを作らないので、
+            // これが無いと失敗したときのトレースが「空」ではなく「無い」ことになる。
+            startInfo.Environment["Jobs__TraceToConsole"] = "true";
         });
 
         // API が応答してから UI を立てる（クラスの注記を参照）。
@@ -111,6 +173,9 @@ public sealed class E2EFixture : IAsyncLifetime
         // 害は無いが、診断ログを汚さないに越したことはない。
         await StopAsync(_ui);
         await StopAsync(_api);
+
+        // ホストを止めてから閉じる。先に閉じると終了間際の出力を落とす。
+        await (_log?.DisposeAsync() ?? ValueTask.CompletedTask);
 
         try
         {
@@ -253,10 +318,36 @@ public sealed class E2EFixture : IAsyncLifetime
             return;
         }
 
+        string entry = $"[{label}] {line}";
+
         lock (_appOutput)
         {
-            _appOutput.AppendLine($"[{label}] {line}");
+            _appOutput.AppendLine(entry);
+            _log?.WriteLine(entry);
         }
+
+
+    }
+
+
+    /// <summary>
+    /// ホストの出力を落とす先を開く。**追記ではなく作り直す。**
+    /// </summary>
+    /// <remarks>
+    /// 前回の実行が残っていると、CI の artifact を開いたときに
+    /// どちらの実行のものか分からなくなる。TestResults/ は
+    /// tools/coverage.sh がテストの前に消すので、1 回の実行分だけが残る。
+    /// </remarks>
+    private static StreamWriter OpenLog(string repositoryRoot, string layer)
+    {
+        string directory = Path.Combine(repositoryRoot, "TestResults", "hosts");
+        Directory.CreateDirectory(directory);
+
+        return new StreamWriter(Path.Combine(directory, $"{layer}.log"), append: false)
+        {
+            // 落ちた直後にプロセスを殺すので、溜めたまま失うことがある。
+            AutoFlush = true,
+        };
     }
 
     private string ReadOutput()

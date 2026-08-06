@@ -30,4 +30,14 @@ public sealed class JobsOptions
     /// 「待機中の Job をキャンセルできる」のような状態を前提にしたテストが不安定になる。
     /// </remarks>
     public bool RunExecutionEngine { get; set; } = true;
+
+    /// <summary>
+    /// スパンを標準出力へ書き出すか。
+    /// </summary>
+    /// <remarks>
+    /// E2E と Stress が true にする。ホストを実プロセスで起こす層では、
+    /// 計装に購読者が居ないとスパンが**作られもしない**（<see cref="ConsoleActivityTracing"/>）。
+    /// 既定が false なのは、常時出すと標準出力がスパンで埋まってログが読めなくなるため。
+    /// </remarks>
+    public bool TraceToConsole { get; set; }
 }

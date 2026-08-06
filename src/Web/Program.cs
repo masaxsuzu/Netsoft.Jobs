@@ -47,6 +47,10 @@ if (options.RunExecutionEngine)
     builder.Services.AddHostedService<JobExecutionHostedService>();
 }
 
+// 購読はホストの寿命と同じだけ続ける。using で受けるのは、
+// AddActivityListener が解除されないと購読が漏れるため。
+using IDisposable? tracing = ConsoleActivityTracing.Enable(options.TraceToConsole, Console.Out);
+
 WebApplication app = builder.Build();
 
 // 画面は持たない。画面は別プロセスの UI ホスト（src/Ui）にあり、

@@ -72,6 +72,24 @@ jobs:
       - name: Test
         run: tools/coverage.sh --no-build --configuration Release
 
+      # E2E と Stress が起こしたホストのログとトレースを、ジョブのログに出す。
+      # 失敗の例外に埋め込むだけだと、落ちた 1 件しか見えず、通った回の様子は残らない。
+      # フレークは「落ちた回」と「通った回」を並べないと差が見えないので、常に出す。
+      #
+      # dotnet test 越しには流せない。テストホストは子プロセスで、標準出力は
+      # vstest が捕まえて落ちたテストの分しか出さない（Console.Out を迂回しても届かない）。
+      # ロガーを detailed にすれば出るが、593 件すべてが詳細になって埋もれる。
+      # ファイルに落として後から出す方が、量も置き場も制御できる。
+      - name: Show host logs
+        if: always()
+        run: |
+          for log in TestResults/hosts/*.log; do
+            [ -f "$log" ] || continue
+            echo "::group::$log"
+            cat "$log"
+            echo "::endgroup::"
+          done
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
