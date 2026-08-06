@@ -6,7 +6,7 @@
 ダンプの作り方は .claude/skills/retro/SKILL.md にある。
 
     tools/loop-stats/loop-stats.py --prs prs.json [--labels needs-review.json]
-                                   [--reviews reviews.json] [--window 20] [--detail]
+                                   [--window 20] [--detail]
 """
 
 import argparse
@@ -72,27 +72,31 @@ def has_measurement(pr):
     return bool(re.search(r"\d+\s*(件|回|分|秒|%|ms|MB)", section))
 
 
-def summarize(prs, labeled, reviewed):
+def summarize(prs, labeled):
     merged = [pr for pr in prs if pr.get("merged_at")]
     minutes = [m for m in (merge_minutes(pr) for pr in merged) if m is not None]
     numbers = {pr["number"] for pr in prs}
     tagged = numbers & labeled
 
-    rows = [
+    # needs-review が効いているかは「レビューが付いたか」では測れない。
+    # このラベルは auto-merge を保留するもので、GitHub 上のレビューを呼ぶ仕組みは
+    # どこにも無い。実際 #1〜#71 で GitHub のレビューは 0 件だが、マージまでの
+    # 中央値は 7.6 分（付いていないものは 1.5 分）で、**人の手は止まっていた**。
+    # 測るべきは止まったかどうかで、止まった証拠はマージまでの時間の側にある。
+    held = [m for m in (merge_minutes(pr) for pr in prs if pr["number"] in tagged) if m is not None]
+    rest = [m for m in (merge_minutes(pr) for pr in prs if pr["number"] not in tagged) if m is not None]
+
+    return [
         ("PR", f"{len(prs)} 件"),
         ("マージ済み", pct(len(merged), len(prs))),
         ("マージまでの中央値", human(statistics.median(minutes)) if minutes else "-"),
         ("マージまでの最大", human(max(minutes)) if minutes else "-"),
         ("needs-review", pct(len(tagged), len(prs))),
+        ("　… その中央値", human(statistics.median(held)) if held else "-"),
+        ("　… 以外の中央値", human(statistics.median(rest)) if rest else "-"),
         ("テンプレート充足", pct(sum(map(has_template, prs)), len(prs))),
         ("実測の記載", pct(sum(map(has_measurement, prs)), len(prs))),
     ]
-
-    if reviewed is not None:
-        hit = tagged & reviewed
-        rows.append(("needs-review の的中（GitHub 上）", pct(len(hit), len(tagged))))
-
-    return rows
 
 
 def pct(part, whole):
@@ -157,7 +161,7 @@ def self_test():
         },
         {"number": 3, "created_at": "2026-01-01T00:00:00Z", "body": "", "title": "c"},
     ]
-    got = dict(summarize(sample, labeled={2}, reviewed=set()))
+    got = dict(summarize(sample, labeled={2}))
     expect = {
         "PR": "3 件",
         "マージ済み": "2 / 3 (67%)",
@@ -165,9 +169,11 @@ def self_test():
         "マージまでの中央値": "1.1 時間",
         "マージまでの最大": "2.0 時間",
         "needs-review": "1 / 3 (33%)",
+        # #2 だけが付いている（120 分）。付いていない側は #1 の 10 分だけが対象。
+        "　… その中央値": "2.0 時間",
+        "　… 以外の中央値": "10 分",
         "テンプレート充足": "1 / 3 (33%)",
         "実測の記載": "1 / 3 (33%)",
-        "needs-review の的中（GitHub 上）": "0 / 1 (0%)",
     }
     bad = {k: (v, expect[k]) for k, v in got.items() if v != expect[k]}
     if bad:
@@ -182,9 +188,6 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prs", help="PR 一覧のダンプ")
     parser.add_argument("--labels", help="needs-review が付いた PR のダンプ")
-    # チャットでの差し戻しは数えられない。ここで測れるのは GitHub に残った分だけで、
-    # 0% は「誰も読んでいない」ではなく「ラベルが GitHub 上のレビューを呼んでいない」を意味する。
-    parser.add_argument("--reviews", help="レビューが付いた PR のダンプ（GitHub 上の分だけ）")
     parser.add_argument("--window", type=int, default=20, help="直近何件を別立てで見るか")
     parser.add_argument("--detail", action="store_true", help="PR ごとの表も出す")
     parser.add_argument("--self-test", action="store_true", help="数え方を自己検査する")
@@ -201,15 +204,14 @@ def main():
         return 1
 
     labeled = {pr["number"] for pr in load(args.labels)} if args.labels else set()
-    reviewed = {pr["number"] for pr in load(args.reviews)} if args.reviews else None
 
     recent = prs[-args.window :] if len(prs) > args.window else None
     title = "ループの実測  #{}〜#{}".format(prs[0]["number"], prs[-1]["number"])
     print(
         render(
             title,
-            summarize(prs, labeled, reviewed),
-            summarize(recent, labeled, reviewed) if recent else None,
+            summarize(prs, labeled),
+            summarize(recent, labeled) if recent else None,
             args.window,
         )
     )
