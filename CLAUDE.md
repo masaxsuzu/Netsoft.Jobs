@@ -18,6 +18,8 @@ Job の登録・監視・キャンセルができる。動かし方は [README](
    原因が main 側なら PR にコメントして main を先に直す
 6. **マージ** — ルールセットが CI を必須チェックにしており、auto-merge を有効にした PR は
    CI 通過後に GitHub が squash merge する
+7. **測る** — 10 PR ごとに `/retro`。規則が効いているかを数えて、効いていないものを直す。
+   **規則は意見で変えない**（この節の記述はどれも #68 以降、数えてから書き直している）
 
 ### 何を聞き、何を聞かないか
 
@@ -94,3 +96,4 @@ Job の登録・監視・キャンセルができる。動かし方は [README](
 - [build.md](./docs/build.md) — ビルド・テスト・カバレッジの規則
 - [conventions.md](./docs/conventions.md) — コーディング規約と命名
 - [operating.md](./docs/operating.md) — 単一プロセス前提と、handler を書く人への契約
+- [loop.md](./docs/loop.md) — ループの実測。`/retro` が 10 PR ごとに置き換える
