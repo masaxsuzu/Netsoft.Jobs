@@ -13,7 +13,7 @@ namespace Netsoft.Jobs.Features.Tests.Execution;
 /// </summary>
 /// <remarks>
 /// ここで固定するのは分担の全体 ── ハンドラは境界で観測して抜けるだけ、
-/// 受理（Paused）を書くのはエンジン、再開は Queued へ戻して既存のディスパッチに乗る、
+/// 受理（Paused）を書くのはエンジン、再開は Resumed へ戻して既存のディスパッチに乗る、
 /// 続きはサブタスクの行が支える ── が実際に噛み合うこと。
 /// 個々の部品の縁は PauseResumeHandlerTests と SubTaskJobHandlerTests が持つ。
 /// </remarks>
@@ -80,7 +80,7 @@ public sealed class PauseResumeExecutionTests : IDisposable
         // 停止中は待ち行列に居ないので、エンジンは拾わない。
         Assert.False(await engine.RunOnceAsync(CancellationToken.None).WaitAsync(WaitLimit));
 
-        // 再開すると Queued へ戻り、既存のディスパッチがそのまま拾う。
+        // 再開すると Resumed へ戻り、既存のディスパッチがそのまま拾う。
         Assert.True((await _resume.HandleAsync("job-1", CancellationToken.None)).IsSuccess);
 
         Task<bool> second = engine.RunOnceAsync(CancellationToken.None);

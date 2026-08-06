@@ -139,18 +139,21 @@ public sealed class JobBoardTests : IDisposable
         await _board.ResumeAsync(id, None);
 
         Assert.Null(_board.Notice);
-        Assert.Equal("Running", _board.Jobs.Single(job => job.Id == id).Status);
+        Assert.Equal("InProgress", _board.Jobs.Single(job => job.Id == id).Status);
     }
 
     [Fact]
     public async Task 状態が合わない一時停止は現在の状態つきの知らせになる()
     {
-        string id = await RegisterViaApiAsync("まだの Job");
+        // 待機中と実行中は保留できるので、拒否されるのは中止の受理待ち（Cancelling）。
+        string id = await RegisterViaApiAsync("中止中の Job");
+        await StartAsync(id);
+        await CancelViaApiAsync(id);
         await _board.InitializeAsync(None);
 
         await _board.PauseAsync(id, None);
 
-        Assert.Equal("一時停止できませんでした。現在の状態: Queued", _board.Notice);
+        Assert.Equal("一時停止できませんでした。現在の状態: Cancelling", _board.Notice);
     }
 
     [Fact]
@@ -349,7 +352,7 @@ public sealed class JobBoardTests : IDisposable
     }
 
     private static JobListItemDto Row(int completed, int total) =>
-        new("job-1", "行", "subtasks", "3 1", "Queued", DateTimeOffset.UtcNow, null, null, null, completed, total);
+        new("job-1", "行", "subtasks", "3 1", "Registered", DateTimeOffset.UtcNow, null, null, null, completed, total);
 
     private static JobBoard BrokenBoard(Exception? failure = null) =>
         new(new JobsApiClient(new HttpClient(new ThrowingHandler(failure))

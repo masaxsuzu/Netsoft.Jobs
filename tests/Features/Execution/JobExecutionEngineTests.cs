@@ -52,7 +52,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     public async Task 待機中のJobが実行されて完了になる()
     {
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
-        await AddQueuedAsync("job-1", parameters: "10");
+        await AddRegisteredAsync("job-1", parameters: "10");
         JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         bool executed = await engine.RunOnceAsync(CancellationToken.None);
@@ -66,7 +66,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     public async Task 完了したJobには開始時刻と終了時刻が記録される()
     {
         ControllableJobHandler handler = new(HandledJobType);
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
         JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
@@ -84,17 +84,17 @@ public sealed class JobExecutionEngineTests : IDisposable
     }
 
     [Fact]
-    public async Task 実行中のJobの状態はRunningになる()
+    public async Task 実行中のJobの状態はInProgressになる()
     {
         ControllableJobHandler handler = new(HandledJobType);
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
         JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
 
         // ハンドラの中にいることが確定してから確認する。時間では待たない。
         await handler.Entered;
-        Assert.Equal(JobStatus.Running, (await FindAsync("job-1")).Status);
+        Assert.Equal(JobStatus.InProgress, (await FindAsync("job-1")).Status);
 
         handler.Release();
         await running;
@@ -106,7 +106,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     {
         ControllableJobHandler handler = new(HandledJobType);
         handler.Throw(new InvalidOperationException("集計元のファイルがありません。"));
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
         JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         bool executed = await engine.RunOnceAsync(CancellationToken.None);
@@ -122,7 +122,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     public async Task キャンセルを伝えるとハンドラのトークンが発火してCancelledになる()
     {
         ControllableJobHandler handler = new(HandledJobType);
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
         JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
@@ -146,7 +146,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     public async Task キャンセルが間に合わずハンドラが完走したらCompletedになる()
     {
         ControllableJobHandler handler = new(HandledJobType);
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
         JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
@@ -167,7 +167,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     [Fact]
     public async Task 実行中でないJobへのキャンセル要求は伝わらない()
     {
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
 
         Assert.False(_runningJobs.TryRequestCancel(JobId.From("job-1")));
     }
@@ -176,8 +176,8 @@ public sealed class JobExecutionEngineTests : IDisposable
     public async Task ハンドラが無いJobTypeはFailedになりエンジンは次のJobを実行できる()
     {
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
-        await AddQueuedAsync("job-1", jobType: "誰も知らない種類");
-        await AddQueuedAsync("job-2", createdAt: Now.AddSeconds(1));
+        await AddRegisteredAsync("job-1", jobType: "誰も知らない種類");
+        await AddRegisteredAsync("job-2", createdAt: Now.AddSeconds(1));
         JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Assert.True(await engine.RunOnceAsync(CancellationToken.None));
@@ -197,8 +197,8 @@ public sealed class JobExecutionEngineTests : IDisposable
         failing.Throw(new InvalidOperationException("失敗"));
         ControllableJobHandler succeeding = Released(new ControllableJobHandler(HandledJobType));
 
-        await AddQueuedAsync("job-1", jobType: "failing");
-        await AddQueuedAsync("job-2", createdAt: Now.AddSeconds(1));
+        await AddRegisteredAsync("job-1", jobType: "failing");
+        await AddRegisteredAsync("job-2", createdAt: Now.AddSeconds(1));
         JobExecutionEngine engine = await CreateEngineAsync(failing, succeeding);
 
         Assert.True(await engine.RunOnceAsync(CancellationToken.None));
@@ -218,14 +218,14 @@ public sealed class JobExecutionEngineTests : IDisposable
     }
 
     /// <summary>
-    /// 候補を取ってから Running を書き戻すまでの間に、他のエンジンが同じ Job を取った状況。
+    /// 候補を取ってから InProgress を書き戻すまでの間に、他のエンジンが同じ Job を取った状況。
     /// ここで実行してしまうと同じ Job が 2 つのプロセスで動く。
     /// </summary>
     [Fact]
     public async Task 取得と開始の間に他から開始されたJobは実行しない()
     {
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
         JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         _engineStore.BeforeNextUpdate = () => StealAsync("job-1");
@@ -235,15 +235,15 @@ public sealed class JobExecutionEngineTests : IDisposable
         Assert.Empty(handler.Executions);
 
         // 先に取った側が実行している。こちらは何も書いていない。
-        Assert.Equal(JobStatus.Running, (await FindAsync("job-1")).Status);
+        Assert.Equal(JobStatus.InProgress, (await FindAsync("job-1")).Status);
     }
 
     [Fact]
     public async Task 取得と開始の間に取られても次の候補は実行される()
     {
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
-        await AddQueuedAsync("job-1", parameters: "他に取られる", createdAt: Now);
-        await AddQueuedAsync("job-2", parameters: "実行される", createdAt: Now.AddSeconds(1));
+        await AddRegisteredAsync("job-1", parameters: "他に取られる", createdAt: Now);
+        await AddRegisteredAsync("job-2", parameters: "実行される", createdAt: Now.AddSeconds(1));
         JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         _engineStore.BeforeNextUpdate = () => StealAsync("job-1");
@@ -257,13 +257,13 @@ public sealed class JobExecutionEngineTests : IDisposable
 
     /// <summary>
     /// 結末を読み出してから書き戻すまでの間にキャンセル要求が入った状況。
-    /// Running を前提に書いた Completed は弾かれるので、読み直して Cancelling から書き直す。
+    /// InProgress を前提に書いた Completed は弾かれるので、読み直して Cancelling から書き直す。
     /// </summary>
     [Fact]
     public async Task 結末の記録が競合に負けたら読み直して書き直す()
     {
         ControllableJobHandler handler = new(HandledJobType);
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
         JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
@@ -293,7 +293,7 @@ public sealed class JobExecutionEngineTests : IDisposable
     public async Task 結末を書く前に他が終端を書いていたら上書きしない()
     {
         ControllableJobHandler handler = new(HandledJobType);
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
         JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
@@ -320,9 +320,9 @@ public sealed class JobExecutionEngineTests : IDisposable
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
 
         // Id の順と作成日時の順をわざとずらす。Id 順で拾っていたら気づける。
-        await AddQueuedAsync("job-3", parameters: "1 番目", createdAt: Now);
-        await AddQueuedAsync("job-1", parameters: "3 番目", createdAt: Now.AddSeconds(2));
-        await AddQueuedAsync("job-2", parameters: "2 番目", createdAt: Now.AddSeconds(1));
+        await AddRegisteredAsync("job-3", parameters: "1 番目", createdAt: Now);
+        await AddRegisteredAsync("job-1", parameters: "3 番目", createdAt: Now.AddSeconds(2));
+        await AddRegisteredAsync("job-2", parameters: "2 番目", createdAt: Now.AddSeconds(1));
         JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         for (int i = 0; i < 3; i++)
@@ -341,8 +341,8 @@ public sealed class JobExecutionEngineTests : IDisposable
         // 時間で待たずに確定できる。
         ControllableJobHandler first = Released(new ControllableJobHandler(HandledJobType));
         ControllableJobHandler second = new("second");
-        await AddQueuedAsync("job-1", createdAt: Now);
-        await AddQueuedAsync("job-2", jobType: "second", createdAt: Now.AddSeconds(1));
+        await AddRegisteredAsync("job-1", createdAt: Now);
+        await AddRegisteredAsync("job-2", jobType: "second", createdAt: Now.AddSeconds(1));
         JobExecutionEngine engine = await CreateEngineAsync(first, second);
 
         using CancellationTokenSource stop = new();
@@ -378,7 +378,7 @@ public sealed class JobExecutionEngineTests : IDisposable
         Task loop = engine.RunAsync(stop.Token);
 
         await sawEmpty.Task;
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
         _signal.Set();
 
         // ポーリングは無いので、ここまで進めるのは合図が待ちを起こしたから。
@@ -403,7 +403,7 @@ public sealed class JobExecutionEngineTests : IDisposable
 
         _engineStore.OnNextEmptyFind = async () =>
         {
-            await AddQueuedAsync("job-1");
+            await AddRegisteredAsync("job-1");
             _signal.Set();
         };
 
@@ -428,7 +428,7 @@ public sealed class JobExecutionEngineTests : IDisposable
         using CancellationTokenSource stop = new();
         Task loop = engine.RunAsync(stop.Token);
 
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
         for (int i = 0; i < 10; i++)
         {
             _signal.Set();
@@ -463,10 +463,16 @@ public sealed class JobExecutionEngineTests : IDisposable
         Assert.Empty(await _store.ListAsync(CancellationToken.None));
     }
 
+    /// <summary>
+    /// 前回の残骸は静止状態へ落ちる。要求を受けていたものは要求どおりの行き先で、
+    /// 実行中だったものだけ Failed。
+    /// </summary>
     [Theory]
-    [InlineData(JobStatus.Running)]
-    [InlineData(JobStatus.Cancelling)]
-    public async Task 起動時復旧で前回の残骸はFailedになる(JobStatus status)
+    [InlineData(JobStatus.InProgress, JobStatus.Failed)]
+    [InlineData(JobStatus.Cancelling, JobStatus.Cancelled)]
+    [InlineData(JobStatus.Pausing, JobStatus.Paused)]
+    [InlineData(JobStatus.Resuming, JobStatus.Resumed)]
+    public async Task 起動時復旧で前回の残骸は静止状態へ落ちる(JobStatus status, JobStatus expected)
     {
         await AddLeftoverAsync("job-1", status);
 
@@ -474,20 +480,30 @@ public sealed class JobExecutionEngineTests : IDisposable
         _ = await CreateEngineAsync();
 
         Job job = await FindAsync("job-1");
-        Assert.Equal(JobStatus.Failed, job.Status);
-        Assert.Contains("異常終了", job.FailureMessage);
-        Assert.Equal(Now, job.FinishedAt);
+        Assert.Equal(expected, job.Status);
+
+        // 失敗理由が入るのは Failed だけ。中止と保留は理由の要らない結末。
+        if (expected == JobStatus.Failed)
+        {
+            Assert.Contains("異常終了", job.FailureMessage);
+        }
+        else
+        {
+            Assert.Null(job.FailureMessage);
+        }
+
+        Assert.Equal(expected.IsTerminal() ? Now : null, job.FinishedAt);
     }
 
     [Fact]
     public async Task 起動時復旧で待機中のJobは変化しない()
     {
-        // Queued はハンドラを起動していないので副作用が無い。このプロセスがそのまま実行する。
-        await AddQueuedAsync("job-1");
+        // 待機中はハンドラを起動していないので副作用が無い。このプロセスがそのまま実行する。
+        await AddRegisteredAsync("job-1");
         _ = await CreateEngineAsync();
 
         Job job = await FindAsync("job-1");
-        Assert.Equal(JobStatus.Queued, job.Status);
+        Assert.Equal(JobStatus.Registered, job.Status);
         Assert.Null(job.FinishedAt);
         Assert.Null(job.FailureMessage);
     }
@@ -498,8 +514,8 @@ public sealed class JobExecutionEngineTests : IDisposable
         // 復旧が残骸だけを閉じ、待機中の Job には手を出さずに実行へ渡すこと。
         // 「復旧が実行より先」であること自体はもう型が保証している（エンジンが在る
         // ＝復旧は済んだ）ので、ここで確かめるのは残す側と閉じる側の選り分け。
-        await AddLeftoverAsync("job-1", JobStatus.Running);
-        await AddQueuedAsync("job-2", createdAt: Now.AddSeconds(1));
+        await AddLeftoverAsync("job-1", JobStatus.InProgress);
+        await AddRegisteredAsync("job-2", createdAt: Now.AddSeconds(1));
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
         JobExecutionEngine engine = await CreateEngineAsync(handler);
 
@@ -510,19 +526,19 @@ public sealed class JobExecutionEngineTests : IDisposable
     }
 
     [Fact]
-    public async Task 起動後にRunningになったJobは復旧に閉じられない()
+    public async Task 起動後にInProgressになったJobは復旧に閉じられない()
     {
         JobExecutionEngine engine = await CreateEngineAsync();
 
-        // エンジンが立った後に現れた Running は、誰かが今まさに動かしているもの。
+        // エンジンが立った後に現れた InProgress は、誰かが今まさに動かしているもの。
         // ここで復旧がもう一度走ると、動いている Job を勝手に Failed にしてしまう。
-        await AddLeftoverAsync("job-1", JobStatus.Running);
+        await AddLeftoverAsync("job-1", JobStatus.InProgress);
 
         // 何度実行しても復旧は走らない。復旧は StartAsync の中だけにあり、
         // 実行の入口から辿れる場所には無い。
         Assert.False(await engine.RunOnceAsync(CancellationToken.None));
 
-        Assert.Equal(JobStatus.Running, (await FindAsync("job-1")).Status);
+        Assert.Equal(JobStatus.InProgress, (await FindAsync("job-1")).Status);
     }
 
     private Task<JobExecutionEngine> CreateEngineAsync(params IJobHandler[] handlers) =>
@@ -543,7 +559,7 @@ public sealed class JobExecutionEngineTests : IDisposable
         return handler;
     }
 
-    private async Task<Job> AddQueuedAsync(
+    private async Task<Job> AddRegisteredAsync(
         string id,
         string jobType = HandledJobType,
         string parameters = "",
@@ -559,15 +575,30 @@ public sealed class JobExecutionEngineTests : IDisposable
     /// </summary>
     private async Task<Job> AddLeftoverAsync(string id, JobStatus status)
     {
-        Job job = await AddQueuedAsync(id);
+        Job job = await AddRegisteredAsync(id);
         job.Apply(JobTrigger.Start, Now);
 
-        if (status == JobStatus.Cancelling)
+        switch (status)
         {
-            job.Apply(JobTrigger.RequestCancel, Now);
+            case JobStatus.Cancelling:
+                job.Apply(JobTrigger.RequestCancel, Now);
+                break;
+
+            case JobStatus.Pausing:
+                job.Apply(JobTrigger.RequestPause, Now);
+                break;
+
+            case JobStatus.Resuming:
+                job.Apply(JobTrigger.RequestPause, Now);
+                job.Apply(JobTrigger.ConfirmPaused, Now);
+                job.Apply(JobTrigger.Resume, Now);
+                break;
+
+            default:
+                break;
         }
 
-        // 保存されているのは Queued の状態。そこから書き戻す。
+        // 保存されているのは Registered の状態。そこから書き戻す。
         await _store.UpdateAsync(job, CancellationToken.None);
         return job;
     }

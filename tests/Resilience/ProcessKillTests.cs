@@ -59,7 +59,7 @@ public sealed class ProcessKillTests : IAsyncLifetime
     {
         // 1 サブタスクにつき 60 秒。殺すまでの間に走り切らせない。
         JobsApi.JobDto registered = await Api.RegisterAsync("3 60");
-        await Api.WaitForAsync(registered.Id, "Running");
+        await Api.WaitForAsync(registered.Id, "InProgress");
 
         // 停止要求ではなく電源断。走っている Job は結末を書けない。
         await Host.KillAsync();
@@ -99,7 +99,7 @@ public sealed class ProcessKillTests : IAsyncLifetime
     /// 待機中のまま強制終了された Job は、次の起動でそのまま実行される。
     /// </summary>
     /// <remarks>
-    /// 復旧が閉じるのはハンドラが動いていたはずの状態だけ。Queued まで巻き込むと、
+    /// 復旧が閉じるのはハンドラが動いていたはずの状態だけ。待ち行列まで巻き込むと、
     /// まだ 1 度も走っていない仕事が「異常終了しました」で捨てられる。
     /// </remarks>
     [Fact]
@@ -107,17 +107,17 @@ public sealed class ProcessKillTests : IAsyncLifetime
     {
         // 1 つ目が長く占有している間に登録されたものは待機中のまま。
         JobsApi.JobDto running = await Api.RegisterAsync("1 60");
-        await Api.WaitForAsync(running.Id, "Running");
+        await Api.WaitForAsync(running.Id, "InProgress");
 
-        JobsApi.JobDto queued = await Api.RegisterAsync("1 1");
-        await Api.WaitForAsync(queued.Id, "Queued");
+        JobsApi.JobDto waiting = await Api.RegisterAsync("1 1");
+        await Api.WaitForAsync(waiting.Id, "Registered");
 
         await Host.KillAsync();
         await Host.RestartAsync();
 
         // 残骸は閉じられ、待機中だったものはそのまま走って完了する。
         await Api.WaitForAsync(running.Id, "Failed");
-        await Api.WaitForAsync(queued.Id, "Completed");
+        await Api.WaitForAsync(waiting.Id, "Completed");
     }
 
     private Task<string> WaitForSubTaskStatusAsync(string id, int index, string status) =>

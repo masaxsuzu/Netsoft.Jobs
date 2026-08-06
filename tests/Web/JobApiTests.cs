@@ -15,7 +15,7 @@ namespace Netsoft.Jobs.Web.Tests;
 /// <remarks>
 /// テストごとにホストと DB を作り直す（xUnit はテストごとにクラスを生成する）。
 /// 共有すると、登録した Job が他のテストの一覧に混ざって前提が崩れる。
-/// 実行エンジンはファクトリが止めているので、登録した Job は Queued のまま動かない。
+/// 実行エンジンはファクトリが止めているので、登録した Job は Registered のまま動かない。
 /// </remarks>
 public sealed class JobApiTests : IDisposable
 {
@@ -50,7 +50,7 @@ public sealed class JobApiTests : IDisposable
         Assert.Equal("夜間バッチ", job.Name);
         Assert.Equal("subtasks", job.JobType);
         Assert.Equal("3 1", job.Parameters);
-        Assert.Equal("Queued", job.Status);
+        Assert.Equal("Registered", job.Status);
     }
 
     [Fact]
@@ -150,7 +150,7 @@ public sealed class JobApiTests : IDisposable
     {
         JobDto registered = await RegisterAsync("既に終わる Job");
 
-        // エンジンは止まっているので、Queued へのキャンセルで即座に終端（Cancelled）へ落とせる。
+        // エンジンは止まっているので、待機中へのキャンセルで即座に終端（Cancelled）へ落とせる。
         HttpResponseMessage first = await _client.PostAsync($"/api/jobs/{registered.Id}/cancel", content: null);
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
 

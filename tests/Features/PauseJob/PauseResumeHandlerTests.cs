@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 using Netsoft.Jobs.Domain;
 using Netsoft.Jobs.Features.PauseJob;
+using Netsoft.Jobs.Features.Tests.CancelJob;
 using Netsoft.Jobs.Features.Tests.Fakes;
 
 namespace Netsoft.Jobs.Features.Tests.PauseJob;
@@ -35,15 +36,17 @@ public sealed class PauseResumeHandlerTests : IDisposable
     /// <summary>
     /// 一時停止要求の状態ごとの結末。要求済み・停止済みへの再要求は
     /// ボタンを 2 回押しただけなので成功として写る（キャンセルと同じ判断）。
+    /// 待機中（Registered / Resumed）は受理を待つ相手がいないので、2 段を踏まず直接 Paused。
     /// </summary>
     [Theory]
-    [InlineData(nameof(JobStatus.Running), true, nameof(JobStatus.Pausing))]
+    [InlineData(nameof(JobStatus.InProgress), true, nameof(JobStatus.Pausing))]
     [InlineData(nameof(JobStatus.Pausing), true, nameof(JobStatus.Pausing))]
     [InlineData(nameof(JobStatus.Paused), true, nameof(JobStatus.Paused))]
-    [InlineData(nameof(JobStatus.Queued), false, nameof(JobStatus.Queued))]
+    [InlineData(nameof(JobStatus.Registered), true, nameof(JobStatus.Paused))]
+    [InlineData(nameof(JobStatus.Resumed), true, nameof(JobStatus.Paused))]
     [InlineData(nameof(JobStatus.Cancelling), false, nameof(JobStatus.Cancelling))]
     [InlineData(nameof(JobStatus.Completed), false, nameof(JobStatus.Completed))]
-    public async Task 一時停止要求は実行中だけを受理し要求済みには冪等に成功する(
+    public async Task 一時停止要求は実行中と待機中を受理し要求済みには冪等に成功する(
         string current, bool success, string expected)
     {
         await AddAsync(JobAt("job-1", current));
@@ -56,14 +59,15 @@ public sealed class PauseResumeHandlerTests : IDisposable
     }
 
     /// <summary>
-    /// 再開要求の状態ごとの結末。停止中は Queued へ、受理前は Running へ揺り戻す。
+    /// 再開要求の状態ごとの結末。停止中は Resumed へ、受理前は InProgress へ揺り戻す。
     /// 既に動いている（これから動く）ものへの要求は冪等に成功する。
     /// </summary>
     [Theory]
-    [InlineData(nameof(JobStatus.Paused), true, nameof(JobStatus.Queued))]
-    [InlineData(nameof(JobStatus.Pausing), true, nameof(JobStatus.Running))]
-    [InlineData(nameof(JobStatus.Queued), true, nameof(JobStatus.Queued))]
-    [InlineData(nameof(JobStatus.Running), true, nameof(JobStatus.Running))]
+    [InlineData(nameof(JobStatus.Paused), true, nameof(JobStatus.Resumed))]
+    [InlineData(nameof(JobStatus.Pausing), true, nameof(JobStatus.InProgress))]
+    [InlineData(nameof(JobStatus.Registered), true, nameof(JobStatus.Registered))]
+    [InlineData(nameof(JobStatus.Resumed), true, nameof(JobStatus.Resumed))]
+    [InlineData(nameof(JobStatus.InProgress), true, nameof(JobStatus.InProgress))]
     [InlineData(nameof(JobStatus.Cancelling), false, nameof(JobStatus.Cancelling))]
     [InlineData(nameof(JobStatus.Cancelled), false, nameof(JobStatus.Cancelled))]
     public async Task 再開要求は停止側の状態だけを動かし動いているものには冪等に成功する(
@@ -78,6 +82,75 @@ public sealed class PauseResumeHandlerTests : IDisposable
         Assert.Equal(expected, (await SavedAsync("job-1")).Status.ToString());
     }
 
+    /// <summary>
+    /// ハンドラが居ない相手への要求も、一度は確定待ちとして保存される。
+    /// </summary>
+    /// <remarks>
+    /// 確定まで 1 回の書き込みで済ませると、押した事実が変更通知に流れない。画面から見ると
+    /// 「押したのに何も起きていない」と区別が付かず、利用者は同じボタンをもう一度押す。
+    /// 結末だけを見るテストではこの 1 回を消しても気づけないので、書き込みの列で固定する。
+    /// </remarks>
+    [Theory]
+    [InlineData(nameof(JobStatus.Registered), nameof(JobStatus.Pausing), nameof(JobStatus.Paused))]
+    [InlineData(nameof(JobStatus.Resumed), nameof(JobStatus.Pausing), nameof(JobStatus.Paused))]
+    public async Task 待機中の保留は確定待ちを一度保存してから落とす(
+        string current, string settling, string settled)
+    {
+        CancelJobCallLog log = new();
+        PauseJobHandler pause = new(
+            new CallLoggingJobStore(_store, log),
+            new FixedTimeProvider(Requested),
+            NullLogger<PauseJobHandler>.Instance);
+
+        await AddAsync(JobAt("job-1", current));
+
+        JobControlResult result = await pause.HandleAsync("job-1", CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(settled, result.Job?.Status);
+        Assert.Equal([$"update:job-1:{settling}", $"update:job-1:{settled}"], log.Entries);
+    }
+
+    /// <summary>再開も同じ形。<see cref="待機中の保留は確定待ちを一度保存してから落とす"/> を参照。</summary>
+    [Fact]
+    public async Task 停止中の再開は確定待ちを一度保存してから落とす()
+    {
+        CancelJobCallLog log = new();
+        ResumeJobHandler resume = new(
+            new CallLoggingJobStore(_store, log),
+            new FixedTimeProvider(Requested),
+            NullLogger<ResumeJobHandler>.Instance);
+
+        await AddAsync(JobAt("job-1", nameof(JobStatus.Paused)));
+
+        JobControlResult result = await resume.HandleAsync("job-1", CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(nameof(JobStatus.Resumed), result.Job?.Status);
+        Assert.Equal(["update:job-1:Resuming", "update:job-1:Resumed"], log.Entries);
+    }
+
+    /// <summary>
+    /// 実行中の Job への保留は確定させない。受理するのは境界まで来たハンドラ。
+    /// </summary>
+    [Fact]
+    public async Task 実行中の保留は要求だけ書いて確定させない()
+    {
+        CancelJobCallLog log = new();
+        PauseJobHandler pause = new(
+            new CallLoggingJobStore(_store, log),
+            new FixedTimeProvider(Requested),
+            NullLogger<PauseJobHandler>.Instance);
+
+        await AddAsync(JobAt("job-1", nameof(JobStatus.InProgress)));
+
+        JobControlResult result = await pause.HandleAsync("job-1", CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(nameof(JobStatus.Pausing), result.Job?.Status);
+        Assert.Equal(["update:job-1:Pausing"], log.Entries);
+    }
+
     [Fact]
     public async Task 停止中からの再開でも開始時刻は残る()
     {
@@ -87,9 +160,9 @@ public sealed class PauseResumeHandlerTests : IDisposable
 
         Assert.True(result.IsSuccess);
 
-        // Queued へ戻るが「走ったことがある」事実は残る。開始時刻は最初のまま。
+        // 待ち行列へ戻るが「走ったことがある」事実は残る。開始時刻は最初のまま。
         Job saved = await SavedAsync("job-1");
-        Assert.Equal(JobStatus.Queued, saved.Status);
+        Assert.Equal(JobStatus.Resumed, saved.Status);
         Assert.Equal(Created.AddMinutes(1), saved.StartedAt);
     }
 
@@ -99,7 +172,7 @@ public sealed class PauseResumeHandlerTests : IDisposable
     [InlineData(null)]
     public async Task 対象が無ければどちらの要求も対象なしとして返る(string? id)
     {
-        await AddAsync(JobAt("job-1", nameof(JobStatus.Running)));
+        await AddAsync(JobAt("job-1", nameof(JobStatus.InProgress)));
 
         JobControlResult paused = await _pause.HandleAsync(id!, CancellationToken.None);
         JobControlResult resumed = await _resume.HandleAsync(id!, CancellationToken.None);
@@ -125,10 +198,10 @@ public sealed class PauseResumeHandlerTests : IDisposable
         FixedTimeProvider time = new(Requested);
         PauseJobHandler pause = new(interfering, time, NullLogger<PauseJobHandler>.Instance);
 
-        await AddAsync(JobAt("job-1", nameof(JobStatus.Running)));
+        await AddAsync(JobAt("job-1", nameof(JobStatus.InProgress)));
 
         // 書き戻す直前に、状態を動かさない書き込み（編集）を差し込む。版が進むので
-        // 1 回目の書き戻しは通らない。状態は Running のままなので、読み直せば受理できる。
+        // 1 回目の書き戻しは通らない。状態は InProgress のままなので、読み直せば受理できる。
         interfering.BeforeNextUpdate = async () =>
         {
             Job edited = await SavedAsync("job-1");
@@ -168,8 +241,10 @@ public sealed class PauseResumeHandlerTests : IDisposable
         JobControlResult result = await resume.HandleAsync("job-1", CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(nameof(JobStatus.Queued), (await SavedAsync("job-1")).Status.ToString());
-        Assert.Equal(2, interfering.UpdateAttempts);
+        Assert.Equal(nameof(JobStatus.Resumed), (await SavedAsync("job-1")).Status.ToString());
+
+        // 要求の書き戻しで 2 回（1 回目は編集に負ける）、確定の書き戻しで 1 回。
+        Assert.Equal(3, interfering.UpdateAttempts);
     }
 
     private Task AddAsync(Job job) => _store.AddAsync(job, CancellationToken.None);
@@ -189,7 +264,7 @@ public sealed class PauseResumeHandlerTests : IDisposable
             "2 1",
             target,
             Created,
-            target == JobStatus.Queued ? null : Created.AddMinutes(1),
+            target == JobStatus.Registered ? null : Created.AddMinutes(1),
             target.IsTerminal() ? Created.AddMinutes(2) : null,
             null);
     }

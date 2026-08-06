@@ -115,27 +115,66 @@ public sealed class SqliteJobStoreTests
     }
 
     [Fact]
-    public async Task FindOldestQueuedAsyncはQueuedのうち最も古い1件を返す()
+    public async Task FindOldestWaitingAsyncは待機中のうち最も古い1件を返す()
     {
         using TemporaryDatabase database = new();
         SqliteJobStore store = await database.OpenStoreAsync();
 
-        await store.AddAsync(JobAt("queued-新", BaseTime.AddHours(2)), None);
-        await store.AddAsync(JobAt("queued-古", BaseTime.AddHours(1)), None);
+        await store.AddAsync(JobAt("registered-新", BaseTime.AddHours(2)), None);
+        await store.AddAsync(JobAt("registered-古", BaseTime.AddHours(1)), None);
 
-        // Queued 以外を無視することを確かめる。これが一番古いが、拾ってはいけない。
+        // 待機中以外を無視することを確かめる。これが一番古いが、拾ってはいけない。
         Job running = JobAt("running-最古", BaseTime);
         running.Apply(JobTrigger.Start, BaseTime);
         await store.AddAsync(running, None);
 
-        Job? oldest = await store.FindOldestQueuedAsync(None);
+        Job? oldest = await store.FindOldestWaitingAsync(None);
 
         Assert.NotNull(oldest);
-        Assert.Equal("queued-古", oldest.Id.Value);
+        Assert.Equal("registered-古", oldest.Id.Value);
+    }
+
+    /// <summary>
+    /// IsWaiting が true の状態はひとつ残らず拾われる。
+    /// </summary>
+    /// <remarks>
+    /// SQL は待ち行列の状態を書き写しているので、状態を足して IsWaiting だけ直すと
+    /// その Job は誰にも拾われず黙って滞留する（エラーはどこにも出ない）。
+    /// 個別のケースを並べず総当たりにしてあるのは、状態が増えたときに
+    /// テストを書き足さなくてもここが落ちるようにするため。
+    /// </remarks>
+    [Fact]
+    public async Task FindOldestWaitingAsyncはIsWaitingが真の状態をすべて拾う()
+    {
+        JobStatus[] waiting = [.. Enum.GetValues<JobStatus>().Where(status => status.IsWaiting())];
+        Assert.NotEmpty(waiting);
+
+        foreach (JobStatus status in waiting)
+        {
+            using TemporaryDatabase database = new();
+            SqliteJobStore store = await database.OpenStoreAsync();
+
+            await store.AddAsync(
+                Job.Rehydrate(
+                    JobId.From($"{status}"),
+                    $"{status} の Job",
+                    "Demo",
+                    string.Empty,
+                    status,
+                    BaseTime,
+                    startedAt: null,
+                    finishedAt: null,
+                    failureMessage: null),
+                None);
+
+            Job? found = await store.FindOldestWaitingAsync(None);
+
+            Assert.Equal($"{status}", found?.Id.Value);
+        }
     }
 
     [Fact]
-    public async Task FindOldestQueuedAsyncはQueuedが無ければnullを返す()
+    public async Task FindOldestWaitingAsyncは待機中が無ければnullを返す()
     {
         using TemporaryDatabase database = new();
         SqliteJobStore store = await database.OpenStoreAsync();
@@ -144,7 +183,7 @@ public sealed class SqliteJobStoreTests
         running.Apply(JobTrigger.Start, BaseTime);
         await store.AddAsync(running, None);
 
-        Assert.Null(await store.FindOldestQueuedAsync(None));
+        Assert.Null(await store.FindOldestWaitingAsync(None));
     }
 
     [Fact]
@@ -153,8 +192,8 @@ public sealed class SqliteJobStoreTests
         using TemporaryDatabase database = new();
         SqliteJobStore store = await database.OpenStoreAsync();
 
-        await store.AddAsync(JobAt("queued-1", BaseTime), None);
-        await store.AddAsync(JobAt("queued-2", BaseTime.AddMinutes(1)), None);
+        await store.AddAsync(JobAt("registered-1", BaseTime), None);
+        await store.AddAsync(JobAt("registered-2", BaseTime.AddMinutes(1)), None);
 
         Job running = JobAt("running", BaseTime.AddMinutes(2));
         running.Apply(JobTrigger.Start, BaseTime.AddMinutes(3));
@@ -165,11 +204,11 @@ public sealed class SqliteJobStoreTests
         cancelling.Apply(JobTrigger.RequestCancel, BaseTime.AddMinutes(6));
         await store.AddAsync(cancelling, None);
 
-        IReadOnlyList<Job> queued = await store.ListByStatusAsync(JobStatus.Queued, None);
-        IReadOnlyList<Job> runnings = await store.ListByStatusAsync(JobStatus.Running, None);
+        IReadOnlyList<Job> registered = await store.ListByStatusAsync(JobStatus.Registered, None);
+        IReadOnlyList<Job> runnings = await store.ListByStatusAsync(JobStatus.InProgress, None);
         IReadOnlyList<Job> completed = await store.ListByStatusAsync(JobStatus.Completed, None);
 
-        Assert.Equal(["queued-2", "queued-1"], queued.Select(job => job.Id.Value));
+        Assert.Equal(["registered-2", "registered-1"], registered.Select(job => job.Id.Value));
         Assert.Equal(["running"], runnings.Select(job => job.Id.Value));
         Assert.Empty(completed);
     }
@@ -186,7 +225,7 @@ public sealed class SqliteJobStoreTests
         job.Apply(JobTrigger.Start, BaseTime.AddMinutes(1));
         job.Apply(JobTrigger.Complete, BaseTime.AddMinutes(2));
 
-        // 読み出したときの状態は Queued。DB もまだ Queued なので書き戻せる。
+        // 読み出したときの状態は Registered。DB もまだ Registered なので書き戻せる。
         Assert.True(await store.UpdateAsync(job, None));
 
         Job? loaded = await store.FindAsync(job.Id, None);
@@ -217,7 +256,7 @@ public sealed class SqliteJobStoreTests
         other.Apply(JobTrigger.Complete, BaseTime.AddMinutes(2));
         Assert.True(await store.UpdateAsync(other, None));
 
-        // こちらは Running のつもりで Cancelling を書こうとしている。
+        // こちらは InProgress のつもりで Cancelling を書こうとしている。
         job.Apply(JobTrigger.RequestCancel, BaseTime.AddMinutes(3));
 
         Assert.False(await store.UpdateAsync(job, None));
@@ -248,19 +287,19 @@ public sealed class SqliteJobStoreTests
         // エンジンが読んだ手元の Job（parameters は "3 1"）。まだ書き戻していない。
         Job claimed = await LoadAsync(store, "job-1");
 
-        // その隙に利用者が編集する。Queued のままなので状態は 1 ミリも動かない。
+        // その隙に利用者が編集する。Registered のままなので状態は 1 ミリも動かない。
         Job editing = await LoadAsync(store, "job-1");
         editing.ChangeParameters("9 9");
         Assert.True(await store.UpdateAsync(editing, None));
 
-        // エンジンが Start を書き戻そうとする。状態の期待（Queued）は今も満たされているが、
+        // エンジンが Start を書き戻そうとする。状態の期待（Registered）は今も満たされているが、
         // 読んでからの書き込みがあるので通してはいけない。
         claimed.Apply(JobTrigger.Start, BaseTime.AddMinutes(1));
         Assert.False(await store.UpdateAsync(claimed, None));
 
         Job reloaded = await LoadAsync(store, "job-1");
         Assert.Equal("9 9", reloaded.Parameters);
-        Assert.Equal(JobStatus.Queued, reloaded.Status);
+        Assert.Equal(JobStatus.Registered, reloaded.Status);
     }
 
     /// <summary>
@@ -407,7 +446,7 @@ public sealed class SqliteJobStoreTests
         command.CommandText = "SELECT Status FROM Jobs WHERE Id = $id;";
         command.Parameters.AddWithValue("$id", "job-1");
 
-        Assert.Equal("Running", await command.ExecuteScalarAsync(None));
+        Assert.Equal("InProgress", await command.ExecuteScalarAsync(None));
     }
 
     private static async Task<Job> LoadAsync(SqliteJobStore store, string id) =>

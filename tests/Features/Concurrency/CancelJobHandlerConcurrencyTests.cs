@@ -47,7 +47,7 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
         Job job = await FindAsync("job-1");
         Assert.Null(JobInvariants.FindViolation(job));
 
-        // Queued → Running → Cancelling と進む間に高々 3 回。上限を置いて青天井でないことを示す。
+        // Registered → InProgress → Cancelling と進む間に高々 3 回。上限を置いて青天井でないことを示す。
         Assert.InRange(hostile.UpdateAttempts, 1, 5);
     }
 
@@ -89,7 +89,7 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
     }
 
     /// <summary>
-    /// エンジンが Running を書き戻した直後、まだハンドラを起動していない時点で
+    /// エンジンが InProgress を書き戻した直後、まだハンドラを起動していない時点で
     /// キャンセルが来ても、トークンが発火して Job が Cancelled で終わること。
     /// </summary>
     /// <remarks>
@@ -106,7 +106,7 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
     /// </para>
     /// <para>
     /// 判定は結末（Cancelled で終わったか）ではなく<b>不変条件そのもの</b>で行う。
-    /// 「Running が見えた瞬間に受け口が在る」を割り込みの中で直接見る。結末だけを見ると、
+    /// 「InProgress が見えた瞬間に受け口が在る」を割り込みの中で直接見る。結末だけを見ると、
     /// 順序を戻したときの症状が「ハンドラが永久に待つ」＝<see cref="HangGuard"/> での
     /// タイムアウトになり、原因を何も言わないメッセージが 30 秒かけて出る。
     /// 原因の側で落とせば即座に、しかも名指しで落ちる。
@@ -148,7 +148,7 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
             NullLogger<JobExecutionEngine>.Instance,
             CancellationToken.None);
 
-        // Running が保存された瞬間＝画面がキャンセルを受け付けられるようになった瞬間に要求する。
+        // InProgress が保存された瞬間＝画面がキャンセルを受け付けられるようになった瞬間に要求する。
         interfering.AfterNextUpdate = async () =>
         {
             CancelJobResult result = await cancel.HandleAsync("job-1", CancellationToken.None);
@@ -157,7 +157,7 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
             // 見ない（見ないのが正しい）ので、受け口が無くても状態は Cancelling まで進む。
             Assert.True(result.IsSuccess);
 
-            // 守りたい不変条件はこちら。状態が Running として公開されたこの瞬間に、
+            // 守りたい不変条件はこちら。状態が InProgress として公開されたこの瞬間に、
             // 受け口が既に在ること。既にキャンセル済みの CTS でも true が返るので、
             // 上の要求と二重になっても壊れない。
             Assert.True(

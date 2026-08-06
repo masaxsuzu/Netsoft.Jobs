@@ -46,7 +46,7 @@ public sealed class JobExecutionTracingTests : IDisposable
     {
         using RecordedActivities activities = new(_instrumentation.ActivitySource);
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
 
         Assert.True(await (await CreateEngineAsync(handler)).RunOnceAsync(CancellationToken.None));
 
@@ -64,7 +64,7 @@ public sealed class JobExecutionTracingTests : IDisposable
         using RecordedActivities activities = new(_instrumentation.ActivitySource);
         ControllableJobHandler handler = new(HandledJobType);
         handler.Throw(new InvalidOperationException("集計元のファイルがありません。"));
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
 
         Assert.True(await (await CreateEngineAsync(handler)).RunOnceAsync(CancellationToken.None));
 
@@ -80,7 +80,7 @@ public sealed class JobExecutionTracingTests : IDisposable
         // キャンセルは利用者が意図した結末で、失敗ではない。Error にすると誤検知になる。
         using RecordedActivities activities = new(_instrumentation.ActivitySource);
         ControllableJobHandler handler = new(HandledJobType);
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
         JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
@@ -108,7 +108,7 @@ public sealed class JobExecutionTracingTests : IDisposable
         await _traceContexts.SaveAsync(JobId.From("job-1"), traceParent, CancellationToken.None);
 
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
 
         Assert.True(await (await CreateEngineAsync(handler)).RunOnceAsync(CancellationToken.None));
 
@@ -126,7 +126,7 @@ public sealed class JobExecutionTracingTests : IDisposable
     {
         using RecordedActivities activities = new(_instrumentation.ActivitySource);
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
 
         Assert.True(await (await CreateEngineAsync(handler)).RunOnceAsync(CancellationToken.None));
 
@@ -141,7 +141,7 @@ public sealed class JobExecutionTracingTests : IDisposable
         await _traceContexts.SaveAsync(JobId.From("job-1"), "これは traceparent ではない", CancellationToken.None);
 
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
 
         Assert.True(await (await CreateEngineAsync(handler)).RunOnceAsync(CancellationToken.None));
 
@@ -158,7 +158,7 @@ public sealed class JobExecutionTracingTests : IDisposable
         _traceContexts.FindFailure = new IOException("観測の置き場が壊れています。");
 
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
 
         Assert.True(await (await CreateEngineAsync(handler)).RunOnceAsync(CancellationToken.None));
 
@@ -172,7 +172,7 @@ public sealed class JobExecutionTracingTests : IDisposable
     {
         // Listener を作らない。スパンが立たない構成では、Link のための I/O も一切足さない。
         ControllableJobHandler handler = Released(new ControllableJobHandler(HandledJobType));
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
 
         Assert.True(await (await CreateEngineAsync(handler)).RunOnceAsync(CancellationToken.None));
 
@@ -198,7 +198,7 @@ public sealed class JobExecutionTracingTests : IDisposable
         return handler;
     }
 
-    private async Task<Job> AddQueuedAsync(string id)
+    private async Task<Job> AddRegisteredAsync(string id)
     {
         Job job = Job.Create(JobId.From(id), $"Job {id}", HandledJobType, string.Empty, Now);
         await _store.AddAsync(job, CancellationToken.None);

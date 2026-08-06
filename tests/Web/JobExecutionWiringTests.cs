@@ -12,7 +12,7 @@ namespace Netsoft.Jobs.Web.Tests;
 /// このテストだけはエンジンを動かした実ホストで「API の登録 → 完了」を通す。
 /// アイドルポーリングを廃止した今、実行中のホストで登録が実行に繋がる経路は合図だけなので、
 /// 完了まで到達すること自体が配線の生存証明になる。配線が切れてもエラーはどこにも出ず
-/// Job が Queued のまま止まるだけなので、通しで確かめる以外に検出の口が無い。
+/// Job が Registered のまま止まるだけなので、通しで確かめる以外に検出の口が無い。
 /// </remarks>
 public sealed class JobExecutionWiringTests : IDisposable
 {
@@ -41,7 +41,7 @@ public sealed class JobExecutionWiringTests : IDisposable
 
         // 完了はエンジンのスレッドが書くので、状態を確認しながら終端まで待つ。
         // 条件を確認しながらの再試行であり、時間経過だけで状態を仮定する待機ではない。
-        // 結線が切れていれば Queued のまま動かず、時間切れでここが落ちる。
+        // 結線が切れていれば Registered のまま動かず、時間切れでここが落ちる。
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
         JobDto job;
         while (true)

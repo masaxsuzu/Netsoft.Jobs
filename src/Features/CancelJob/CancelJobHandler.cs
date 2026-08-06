@@ -44,8 +44,7 @@ public sealed class CancelJobHandler
     /// <remarks>
     /// 読み出しと保存の間に実行エンジンが結末を書き込むことがある。条件付き更新で書き戻せなければ
     /// 先頭から（読み直しから）やり直す。やり直しが決着するのは、どの状態でもキャンセルの
-    /// 評価が答えを持つから ── 非終端なら受理される（Queued / Paused は即終端へ、
-    /// Running / Pausing は Cancelling へ）か既に効いていて
+    /// 評価が答えを持つから ── 非終端なら受理される（行き先は必ず Cancelling）か既に効いていて
     /// （<see cref="JobTransitionRejection.AlreadyInEffect"/>）、終端なら
     /// <see cref="JobTransitionRejection.JobAlreadyFinished"/> として拒否されて抜ける。
     /// 読み直した先がどこであれ、次の評価で必ず止まるか書ける。
@@ -110,18 +109,50 @@ public sealed class CancelJobHandler
             // 保存が済んでから伝える。戻り値は見ない。false は「このプロセスで実行中ではない」
             // （待機中だった、既に終わった、別プロセス）というだけで失敗ではないので、
             // これを理由に状態遷移を巻き戻さない。待機中の Job は必ず false になるが、
-            // その場合は状態機械が既に Cancelled まで進めていて、止める相手がいない。
+            // その場合は下の確定がそのまま終端まで進めるので、止める相手がいなくても閉じる。
             _runningJobs.TryRequestCancel(job.Id);
 
             // Job 行に Cancelling の時刻列は無いので、要求が受理された時刻はこのログだけが持つ。
-            // Cancelled へ直行した（待機中だった）か、Cancelling でハンドラの受理待ちかは
-            // 遷移後の状態で読み取れる。
             _logger.LogInformation(
                 "Job {JobId} のキャンセル要求を受理しました。状態は {Status} になりました。",
                 jobId.Value,
                 job.Status);
 
-            return CancelJobResult.Accepted(JobDto.From(job));
+            Job settled = transition.Previous.IsHandlerActive()
+                ? job
+                : await SettleAsync(job, cancellationToken);
+
+            return CancelJobResult.Accepted(JobDto.From(settled));
+        }
+    }
+
+    /// <summary>
+    /// 要求を確定させる。ハンドラが居ない相手にだけ呼ぶ。
+    /// </summary>
+    /// <remarks>
+    /// 判断は <see cref="PauseJob.PauseJobHandler"/> の同名メソッドと同じで、理由もそちらに書いてある。
+    /// 呼ぶ相手が違う（ここは Cancelling → Cancelled）だけなので、共通化せずに写してある。
+    /// </remarks>
+    private async Task<Job> SettleAsync(Job requested, CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            Job? job = await _store.FindAsync(requested.Id, cancellationToken);
+            if (job is null)
+            {
+                return requested;
+            }
+
+            if (job.Status.SettlementTrigger() is not { } confirm
+                || !job.Apply(confirm, _timeProvider.GetUtcNow()).IsAllowed)
+            {
+                return job;
+            }
+
+            if (await _store.UpdateAsync(job, cancellationToken))
+            {
+                return job;
+            }
         }
     }
 }

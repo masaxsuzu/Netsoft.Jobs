@@ -38,7 +38,7 @@ public sealed class HomePageE2ETests
 
         // ここでリロードしないことが検証の核心。状態の変化はサーバ側の実行エンジンが
         // 起こし、変更通知 → 回路の再描画（push 更新）だけで画面に届くはずである。
-        await Expect(row).ToContainTextAsync("Completed");
+        await Expect(row).ToContainTextAsync("完了");
 
         await page.CloseAsync();
     }
@@ -61,9 +61,9 @@ public sealed class HomePageE2ETests
         ILocator cancelButton = row.GetByRole(AriaRole.Button, new() { Name = "キャンセル" });
         await cancelButton.ClickAsync();
 
-        // Running → Cancelling → Cancelled と進む。途中状態は速すぎて見えないことが
-        // あるため、終端の Cancelled だけを待つ。
-        await Expect(row).ToContainTextAsync("Cancelled");
+        // Running → 中止要求中 → 中止済み と進む。途中状態は速すぎて見えないことが
+        // あるため、終端だけを待つ。
+        await Expect(row).ToContainTextAsync("中止済み");
         await Expect(cancelButton).ToBeDisabledAsync();
 
         await page.CloseAsync();

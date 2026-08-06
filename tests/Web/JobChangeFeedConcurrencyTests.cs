@@ -146,8 +146,8 @@ public sealed class JobChangeFeedConcurrencyTests
     /// ここで例外が出ると「書けたのに書けなかったように見える」状態になる。
     /// </para>
     /// <para>
-    /// 実行エンジンがこれを踏むと、Running を書いた直後に例外が返り、
-    /// ハンドラを起動しないまま Running の Job が残る。1 件の購読者の不始末が
+    /// 実行エンジンがこれを踏むと、InProgress を書いた直後に例外が返り、
+    /// ハンドラを起動しないまま InProgress の Job が残る。1 件の購読者の不始末が
     /// Job の取りこぼしになる、という繋がりをここに記録しておく。
     /// </para>
     /// </remarks>
@@ -215,7 +215,7 @@ public sealed class JobChangeFeedConcurrencyTests
         public Task<IReadOnlyList<Job>> ListAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<Job>>([]);
 
-        public Task<Job?> FindOldestQueuedAsync(CancellationToken cancellationToken) =>
+        public Task<Job?> FindOldestWaitingAsync(CancellationToken cancellationToken) =>
             Task.FromResult<Job?>(null);
 
         public Task<IReadOnlyList<Job>> ListByStatusAsync(JobStatus status, CancellationToken cancellationToken) =>

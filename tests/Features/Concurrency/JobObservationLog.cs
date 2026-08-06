@@ -173,17 +173,17 @@ public sealed class JobObservationLog
     }
 
     /// <summary>
-    /// 条件付き更新の成功が、Queued から始まる 1 本の道として並べられるかを見る。
+    /// 条件付き更新の成功が、Registered から始まる 1 本の道として並べられるかを見る。
     /// </summary>
     /// <remarks>
     /// <para>
     /// かつては「状態 → 次の状態」の辞書（関数）で確かめていた。同じ状態から 2 回
     /// 書き戻せたら喪失、という判定だったが、一時停止と再開の閉路ができてからは
-    /// 同じ状態を正当に 2 度通れる（再開後の Queued → Running など）。関数の形の検査は
+    /// 同じ状態を正当に 2 度通れる（再開後の Resumed → InProgress など）。関数の形の検査は
     /// 閉路で嘘をつき、鎖を辿るループは無限に回る（実際にテストホストが固まった）。
     /// </para>
     /// <para>
-    /// いまの検査は、観測された辺の全部を 1 回ずつ使って Queued から一筆書きできるか
+    /// いまの検査は、観測された辺の全部を 1 回ずつ使って Registered から一筆書きできるか
     ///（多重グラフの道の存在）。更新の喪失（X → A と X → B が両方成功したのに
     /// X へは 1 度しか入っていない）はどちらかの辺が使えず道が完成しないので捕まる。
     /// 記録の並びには依存しない。並びはコミット順と入れ替わりうるため。
@@ -193,9 +193,9 @@ public sealed class JobObservationLog
         string id,
         List<(JobStatus From, JobStatus To)> edges)
     {
-        if (edges.Count > 0 && !CanWalkAll(JobStatus.Queued, edges))
+        if (edges.Count > 0 && !CanWalkAll(JobStatus.Registered, edges))
         {
-            yield return $"Job {id}: 成功した更新 {edges.Count} 件を Queued から"
+            yield return $"Job {id}: 成功した更新 {edges.Count} 件を Registered から"
                 + $" 1 本の道として並べられません（{FormatEdges(edges)}）。"
                 + "更新の喪失か、状態機械を迂回した書き込みがあります。";
         }

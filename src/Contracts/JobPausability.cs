@@ -18,7 +18,7 @@ public static class JobPausability
     /// この状態の Job に再開を要求できるか。
     /// </summary>
     /// <remarks>
-    /// 遷移が許可される場合（Paused / Pausing）だけ true。Queued / Running への再開は
+    /// 遷移が許可される場合（Paused / Pausing）だけ true。待ち行列 / InProgress への再開は
     /// 冪等に成功するが、押しても何も変わらないボタンを出す理由が無い。
     /// </remarks>
     public static bool CanRequestResume(string status) =>

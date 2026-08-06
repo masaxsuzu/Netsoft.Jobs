@@ -13,11 +13,11 @@ namespace Netsoft.Jobs.Features.Tests.Concurrency;
 /// </para>
 /// <para>
 /// 判定に使うのは「1 手で行けるか」ではなく「何手かで行けるか」（到達可能性）である。
-/// 観測は連続していないので、<c>Queued</c> の次に <c>Completed</c> を見ることは普通に起きる。
+/// 観測は連続していないので、<c>Registered</c> の次に <c>Completed</c> を見ることは普通に起きる。
 /// これを非合法にすると、正しい実装でも観測の間隔次第で落ちる（＝ flaky な）検査になる。
 /// 逆に <c>Completed → Cancelling</c> のような終端からの後退は何手かけても到達できないので、
-/// 到達可能性で見ても確実に捕まる。<c>Running → Queued</c> は<b>もう後退ではない</b> ──
-/// 一時停止からの再開（<c>Running → Pausing → Paused → Queued</c>）で到達するので、
+/// 到達可能性で見ても確実に捕まる。<c>InProgress → Resumed</c> は<b>もう後退ではない</b> ──
+/// 一時停止からの再開（<c>InProgress → Pausing → Paused → Resumed</c>）で到達するので、
 /// この検査は通す。閉路が入った時点で「一方通行だから捕まる」という言い方は成り立たなくなった。
 /// </para>
 /// <para>
@@ -49,10 +49,10 @@ public static class JobStateSequenceOracle
     {
         ArgumentNullException.ThrowIfNull(observed);
 
-        // 最初の観測は Queued から到達できていなければならない。Job は必ず Queued で作られる。
-        if (observed.Count > 0 && !IsReachable(JobStatus.Queued, observed[0]))
+        // 最初の観測は Registered から到達できていなければならない。Job は必ず Registered で作られる。
+        if (observed.Count > 0 && !IsReachable(JobStatus.Registered, observed[0]))
         {
-            return $"最初の観測 {observed[0]} は Queued から到達できません。";
+            return $"最初の観測 {observed[0]} は Registered から到達できません。";
         }
 
         for (int i = 1; i < observed.Count; i++)

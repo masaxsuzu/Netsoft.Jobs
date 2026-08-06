@@ -13,7 +13,7 @@ namespace Netsoft.Jobs.Ui.Tests;
 /// クライアントが持つルートと本文の形はサーバ側（Features）の写しなので、
 /// ずれるとここが 404 や逆立ちした結果で割れる。それがこのテストの主目的
 /// （JobApiRoutes の注記が言う検出網）。API 自体の仕様は tests/Web の JobApiTests の領分。
-/// 実行エンジンは API 側ファクトリが止めているので、登録した Job は Queued のまま動かない。
+/// 実行エンジンは API 側ファクトリが止めているので、登録した Job は Registered のまま動かない。
 /// </remarks>
 public sealed class JobsApiClientTests : IDisposable
 {
@@ -35,7 +35,7 @@ public sealed class JobsApiClientTests : IDisposable
 
         Assert.True(response.IsSuccess);
         Assert.NotNull(response.Job);
-        Assert.Equal("Queued", response.Job.Status);
+        Assert.Equal("Registered", response.Job.Status);
 
         IReadOnlyList<JobListItemDto> jobs = await _client.ListJobsAsync(CancellationToken.None);
         Assert.Contains(jobs, job => job.Id == response.Job.Id && job.Name == "夜間バッチ");
@@ -104,7 +104,7 @@ public sealed class JobsApiClientTests : IDisposable
             "既に終わる Job", "subtasks", "1 1", CancellationToken.None);
         Assert.NotNull(registered.Job);
 
-        // エンジンは止まっているので、Queued へのキャンセルで即座に終端（Cancelled）へ落とせる。
+        // エンジンは止まっているので、待機中へのキャンセルで即座に終端（Cancelled）へ落とせる。
         CancelJobResponse first = await _client.CancelJobAsync(registered.Job.Id, CancellationToken.None);
         Assert.True(first.IsSuccess);
 
@@ -133,20 +133,37 @@ public sealed class JobsApiClientTests : IDisposable
 
         JobControlResponse resumed = await _client.ResumeJobAsync(registered.Job.Id, CancellationToken.None);
         Assert.True(resumed.IsSuccess);
-        Assert.Equal("Running", resumed.Job?.Status);
+        Assert.Equal("InProgress", resumed.Job?.Status);
     }
 
+    /// <summary>
+    /// 待機中の Job は保留でき、再開すると待ち行列へ戻る。終端の Job への保留は拒否として写る。
+    /// </summary>
+    /// <remarks>
+    /// 一時停止は待機中からも効くので、拒否を作るには終端まで進める必要がある。
+    /// エンジンは止まっているので、キャンセルで即座に Cancelled へ落とせる。
+    /// </remarks>
     [Fact]
-    public async Task 待機中のJobへの一時停止は拒否として写る()
+    public async Task 待機中のJobは保留でき終端への保留は拒否として写る()
     {
         RegisterJobResponse registered = await _client.RegisterJobAsync(
             "まだの Job", "subtasks", "3 1", CancellationToken.None);
         Assert.NotNull(registered.Job);
 
-        JobControlResponse result = await _client.PauseJobAsync(registered.Job.Id, CancellationToken.None);
+        JobControlResponse paused = await _client.PauseJobAsync(registered.Job.Id, CancellationToken.None);
+        Assert.True(paused.IsSuccess);
+        Assert.Equal("Paused", paused.Job?.Status);
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal("Queued", result.Job?.Status);
+        JobControlResponse resumed = await _client.ResumeJobAsync(registered.Job.Id, CancellationToken.None);
+        Assert.True(resumed.IsSuccess);
+        Assert.Equal("Resumed", resumed.Job?.Status);
+
+        Assert.True((await _client.CancelJobAsync(registered.Job.Id, CancellationToken.None)).IsSuccess);
+
+        JobControlResponse rejected = await _client.PauseJobAsync(registered.Job.Id, CancellationToken.None);
+
+        Assert.False(rejected.IsSuccess);
+        Assert.Equal("Cancelled", rejected.Job?.Status);
     }
 
     [Fact]

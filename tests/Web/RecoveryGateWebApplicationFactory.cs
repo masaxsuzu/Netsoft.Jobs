@@ -119,8 +119,8 @@ internal sealed class RecoveryGateWebApplicationFactory : WebApplicationFactory<
         public Task<Job?> FindAsync(JobId id, CancellationToken cancellationToken) =>
             _inner.FindAsync(id, cancellationToken);
 
-        public Task<Job?> FindOldestQueuedAsync(CancellationToken cancellationToken) =>
-            _inner.FindOldestQueuedAsync(cancellationToken);
+        public Task<Job?> FindOldestWaitingAsync(CancellationToken cancellationToken) =>
+            _inner.FindOldestWaitingAsync(cancellationToken);
 
         public Task<IReadOnlyList<Job>> ListAsync(CancellationToken cancellationToken) =>
             _inner.ListAsync(cancellationToken);

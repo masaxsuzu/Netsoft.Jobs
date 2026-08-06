@@ -68,7 +68,7 @@ public sealed class SqliteJobStore : IJobStore
             """,
             cancellationToken).ConfigureAwait(false);
 
-        // FindOldestQueuedAsync と ListByStatusAsync はどちらも
+        // FindOldestWaitingAsync と ListByStatusAsync はどちらも
         // 「状態で絞って作成日時で並べる」形なので、この 1 本で両方が賄える。
         await ExecuteAsync(
             connection,
@@ -116,7 +116,7 @@ public sealed class SqliteJobStore : IJobStore
     /// 更新できなかったとき、版の食い違いと Id の取り違えを区別する。
     /// 前者は同時実行のもとで普通に起きることなので false を返して読み直させる。
     /// 後者は呼び出し側の誤り（または他所から消された）で、黙って no-op にすると
-    /// Running → Completed のような遷移が失われたことに誰も気づけないので例外にする。
+    /// InProgress → Completed のような遷移が失われたことに誰も気づけないので例外にする。
     /// 一緒くたに false を返すと、取り違えのバグが「競合に負けただけ」に化けて隠れる。
     /// </para>
     /// <para>
@@ -191,19 +191,24 @@ public sealed class SqliteJobStore : IJobStore
     }
 
     /// <inheritdoc />
-    public async Task<Job?> FindOldestQueuedAsync(CancellationToken cancellationToken)
+    public async Task<Job?> FindOldestWaitingAsync(CancellationToken cancellationToken)
     {
         await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
         await using SqliteCommand command = connection.CreateCommand();
 
+        // 待ち行列の状態はここに書き写してある。JobStatusExtensions.IsWaiting から
+        // 動的に組み立てる形も試したが、2 状態のために static を 3 つ置くのは割に合わなかった。
+        // 書き写しが IsWaiting とずれると Job が黙って滞留する（エラーはどこにも出ない）ので、
+        // ずれを SqliteJobStoreTests の「IsWaiting が true の状態をすべて拾う」が捕まえる。
         command.CommandText =
             $"""
             SELECT {Columns} FROM Jobs
-            WHERE Status = $status
+            WHERE Status IN ($registered, $resumed)
             ORDER BY CreatedAt ASC, Id ASC
             LIMIT 1;
             """;
-        command.Parameters.AddWithValue("$status", JobStatusText.ToText(JobStatus.Queued));
+        command.Parameters.AddWithValue("$registered", JobStatusText.ToText(JobStatus.Registered));
+        command.Parameters.AddWithValue("$resumed", JobStatusText.ToText(JobStatus.Resumed));
 
         return await ReadOneAsync(command, cancellationToken).ConfigureAwait(false);
     }

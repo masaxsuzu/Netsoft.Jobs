@@ -34,4 +34,7 @@ public enum JobTrigger
 
     /// <summary>利用者が再開を要求した。</summary>
     Resume,
+
+    /// <summary>再開の要求が確定し、待ち行列へ戻った。</summary>
+    ConfirmResumed,
 }

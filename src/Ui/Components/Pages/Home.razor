@@ -99,7 +99,7 @@
                     <tr @key="job.Id">
                         <td>@job.Name</td>
                         <td>@job.JobType</td>
-                        <td>@job.Status</td>
+                        <td>@JobStatusLabel.From(job.Status)</td>
                         @* サブタスクの進捗（完了 / 総数）。行がまだ無い（登録直後）は「-」。
                            個々の状態まで並べるほどの幅は無いので、数字だけを出す。 *@
                         <td class="progress">@JobBoard.ProgressFor(job)</td>

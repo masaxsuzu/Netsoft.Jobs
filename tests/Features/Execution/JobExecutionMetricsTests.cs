@@ -48,7 +48,7 @@ public sealed class JobExecutionMetricsTests : IDisposable
 
         // 登録は 45 秒前、実行は 180 秒かかったことにする。どの時間差がどの計器に
         // 入るのかを、値そのもので区別できるようにする。
-        await AddQueuedAsync("job-1", createdAt: Now.AddSeconds(-45));
+        await AddRegisteredAsync("job-1", createdAt: Now.AddSeconds(-45));
         JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
@@ -82,7 +82,7 @@ public sealed class JobExecutionMetricsTests : IDisposable
 
         ControllableJobHandler handler = new(HandledJobType);
         handler.Throw(new InvalidOperationException("集計元のファイルがありません。"));
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
 
         Assert.True(await (await CreateEngineAsync(handler)).RunOnceAsync(CancellationToken.None));
 
@@ -97,7 +97,7 @@ public sealed class JobExecutionMetricsTests : IDisposable
         using MetricCollector<long> finished = CreateCollector<long>("netsoft.jobs.finished");
 
         ControllableJobHandler handler = new(HandledJobType);
-        await AddQueuedAsync("job-1");
+        await AddRegisteredAsync("job-1");
         JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
@@ -118,11 +118,11 @@ public sealed class JobExecutionMetricsTests : IDisposable
     [Fact]
     public async Task 最古の待機中Jobの滞留時間が観測できる()
     {
-        using MetricCollector<double> age = CreateCollector<double>("netsoft.jobs.oldest_queued_age");
+        using MetricCollector<double> age = CreateCollector<double>("netsoft.jobs.oldest_waiting_age");
 
         // 最古の 1 件だけが観測される。新しい方の 30 秒が出たら選び方が間違っている。
-        await AddQueuedAsync("job-1", createdAt: Now.AddSeconds(-120));
-        await AddQueuedAsync("job-2", createdAt: Now.AddSeconds(-30));
+        await AddRegisteredAsync("job-1", createdAt: Now.AddSeconds(-120));
+        await AddRegisteredAsync("job-2", createdAt: Now.AddSeconds(-30));
 
         age.RecordObservableInstruments();
 
@@ -132,7 +132,7 @@ public sealed class JobExecutionMetricsTests : IDisposable
     [Fact]
     public void 待機中のJobが無ければ滞留時間は0になる()
     {
-        using MetricCollector<double> age = CreateCollector<double>("netsoft.jobs.oldest_queued_age");
+        using MetricCollector<double> age = CreateCollector<double>("netsoft.jobs.oldest_waiting_age");
 
         age.RecordObservableInstruments();
 
@@ -154,7 +154,7 @@ public sealed class JobExecutionMetricsTests : IDisposable
             NullLogger<JobExecutionEngine>.Instance,
             CancellationToken.None);
 
-    private async Task<Job> AddQueuedAsync(string id, DateTimeOffset? createdAt = null)
+    private async Task<Job> AddRegisteredAsync(string id, DateTimeOffset? createdAt = null)
     {
         Job job = Job.Create(JobId.From(id), $"Job {id}", HandledJobType, string.Empty, createdAt ?? Now);
         await _store.AddAsync(job, CancellationToken.None);

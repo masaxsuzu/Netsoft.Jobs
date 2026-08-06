@@ -83,7 +83,7 @@ public sealed class SubTaskJobHandler : IJobHandler
         List<SubTask> subTasks = [.. await _subTasks.ListByJobAsync(jobId, CancellationToken.None)];
         if (subTasks.Count == 0)
         {
-            // 行を作る前のキャンセル観測点。キャンセルの受け口は Running を書き戻すより
+            // 行を作る前のキャンセル観測点。キャンセルの受け口は InProgress を書き戻すより
             // 前に用意されている（JobExecutionEngine の注記）ので、要求が claim とほぼ同時に
             // 届くとハンドラは「もう要らない」と分かった状態で始まる。ここで先に抜ければ、
             // サブタスクの行を 1 つも作らずに済む ── 走る前に消された Job に、

@@ -4,8 +4,16 @@ namespace Netsoft.Jobs.Domain;
 /// Job の状態遷移の唯一の定義。純関数のみで、状態も時間も持たない。
 /// </summary>
 /// <remarks>
+/// <para>
 /// ここに書かれていない組み合わせはすべて拒否する。
 /// 遷移の可否を各層で判定し始めると仕様が分裂するので、判断は必ずここに集める。
+/// </para>
+/// <para>
+/// 表は形を持っている。状態を「静止（ed）」「確定待ち（ing）」「実行中（InProgress）」に分け、
+/// 要求は必ず ing を経由し、ing は対応する ed へ落ちる。形そのものは
+/// tests/Domain の <c>JobTransitionShapeTests</c> が総当たりで固定しているので、
+/// ここに規則を破る行を足すとそちらが落ちる。<b>例外を増やすなら向こうにも名指しで書くこと。</b>
+/// </para>
 /// </remarks>
 public static class JobStateMachine
 {
@@ -23,52 +31,70 @@ public static class JobStateMachine
 
         return (current, trigger) switch
         {
-            (JobStatus.Queued, JobTrigger.Start) => JobTransitionResult.Allowed(current, JobStatus.Running),
+            // ── 実行の開始。待ち行列の 2 状態からだけで、契機を引くのはエンジン。
+            // API から届く契機がここに混ざってはいけない（利用者は実行の順番を決めない）。
+            (JobStatus.Registered or JobStatus.Resumed, JobTrigger.Start) =>
+                JobTransitionResult.Allowed(current, JobStatus.InProgress),
 
-            // ハンドラをまだ起動していないので、受理を待つ相手がいない。即座に終端へ落とす。
-            (JobStatus.Queued, JobTrigger.RequestCancel) => JobTransitionResult.Allowed(current, JobStatus.Cancelled),
+            // ── 要求（API）。行き先は必ず ing で、ed へ直行させない。
+            //
+            // handler が居ない相手（Registered / Resumed / Paused / Resuming）への要求も
+            // ここを通る。直行にすると「押した」ことが状態に残らず、確定が一瞬で済む相手か
+            // どうかで画面の見え方が変わってしまう。確定は要求を受けたコマンドが続けて書く
+            // （Features の PauseJobHandler / CancelJobHandler / ResumeJobHandler）。
+            (JobStatus.Registered or JobStatus.Resumed or JobStatus.Paused
+                or JobStatus.InProgress or JobStatus.Pausing or JobStatus.Resuming,
+                JobTrigger.RequestCancel) =>
+                JobTransitionResult.Allowed(current, JobStatus.Cancelling),
 
-            (JobStatus.Running, JobTrigger.Complete) => JobTransitionResult.Allowed(current, JobStatus.Completed),
-            (JobStatus.Running, JobTrigger.Fail) => JobTransitionResult.Allowed(current, JobStatus.Failed),
-            (JobStatus.Running, JobTrigger.RequestCancel) => JobTransitionResult.Allowed(current, JobStatus.Cancelling),
+            (JobStatus.Registered or JobStatus.Resumed or JobStatus.InProgress or JobStatus.Resuming,
+                JobTrigger.RequestPause) =>
+                JobTransitionResult.Allowed(current, JobStatus.Pausing),
 
-            (JobStatus.Cancelling, JobTrigger.ConfirmCancelled) => JobTransitionResult.Allowed(current, JobStatus.Cancelled),
+            (JobStatus.Paused, JobTrigger.Resume) => JobTransitionResult.Allowed(current, JobStatus.Resuming),
 
-            // キャンセルが効く前にハンドラが完走したケース。
-            // 記録するのは「要求されたこと」ではなく「実際に起きたこと」なので Completed にする。
-            // ここを Cancelled にすると、成果物が出来ているのに中止したという嘘の記録が残る。
-            (JobStatus.Cancelling, JobTrigger.Complete) => JobTransitionResult.Allowed(current, JobStatus.Completed),
-            (JobStatus.Cancelling, JobTrigger.Fail) => JobTransitionResult.Allowed(current, JobStatus.Failed),
-
-            // 前回プロセスの異常終了。ハンドラが動いていたはずの状態は、
-            // 結果が分からない以上 Failed として閉じるしかない。
-            // Queued はハンドラを起動していないため対象外で、次のプロセスがそのまま実行する。
-            (JobStatus.Running, JobTrigger.RecoverAfterCrash) => JobTransitionResult.Allowed(current, JobStatus.Failed),
-            (JobStatus.Cancelling, JobTrigger.RecoverAfterCrash) => JobTransitionResult.Allowed(current, JobStatus.Failed),
-            (JobStatus.Pausing, JobTrigger.RecoverAfterCrash) => JobTransitionResult.Allowed(current, JobStatus.Failed),
-
-            // 一時停止。効き目はサブタスクの境界なので、要求と受理の 2 段になる（キャンセルと同型）。
-            (JobStatus.Running, JobTrigger.RequestPause) => JobTransitionResult.Allowed(current, JobStatus.Pausing),
+            // ── 確定。ing から対応する ed へ落とす。
+            (JobStatus.Cancelling, JobTrigger.ConfirmCancelled) =>
+                JobTransitionResult.Allowed(current, JobStatus.Cancelled),
             (JobStatus.Pausing, JobTrigger.ConfirmPaused) => JobTransitionResult.Allowed(current, JobStatus.Paused),
+            (JobStatus.Resuming, JobTrigger.ConfirmResumed) => JobTransitionResult.Allowed(current, JobStatus.Resumed),
 
-            // 受理される前に最後のサブタスクが終わった（落ちた）ケース。キャンセルと同じく
-            // 「要求されたこと」ではなく「実際に起きたこと」を記録する。
-            (JobStatus.Pausing, JobTrigger.Complete) => JobTransitionResult.Allowed(current, JobStatus.Completed),
-            (JobStatus.Pausing, JobTrigger.Fail) => JobTransitionResult.Allowed(current, JobStatus.Failed),
+            // ── 実行の結末。InProgress の ed が 2 つあることが、この状態だけ特別な理由。
+            //
+            // Cancelling / Pausing からも受ける。要求が効く前に handler が終わったケースで、
+            // 記録するのは「要求されたこと」ではなく「実際に起きたこと」。
+            // ここを Cancelled / Paused にすると、成果物が出来ているのに止めたという嘘が残る。
+            (JobStatus.InProgress or JobStatus.Cancelling or JobStatus.Pausing, JobTrigger.Complete) =>
+                JobTransitionResult.Allowed(current, JobStatus.Completed),
+            (JobStatus.InProgress or JobStatus.Cancelling or JobStatus.Pausing, JobTrigger.Fail) =>
+                JobTransitionResult.Allowed(current, JobStatus.Failed),
 
-            // 停止要求中でも中止はできる。キャンセルの方が強い意図（捨てる）なので上書きを許す。
-            (JobStatus.Pausing, JobTrigger.RequestCancel) => JobTransitionResult.Allowed(current, JobStatus.Cancelling),
+            // ── 前回プロセスの異常終了。
+            //
+            // ing は対応する ed へ落とす（確定の担い手がプロセスと一緒に消えただけなので、
+            // 要求どおりの行き先で閉じる）。InProgress だけ Failed ── 結果が分からない以上、
+            // 完了とも中断とも言えない。
+            //
+            // Pausing を Failed にしていたころの理由は「結果が分からない」だったが、
+            // それは要求を無視して勝手に終端へ落とす側の判断だった。利用者は止めろと言っており、
+            // Paused なら再開できる（進捗は handler が永続化した記録が持つ。docs/operating.md）。
+            // 待ち行列はハンドラを起動していないため対象外で、次のプロセスがそのまま実行する。
+            (JobStatus.InProgress, JobTrigger.RecoverAfterCrash) =>
+                JobTransitionResult.Allowed(current, JobStatus.Failed),
+            (JobStatus.Cancelling, JobTrigger.RecoverAfterCrash) =>
+                JobTransitionResult.Allowed(current, JobStatus.Cancelled),
+            (JobStatus.Pausing, JobTrigger.RecoverAfterCrash) =>
+                JobTransitionResult.Allowed(current, JobStatus.Paused),
+            (JobStatus.Resuming, JobTrigger.RecoverAfterCrash) =>
+                JobTransitionResult.Allowed(current, JobStatus.Resumed),
 
-            // 受理前の取り消し。ハンドラは走り続けているので、Running に戻すだけで済む。
-            // ハンドラは境界で Pausing を見たときだけ抜けるから、この揺り戻しに気づく必要も無い。
-            (JobStatus.Pausing, JobTrigger.Resume) => JobTransitionResult.Allowed(current, JobStatus.Running),
-
-            // 再開は Queued へ戻す。専用の再実行経路は作らず、既存のディスパッチに乗せる。
-            // 進捗はサブタスクの行が持っているので、ハンドラは続きから走れる。
-            (JobStatus.Paused, JobTrigger.Resume) => JobTransitionResult.Allowed(current, JobStatus.Queued),
-
-            // 停止中は誰も走っていない。Queued への要求と同じく、受理を待つ相手がいないので即終端。
-            (JobStatus.Paused, JobTrigger.RequestCancel) => JobTransitionResult.Allowed(current, JobStatus.Cancelled),
+            // ── 唯一の例外。受理前の取り消しで、handler はまだ走っている。
+            //
+            // 規則どおり Resuming へ流すと、確定で待ち行列（Resumed）へ戻り、
+            // 走っている handler を残したままエンジンが二重に claim する。
+            // ing → ing のまま残すのはそのため。handler は境界で Pausing を見たときだけ
+            // 抜けるので、この揺り戻しに気づく必要も無い。
+            (JobStatus.Pausing, JobTrigger.Resume) => JobTransitionResult.Allowed(current, JobStatus.InProgress),
 
             _ => JobTransitionResult.Rejected(current, Classify(current, trigger)),
         };
@@ -80,16 +106,18 @@ public static class JobStateMachine
     private static JobTransitionRejection Classify(JobStatus current, JobTrigger trigger) => (current, trigger) switch
     {
         // ハンドラは既に起動済み。起動要求としての意図は満たされている。
-        (JobStatus.Running or JobStatus.Cancelling or JobStatus.Pausing, JobTrigger.Start) => JobTransitionRejection.AlreadyInEffect,
+        (JobStatus.InProgress or JobStatus.Cancelling or JobStatus.Pausing, JobTrigger.Start) =>
+            JobTransitionRejection.AlreadyInEffect,
 
-        // キャンセルは既に要求済みで、ハンドラの受理を待っている最中。
+        // キャンセルは既に要求済みで、確定を待っている最中。
         (JobStatus.Cancelling, JobTrigger.RequestCancel) => JobTransitionRejection.AlreadyInEffect,
 
         // 一時停止は既に要求済み（または受理済み）。
         (JobStatus.Pausing or JobStatus.Paused, JobTrigger.RequestPause) => JobTransitionRejection.AlreadyInEffect,
 
         // 動いている（これから動く）ものへの再開要求。意図は満たされている。
-        (JobStatus.Queued or JobStatus.Running, JobTrigger.Resume) => JobTransitionRejection.AlreadyInEffect,
+        (JobStatus.Registered or JobStatus.Resumed or JobStatus.InProgress or JobStatus.Resuming, JobTrigger.Resume) =>
+            JobTransitionRejection.AlreadyInEffect,
 
         _ => JobTransitionRejection.InvalidForCurrentStatus,
     };
