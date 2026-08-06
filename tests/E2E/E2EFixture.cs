@@ -63,6 +63,32 @@ public sealed class E2EFixture : IAsyncLifetime
     /// （run 31098403904）。手元では 10 回連続で再現せず、この切り分けが無いために
     /// 原因を特定できなかった。次に落ちたときは判断できるようにしてある。
     /// </remarks>
+    /// <summary>
+    /// 2 つのホストの出力の末尾を返す。**失敗したときの切り分けにだけ使う。**
+    /// </summary>
+    /// <remarks>
+    /// 行頭の <c>[api]</c> / <c>[ui]</c> で発生源が分かる。構造化ログは JobId を持つので
+    /// （src/Features の各 handler）、落ちた Job の一生をこの中から追える。
+    /// API の状態が「何になったか」しか答えないのに対し、こちらは「なぜそうなったか」を持つ。
+    ///
+    /// 全部ではなく末尾だけ返す。起動時のログが数百行あり、全部載せると
+    /// **肝心の失敗直前が流れて読めなくなる**。
+    ///
+    /// 末尾は**ホストごとに**取る。混ぜて 1 本の末尾を取ると、UI の HttpClient が
+    /// 1 回の描画ごとに 6 行吐くせいで、**JobId を持つ api 側が丸ごと押し出される**
+    /// （実際にそうなった）。切り分けに要るのは押し出される方である。
+    /// </remarks>
+    public string ReadRecentAppOutput(int linesPerHost = 40)
+    {
+        string[] all = ReadOutput().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        return string.Join(
+            Environment.NewLine,
+            new[] { "api", "ui" }.SelectMany(label =>
+                all.Where(line => line.StartsWith($"[{label}]", StringComparison.Ordinal))
+                    .TakeLast(linesPerHost)));
+    }
+
     public async Task<string> DescribeJobsAsync()
     {
         try

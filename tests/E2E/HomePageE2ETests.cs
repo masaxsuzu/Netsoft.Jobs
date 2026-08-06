@@ -34,9 +34,12 @@ public sealed class HomePageE2ETests
         }
         catch (Exception exception)
         {
+            // API は「何になったか」、ログは「なぜそうなったか」を持つ。片方だけでは
+            // 止まった場所が分からないので、2 つ揃えて出す。
             throw new InvalidOperationException(
-                $"画面が「{text}」に到達しなかった。API から見た状態:{Environment.NewLine}"
-                + await _fixture.DescribeJobsAsync(),
+                $"画面が「{text}」に到達しなかった。{Environment.NewLine}"
+                + $"API から見た状態:{Environment.NewLine}{await _fixture.DescribeJobsAsync()}{Environment.NewLine}"
+                + $"サービスのログ（末尾）:{Environment.NewLine}{_fixture.ReadRecentAppOutput()}",
                 exception);
         }
     }
