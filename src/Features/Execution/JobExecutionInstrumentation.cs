@@ -157,7 +157,7 @@ public sealed class JobExecutionInstrumentation : IDisposable
     }
 
     /// <summary>
-    /// Running が確定した（開始の書き戻しに成功した）Job の待ち時間を記録する。
+    /// InProgress が確定した（開始の書き戻しに成功した）Job の待ち時間を記録する。
     /// </summary>
     public void RecordStarted(Job job)
     {

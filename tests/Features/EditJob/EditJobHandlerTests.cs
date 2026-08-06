@@ -33,7 +33,7 @@ public sealed class EditJobHandlerTests : IDisposable
 
     [Theory]
     [InlineData(nameof(JobStatus.Registered))]
-    [InlineData(nameof(JobStatus.Running))]
+    [InlineData(nameof(JobStatus.InProgress))]
     [InlineData(nameof(JobStatus.Pausing))]
     [InlineData(nameof(JobStatus.Paused))]
     public async Task 編集できる状態ならparametersだけが書き換わる(string status)
@@ -76,7 +76,7 @@ public sealed class EditJobHandlerTests : IDisposable
     [InlineData("0 3")]
     public async Task 読めない指定は項目付きの入力エラーになり保存されない(string parameters)
     {
-        await AddJobAsync(nameof(JobStatus.Running), "2 1");
+        await AddJobAsync(nameof(JobStatus.InProgress), "2 1");
 
         EditJobResult result = await _handler.HandleAsync("job-1", parameters, CancellationToken.None);
 
@@ -88,7 +88,7 @@ public sealed class EditJobHandlerTests : IDisposable
     [Fact]
     public async Task 着手済みより小さいNは入力エラーになる()
     {
-        await AddJobAsync(nameof(JobStatus.Running), "3 1");
+        await AddJobAsync(nameof(JobStatus.InProgress), "3 1");
 
         // 2 個が着手済み（完了 1 + 実行中 1）、1 個が未着手。
         SubTask first = SubTask.Create(JobId.From("job-1"), 0);
@@ -115,7 +115,7 @@ public sealed class EditJobHandlerTests : IDisposable
     [InlineData(null)]
     public async Task 対象が無ければ対象なしとして返る(string? id)
     {
-        await AddJobAsync(nameof(JobStatus.Running), "2 1");
+        await AddJobAsync(nameof(JobStatus.InProgress), "2 1");
 
         EditJobResult result = await _handler.HandleAsync(id!, "5 3", CancellationToken.None);
 
@@ -134,7 +134,7 @@ public sealed class EditJobHandlerTests : IDisposable
     [Fact]
     public async Task 読み出しと保存の間に書かれたら読み直してやり直す()
     {
-        await AddJobAsync(nameof(JobStatus.Running), "2 1");
+        await AddJobAsync(nameof(JobStatus.InProgress), "2 1");
 
         InterferingJobStore interfering = new(_jobs);
         EditJobHandler handler = new(interfering, _subTasks, NullLogger<EditJobHandler>.Instance);

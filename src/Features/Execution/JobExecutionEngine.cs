@@ -17,7 +17,7 @@ namespace Netsoft.Jobs.Features.Execution;
 /// </para>
 /// <para>
 /// 二重実行が起きないことと、状態が壊れないことは <see cref="IJobStore.UpdateAsync"/> の
-/// 条件付き更新が保証する。待ち行列の候補を取ってから Running を書き戻すまでに他が先に取っていれば
+/// 条件付き更新が保証する。待ち行列の候補を取ってから InProgress を書き戻すまでに他が先に取っていれば
 /// 書き戻しに失敗するので、エンジンが複数動いても（別プロセスでも）同じ Job を 2 回は実行しない。
 /// 正しさをエンジンの数の前提に置いていない
 /// （起動時復旧だけは別の前提を置いている。<see cref="StartAsync"/> の注記を参照）。
@@ -83,10 +83,10 @@ public sealed class JobExecutionEngine
     /// <b>復旧を経ないとインスタンスが手に入らない形にしてある。</b>
     /// 以前は「済んだか」の bool を持ち、実行の入口で毎回それを見ていた。その作りだと
     /// 「まだ」と「走っている最中」を区別できず、復旧が走っている最中に実行が入ると
-    /// 二重に復旧が走る。片方が Job を Running にした直後にもう片方がそれを読み、
+    /// 二重に復旧が走る。片方が Job を InProgress にした直後にもう片方がそれを読み、
     /// 「前回の残骸」とみなして Failed で閉じてしまう。
-    /// 条件付き更新はこれを防げない。期待した状態（Running）は合っていて、
-    /// 間違っているのは「Running ＝ 残骸」という見立ての方だから。
+    /// 条件付き更新はこれを防げない。期待した状態（InProgress）は合っていて、
+    /// 間違っているのは「InProgress ＝ 残骸」という見立ての方だから。
     /// </para>
     /// <para>
     /// ここでは復旧中にインスタンスがまだ存在しないので、その重なりは起こしようがない。
@@ -130,7 +130,7 @@ public sealed class JobExecutionEngine
     /// 1 件の失敗が次の Job の実行を妨げてはいけないため。
     /// </para>
     /// <para>
-    /// 候補の取得と Running の書き戻しの間に他が同じ Job を取ることはありうる。
+    /// 候補の取得と InProgress の書き戻しの間に他が同じ Job を取ることはありうる。
     /// 取れた側だけが実行するので、二重に実行されることはない。
     /// </para>
     /// </remarks>
@@ -146,7 +146,7 @@ public sealed class JobExecutionEngine
         //    次の FindOldestWaitingAsync はもう同じ Job を返さない。待ち行列へ戻る道は
         //    一時停止からの再開（Paused + Resume）だけで、そこへ行くにはどこかのエンジンが
         //    実行し、利用者が停止と再開を要求する必要がある。戻ってきたなら、それは
-        //    新しい仕事が届いたのと同じことで空転ではない。同一プロセスでは Running を
+        //    新しい仕事が届いたのと同じことで空転ではない。同一プロセスでは InProgress を
         //    作るのは自分だけなので、自分が負けた候補が自分の周回中に待ち行列へ戻ることも無い。
         //
         // 2. 状態は待ち行列のまま、内容だけが書き換わった（利用者の編集）。この場合は
@@ -177,14 +177,14 @@ public sealed class JobExecutionEngine
                 return false;
             }
 
-            // キャンセルの受け口は Running を書き戻すより前に用意する。順序が逆だと、
-            // 「DB は Running（＝画面はキャンセルを受け付ける）なのに、まだ登録されていない」
+            // キャンセルの受け口は InProgress を書き戻すより前に用意する。順序が逆だと、
+            // 「DB は InProgress（＝画面はキャンセルを受け付ける）なのに、まだ登録されていない」
             // 窓ができる。その窓に要求が届くと Cancelling は書けてしまうのに
             // TryRequestCancel が false を返し、トークンが永久に発火しない。
             // 状態は壊れないが、キャンセルが黙って効かない Job ができる。
             //
-            // この順序なら窓は構造的に開かない。要求が来られるのは Running が見えてからで、
-            // Running が見えるのは書き戻しの後、登録はその前に済んでいる。
+            // この順序なら窓は構造的に開かない。要求が来られるのは InProgress が見えてからで、
+            // InProgress が見えるのは書き戻しの後、登録はその前に済んでいる。
             // 間に何を挟んでも（観測の記録など）壊れないのが、隣接を約束で守るより強い。
             //
             // このトークンはループの停止トークンとは繋がない。上の RunAsync の注記のとおり、
@@ -201,7 +201,7 @@ public sealed class JobExecutionEngine
                     continue;
                 }
 
-                // Running の確定＝待ち行列を抜けた点。待ち時間はここで確定する（初回だけ）。
+                // InProgress の確定＝待ち行列を抜けた点。待ち時間はここで確定する（初回だけ）。
                 if (firstStart)
                 {
                     _instrumentation.RecordStarted(job);
@@ -263,7 +263,7 @@ public sealed class JobExecutionEngine
             // であって、待ちに入る前に確認し直すことはしない。「null を見た直後に登録された」
             // 場合、その合図はこの WaitAsync より先に発火しているが、トークンが箱に残るので
             // この待ちは即座に返る。確認と待機の間に取りこぼしの窓は無い。
-            // エンジン自身の書き込み（Running / 終端）も合図を発火させるため余分に起きることが
+            // エンジン自身の書き込み（InProgress / 終端）も合図を発火させるため余分に起きることが
             // あるが、空スキャン 1 回（実測 27 µs）で待ちに戻るだけで無害。
             try
             {
@@ -279,9 +279,9 @@ public sealed class JobExecutionEngine
     /// <summary>
     /// ハンドラを呼び、その結末を状態遷移として記録する。
     /// </summary>
-    /// <param name="job">Running を書き戻せた Job。</param>
+    /// <param name="job">InProgress を書き戻せた Job。</param>
     /// <param name="cancellation">
-    /// キャンセル要求の受け口。呼び出し側が Running を書き戻す<b>前</b>に作って
+    /// キャンセル要求の受け口。呼び出し側が InProgress を書き戻す<b>前</b>に作って
     /// <see cref="RunningJobRegistry"/> へ登録済みのもの（理由は <see cref="RunOnceAsync"/> に）。
     /// 登録の解除も呼び出し側が持つので、結末を書き終えるまで受け口は生きている。
     /// </param>
@@ -301,7 +301,7 @@ public sealed class JobExecutionEngine
         _logger.LogInformation("Job {JobId} ({JobType}) の実行を開始します。", job.Id.Value, job.JobType);
 
         // 一時停止の受理と再開が交差したときだけ 2 周目がある。ハンドラは境界で
-        // Pausing を見て抜けるが、こちらが Paused を書く前に再開（Pausing → Running）が
+        // Pausing を見て抜けるが、こちらが Paused を書く前に再開（Pausing → InProgress）が
         // 割り込むことがある。そのとき Job の所有者はまだ自分なので、抜けずに走り直す。
         // ハンドラは済んだサブタスクを飛ばして続きから走る。
         while (true)
@@ -376,7 +376,7 @@ public sealed class JobExecutionEngine
     /// 一時停止の受理（Paused）を書く。ハンドラは既に境界で抜けている。
     /// </summary>
     /// <returns>
-    /// rerun が true なら、受理より先に再開が取り消した（Pausing → Running）ので走り直す。
+    /// rerun が true なら、受理より先に再開が取り消した（Pausing → InProgress）ので走り直す。
     /// settled は確定した状態（Paused、またはこの窓でキャンセルが要求されていたら Cancelled）。
     /// </returns>
     /// <remarks>
@@ -406,7 +406,7 @@ public sealed class JobExecutionEngine
             JobTransitionResult result = job.Apply(JobTrigger.ConfirmPaused, _timeProvider.GetUtcNow());
             if (!result.IsAllowed)
             {
-                if (job.Status == JobStatus.Running)
+                if (job.Status == JobStatus.InProgress)
                 {
                     return (Rerun: true, Settled: null);
                 }
@@ -447,12 +447,12 @@ public sealed class JobExecutionEngine
     /// </para>
     /// <para>
     /// ここだけは停止要求で中断しない。既に起きたことを書き残す処理なので、
-    /// 中断すると完了した Job が Running のまま残り、次の起動で復旧に Failed とされてしまう。
+    /// 中断すると完了した Job が InProgress のまま残り、次の起動で復旧に Failed とされてしまう。
     /// </para>
     /// <para>
     /// 読み直してから書き戻すまでの間にも状態は動きうる（キャンセルや一時停止の要求が
     /// 届く、など）ので、書き戻せなければ読み直して評価をやり直す。相手が動かした先が
-    /// Running / Cancelling / Pausing のどれであっても結末（Complete / Fail）は受理されるので、
+    /// InProgress / Cancelling / Pausing のどれであっても結末（Complete / Fail）は受理されるので、
     /// やり直した次の評価は必ず決着に向かう。終端に達していれば拒否されて抜ける。
     /// 無限にやり直すには書き戻すたびに他所が先に書き続ける必要があり、
     /// それは停止と再開の要求が無限に交互に届き続けるときだけで、実行の停滞ではない。
@@ -475,7 +475,7 @@ public sealed class JobExecutionEngine
             if (!result.IsAllowed)
             {
                 // 状態機械の判断に従う。ただし終端に達していない Job を放置すると
-                // 誰も動かしていないのに Running のまま残るので、失敗として閉じる。
+                // 誰も動かしていないのに InProgress のまま残るので、失敗として閉じる。
                 if (job.Status.IsTerminal())
                 {
                     // 終端は他所（別プロセスの復旧など）が書いた。こちらは何も記録していないので

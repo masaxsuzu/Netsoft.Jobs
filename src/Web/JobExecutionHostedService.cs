@@ -65,8 +65,8 @@ public sealed class JobExecutionHostedService : BackgroundService, IHostedLifecy
     /// <para>
     /// 復旧は「ハンドラが 1 つも走っていない」ことを前提に、非終端で取り残された Job を
     /// Failed へ畳む。この前提は単一プロセスなら常に真だが、<b>API は別の書き手</b>である。
-    /// 受付が開いた後に復旧が走ると、利用者の編集（Running のまま版だけ進む）と衝突して
-    /// 書き戻しが弾かれ、その Job は Running のまま誰にも閉じられなくなる
+    /// 受付が開いた後に復旧が走ると、利用者の編集（InProgress のまま版だけ進む）と衝突して
+    /// 書き戻しが弾かれ、その Job は InProgress のまま誰にも閉じられなくなる
     /// ── エンジンは待ち行列しか拾わず、キャンセルは Cancelling、一時停止は Pausing で
     /// 固着し、復旧はこのプロセスで二度と走らない。実測で再現した回帰である。
     /// かつては <see cref="ExecuteAsync"/> で <c>Task.Yield</c> してから復旧しており、
@@ -74,9 +74,9 @@ public sealed class JobExecutionHostedService : BackgroundService, IHostedLifecy
     /// HostedService はこのクラスより先に登録されるので、順序が変わらない）。
     /// </para>
     /// <para>
-    /// 待たせる時間は 1 行の UPDATE 分しかない。Running を書くのはエンジンだけで、
+    /// 待たせる時間は 1 行の UPDATE 分しかない。InProgress を書くのはエンジンだけで、
     /// エンジンは 1 件を待ってから次を取りに行くので、異常終了時に非終端で残る Job は
-    /// 高々 1 件（Pausing / Cancelling も Running からしか来ない）。
+    /// 高々 1 件（Pausing / Cancelling も InProgress からしか来ない）。
     /// 溜まっていた Job の実行は今までどおり <see cref="ExecuteAsync"/> 側なので、
     /// 起動が実行に引きずられることも無い。
     /// </para>

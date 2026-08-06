@@ -133,7 +133,7 @@ public sealed class JobsApiClientTests : IDisposable
 
         JobControlResponse resumed = await _client.ResumeJobAsync(registered.Job.Id, CancellationToken.None);
         Assert.True(resumed.IsSuccess);
-        Assert.Equal("Running", resumed.Job?.Status);
+        Assert.Equal("InProgress", resumed.Job?.Status);
     }
 
     /// <summary>

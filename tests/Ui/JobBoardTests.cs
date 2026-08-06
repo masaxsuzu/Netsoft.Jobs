@@ -139,7 +139,7 @@ public sealed class JobBoardTests : IDisposable
         await _board.ResumeAsync(id, None);
 
         Assert.Null(_board.Notice);
-        Assert.Equal("Running", _board.Jobs.Single(job => job.Id == id).Status);
+        Assert.Equal("InProgress", _board.Jobs.Single(job => job.Id == id).Status);
     }
 
     [Fact]

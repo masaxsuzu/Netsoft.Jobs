@@ -52,9 +52,9 @@ public interface IJobStore
     /// 「待ち行列の 1 件を予約する」ような専用の操作も置かない。予約は
     /// 「<see cref="FindOldestWaitingAsync"/> で候補を取る → <see cref="Job.Apply"/> で Start を適用する
     /// → 書き戻す」と呼び出し側が組み立てる。
-    /// こうすれば 待ち行列 → Running を認めるかどうかの判断が <see cref="JobStateMachine"/> に残る。
+    /// こうすれば 待ち行列 → InProgress を認めるかどうかの判断が <see cref="JobStateMachine"/> に残る。
     /// store 側に予約を置くと、実装が状態機械を迂回して <see cref="Job.Rehydrate"/> で
-    /// Running を組み立てることになり、遷移の定義が 2 か所に分かれる。
+    /// InProgress を組み立てることになり、遷移の定義が 2 か所に分かれる。
     /// </para>
     /// </remarks>
     Task<bool> UpdateAsync(Job job, CancellationToken cancellationToken);
@@ -71,9 +71,8 @@ public interface IJobStore
     Task<Job?> FindOldestWaitingAsync(CancellationToken cancellationToken);
 
     /// <summary>
-    /// 指定した状態の Job を取得する。起動時復旧が、ハンドラが動いていたはずの状態
-    /// （Running / Cancelling / Pausing。<see cref="JobStatusExtensions.IsHandlerActive"/>）を
-    /// 拾うのに使う。
+    /// 指定した状態の Job を取得する。起動時復旧が、静止していない状態
+    /// （InProgress と確定待ち。<see cref="JobStatusExtensions.IsSettling"/>）を拾うのに使う。
     /// </summary>
     Task<IReadOnlyList<Job>> ListByStatusAsync(JobStatus status, CancellationToken cancellationToken);
 }

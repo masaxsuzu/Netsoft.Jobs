@@ -80,7 +80,7 @@ public sealed class QueryJobsHandlerTests : IDisposable
     /// </summary>
     [Theory]
     [InlineData(nameof(JobStatus.Registered))]
-    [InlineData(nameof(JobStatus.Running))]
+    [InlineData(nameof(JobStatus.InProgress))]
     [InlineData(nameof(JobStatus.Cancelling))]
     [InlineData(nameof(JobStatus.Completed))]
     [InlineData(nameof(JobStatus.Failed))]
@@ -176,7 +176,7 @@ public sealed class QueryJobsHandlerTests : IDisposable
     private static Job Registered(string id, DateTimeOffset createdAt) =>
         Job.Create(JobId.From(id), $"集計 {id}", "Demo", "{}", createdAt);
 
-    private static Job Running(string id, DateTimeOffset createdAt)
+    private static Job InProgress(string id, DateTimeOffset createdAt)
     {
         Job job = Registered(id, createdAt);
         job.Apply(JobTrigger.Start, Started);
@@ -185,14 +185,14 @@ public sealed class QueryJobsHandlerTests : IDisposable
 
     private static Job Completed(string id, DateTimeOffset createdAt)
     {
-        Job job = Running(id, createdAt);
+        Job job = InProgress(id, createdAt);
         job.Apply(JobTrigger.Complete, Finished);
         return job;
     }
 
     private static Job Failed(string id, DateTimeOffset createdAt)
     {
-        Job job = Running(id, createdAt);
+        Job job = InProgress(id, createdAt);
         job.Apply(JobTrigger.Fail, Finished, FailureText);
         return job;
     }
@@ -205,7 +205,7 @@ public sealed class QueryJobsHandlerTests : IDisposable
         {
             case nameof(JobStatus.Registered):
                 break;
-            case nameof(JobStatus.Running):
+            case nameof(JobStatus.InProgress):
                 job.Apply(JobTrigger.Start, Started);
                 break;
             case nameof(JobStatus.Cancelling):

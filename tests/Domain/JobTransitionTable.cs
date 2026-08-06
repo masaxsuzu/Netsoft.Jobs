@@ -15,54 +15,62 @@ internal static class JobTransitionTable
     public static readonly IReadOnlyDictionary<(JobStatus Current, JobTrigger Trigger), JobStatus> Allowed =
         new Dictionary<(JobStatus, JobTrigger), JobStatus>
         {
-            // 待ち行列は 2 状態ある。ディスパッチから見れば同じなので、開始も中止も同じ行を持つ。
-            [(JobStatus.Registered, JobTrigger.Start)] = JobStatus.Running,
-            [(JobStatus.Resumed, JobTrigger.Start)] = JobStatus.Running,
+            // 実行の開始。待ち行列は 2 状態あるが、ディスパッチから見れば同じなので同じ行き先。
+            // 引くのはエンジンで、API から届く契機はここに無い（利用者は実行の順番を決めない）。
+            [(JobStatus.Registered, JobTrigger.Start)] = JobStatus.InProgress,
+            [(JobStatus.Resumed, JobTrigger.Start)] = JobStatus.InProgress,
 
-            // 待機中はハンドラを起動していないので、受理を待つ相手がいない。即座に終端へ。
-            [(JobStatus.Registered, JobTrigger.RequestCancel)] = JobStatus.Cancelled,
-            [(JobStatus.Resumed, JobTrigger.RequestCancel)] = JobStatus.Cancelled,
+            // 中止の要求。行き先は状態によらず Cancelling で、静止状態へ直行する行は無い。
+            // ハンドラが居ない相手（待ち行列 / Paused / Resuming）でも一度は要求を状態に残す
+            // ── 押した事実が見えないと、利用者は同じボタンをもう一度押す。
+            [(JobStatus.Registered, JobTrigger.RequestCancel)] = JobStatus.Cancelling,
+            [(JobStatus.Resumed, JobTrigger.RequestCancel)] = JobStatus.Cancelling,
+            [(JobStatus.Paused, JobTrigger.RequestCancel)] = JobStatus.Cancelling,
+            [(JobStatus.InProgress, JobTrigger.RequestCancel)] = JobStatus.Cancelling,
+            [(JobStatus.Resuming, JobTrigger.RequestCancel)] = JobStatus.Cancelling,
 
-            // 保留も同じ理由で 2 段を踏まず直接 Paused へ。「消す（キャンセル）」は終端で、
-            // 「いま走らせない」とは別の意図なので、走る前でも止められる必要がある。
-            [(JobStatus.Registered, JobTrigger.RequestPause)] = JobStatus.Paused,
-            [(JobStatus.Resumed, JobTrigger.RequestPause)] = JobStatus.Paused,
+            // 中止は停止より強い意図（捨てる）ので、停止の要求中でも上書きできる。
+            [(JobStatus.Pausing, JobTrigger.RequestCancel)] = JobStatus.Cancelling,
 
-            [(JobStatus.Running, JobTrigger.Complete)] = JobStatus.Completed,
-            [(JobStatus.Running, JobTrigger.Fail)] = JobStatus.Failed,
-            [(JobStatus.Running, JobTrigger.RequestCancel)] = JobStatus.Cancelling,
+            // 保留の要求。「消す（キャンセル）」は終端で、「いま走らせない」とは別の意図なので、
+            // 走る前でも止められる必要がある。Paused には行が無い（既に効いている）。
+            [(JobStatus.Registered, JobTrigger.RequestPause)] = JobStatus.Pausing,
+            [(JobStatus.Resumed, JobTrigger.RequestPause)] = JobStatus.Pausing,
+            [(JobStatus.InProgress, JobTrigger.RequestPause)] = JobStatus.Pausing,
+            [(JobStatus.Resuming, JobTrigger.RequestPause)] = JobStatus.Pausing,
+
+            // 再開の要求。行き先が Resuming なのは、Paused → Resumed が 1 手で足りるからではなく、
+            // 要求を受け付けた事実を他の 2 つと同じ形で残すため。
+            [(JobStatus.Paused, JobTrigger.Resume)] = JobStatus.Resuming,
+
+            // 確定。要求を受けた ing を、対応する ed へ落とす。
             [(JobStatus.Cancelling, JobTrigger.ConfirmCancelled)] = JobStatus.Cancelled,
+            [(JobStatus.Pausing, JobTrigger.ConfirmPaused)] = JobStatus.Paused,
+            [(JobStatus.Resuming, JobTrigger.ConfirmResumed)] = JobStatus.Resumed,
 
-            // 要求した後にハンドラが完走／失敗することはある。実際に起きたのはそちらなので、
-            // 要求されたキャンセルではなく起きた結末を記録する。別プロセスで走っている Job の
-            // 決着もこの 2 行が引き受ける（キャンセルはプロセスをまたいで届かないため）。
+            // 実行の結末。落ち先が 2 つあることが、InProgress だけ他の ing と違う点。
+            // Cancelling / Pausing からも受けるのは、要求が効く前にハンドラが終わることがあるため。
+            // 実際に起きたのはそちらなので、要求ではなく起きた結末を記録する。
+            // 別プロセスで走っている Job の決着もこの 4 行が引き受ける
+            // （キャンセルはプロセスをまたいで届かないため）。
+            [(JobStatus.InProgress, JobTrigger.Complete)] = JobStatus.Completed,
+            [(JobStatus.InProgress, JobTrigger.Fail)] = JobStatus.Failed,
             [(JobStatus.Cancelling, JobTrigger.Complete)] = JobStatus.Completed,
             [(JobStatus.Cancelling, JobTrigger.Fail)] = JobStatus.Failed,
-
-            // 起動時復旧の対象はハンドラが動いていたはずの状態だけ。待ち行列に行が無いのは
-            // 副作用が無くそのまま実行すればよいから。Paused に行が無いのは、受理済みの
-            // 停止はハンドラが抜けた後で、プロセスが落ちても失われた実行が無いから。
-            [(JobStatus.Running, JobTrigger.RecoverAfterCrash)] = JobStatus.Failed,
-            [(JobStatus.Cancelling, JobTrigger.RecoverAfterCrash)] = JobStatus.Failed,
-            [(JobStatus.Pausing, JobTrigger.RecoverAfterCrash)] = JobStatus.Failed,
-
-            // 一時停止は要求と受理の 2 段（キャンセルと同型）。効き目はサブタスクの境界。
-            [(JobStatus.Running, JobTrigger.RequestPause)] = JobStatus.Pausing,
-            [(JobStatus.Pausing, JobTrigger.ConfirmPaused)] = JobStatus.Paused,
-
-            // 受理前に結末が来たら結末が勝つ（Cancelling の 2 行と同じ判断）。
             [(JobStatus.Pausing, JobTrigger.Complete)] = JobStatus.Completed,
             [(JobStatus.Pausing, JobTrigger.Fail)] = JobStatus.Failed,
 
-            // 中止は停止より強い意図（捨てる）。要求中でも受理後でも上書きできる。
-            // 受理後は誰も走っていないので、待ち行列と同じく即終端。
-            [(JobStatus.Pausing, JobTrigger.RequestCancel)] = JobStatus.Cancelling,
-            [(JobStatus.Paused, JobTrigger.RequestCancel)] = JobStatus.Cancelled,
+            // 起動時復旧。ing は確定の担い手がプロセスと一緒に消えただけなので、要求どおりの
+            // 行き先で閉じる。InProgress だけ Failed ── 結果が分からない以上、完了とも中断とも
+            // 言えない。待ち行列と Paused に行が無いのは、どちらも静止状態で落とす先が無いから。
+            [(JobStatus.InProgress, JobTrigger.RecoverAfterCrash)] = JobStatus.Failed,
+            [(JobStatus.Cancelling, JobTrigger.RecoverAfterCrash)] = JobStatus.Cancelled,
+            [(JobStatus.Pausing, JobTrigger.RecoverAfterCrash)] = JobStatus.Paused,
+            [(JobStatus.Resuming, JobTrigger.RecoverAfterCrash)] = JobStatus.Resumed,
 
-            // 再開。受理前ならハンドラが走り続けているので Running へ揺り戻すだけ。
-            // 受理後は待ち行列へ戻して既存のディスパッチに乗せる（専用の再実行経路は無い）。
-            [(JobStatus.Pausing, JobTrigger.Resume)] = JobStatus.Running,
-            [(JobStatus.Paused, JobTrigger.Resume)] = JobStatus.Resumed,
+            // 唯一 ing → ing のまま残る行。受理前の取り消しで、ハンドラはまだ走っている。
+            // 規則どおり Resuming へ流すと待ち行列へ戻り、エンジンが二重に claim する。
+            [(JobStatus.Pausing, JobTrigger.Resume)] = JobStatus.InProgress,
         };
 
     public static IEnumerable<JobStatus> AllStatuses => Enum.GetValues<JobStatus>();

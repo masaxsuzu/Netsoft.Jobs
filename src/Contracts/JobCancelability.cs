@@ -7,7 +7,7 @@ namespace Netsoft.Jobs.Contracts;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 画面側に「Registered か Running なら押せる」と書かない。状態が増えたときに
+/// 画面側に「Registered か InProgress なら押せる」と書かない。状態が増えたときに
 /// 状態機械とここの 2 か所を直すことになり、片方を忘れると
 /// 「押せるのに拒否されるボタン」ができる。
 /// </para>

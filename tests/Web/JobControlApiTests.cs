@@ -13,7 +13,7 @@ namespace Netsoft.Jobs.Web.Tests;
 /// 一時停止・再開・編集・サブタスク読み出しの HTTP API の結合テスト。
 /// </summary>
 /// <remarks>
-/// エンジンは止まっているので、Running などの途中状態は store を直接進めて作る
+/// エンジンは止まっているので、InProgress などの途中状態は store を直接進めて作る
 /// （実行そのものは Features の結合テストの領分。ここで見るのは HTTP への写し方）。
 /// </remarks>
 public sealed class JobControlApiTests : IDisposable
@@ -138,7 +138,7 @@ public sealed class JobControlApiTests : IDisposable
     public async Task 終端のJobの編集は409()
     {
         JobDto registered = await RegisterAsync();
-        await AdvanceAsync(registered.Id, JobTrigger.RequestCancel);
+        await AdvanceAsync(registered.Id, JobTrigger.RequestCancel, JobTrigger.ConfirmCancelled);
 
         HttpResponseMessage response = await _client.PutAsJsonAsync(
             $"/api/jobs/{registered.Id}/parameters", new { parameters = "5 2" });

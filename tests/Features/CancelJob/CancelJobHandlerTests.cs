@@ -43,9 +43,9 @@ public sealed class CancelJobHandlerTests : IDisposable
     public void Dispose() => _jobs.Dispose();
 
     [Fact]
-    public async Task 待機中へのキャンセルはCancelledへ直行し保存とログが残る()
+    public async Task 待機中へのキャンセルはCancellingを経てその場でCancelledまで進む()
     {
-        // ハンドラを起動していないので、受理を待つ相手がいない。
+        // ハンドラを起動していないので、受理を待つ相手がいない。要求はこのコマンドが確定させる。
         await AddAsync(Registered("job-1"));
 
         CancelJobResult result = await CancelAsync("job-1");
@@ -58,13 +58,18 @@ public sealed class CancelJobHandlerTests : IDisposable
         Job saved = await SavedAsync("job-1");
         Assert.Equal(JobStatus.Cancelled, saved.Status);
         Assert.Equal(Requested, saved.FinishedAt);
-        Assert.Equal(["update:job-1:Cancelled", "cancel:job-1"], _log.Entries);
 
-        // Cancelled へ直行したこと（受理待ちでないこと）はこのログで読み取れる。
+        // 要求は必ず一度 Cancelling として保存される。この 1 回を削ると、押した事実が
+        // 変更通知に流れず、画面は「押したのに何も起きていない」見え方になる。
+        Assert.Equal(
+            ["update:job-1:Cancelling", "cancel:job-1", "update:job-1:Cancelled"],
+            _log.Entries);
+
+        // 受理のログは要求の時点のもの。確定はその後なので、状態は Cancelling で記録される。
         RecordedLog entry = Assert.Single(_logger.Entries);
         Assert.Equal(LogLevel.Information, entry.Level);
         Assert.Equal("job-1", entry.State["JobId"]);
-        Assert.Equal(JobStatus.Cancelled, entry.State["Status"]);
+        Assert.Equal(JobStatus.Cancelling, entry.State["Status"]);
         Assert.Contains("受理", entry.Message);
     }
 
@@ -72,7 +77,7 @@ public sealed class CancelJobHandlerTests : IDisposable
     public async Task 実行中へのキャンセルは保存してから伝えられ受理待ちになる()
     {
         // ハンドラが動いているので、受理されるまでは終端に進めない。
-        await AddAsync(Running("job-1"));
+        await AddAsync(InProgress("job-1"));
 
         CancelJobResult result = await CancelAsync("job-1");
 
@@ -107,7 +112,7 @@ public sealed class CancelJobHandlerTests : IDisposable
     public async Task 伝達の戻り値がfalseでも状態遷移は巻き戻らない(bool running, string expected)
     {
         _runningJobs.Result = false;
-        await AddAsync(running ? Running("job-1") : Registered("job-1"));
+        await AddAsync(running ? InProgress("job-1") : Registered("job-1"));
 
         CancelJobResult result = await CancelAsync("job-1");
 
@@ -164,7 +169,7 @@ public sealed class CancelJobHandlerTests : IDisposable
     [Fact]
     public async Task 読み出しと保存の間に完了が書かれても上書きしない()
     {
-        await AddAsync(Running("job-1"));
+        await AddAsync(InProgress("job-1"));
 
         _interference.BeforeNextUpdate = async () =>
         {
@@ -244,7 +249,7 @@ public sealed class CancelJobHandlerTests : IDisposable
     private static Job Registered(string id) =>
         Job.Create(JobId.From(id), $"集計 {id}", "Demo", "{}", Created);
 
-    private static Job Running(string id)
+    private static Job InProgress(string id)
     {
         Job job = Registered(id);
         job.Apply(JobTrigger.Start, Started);
@@ -253,14 +258,14 @@ public sealed class CancelJobHandlerTests : IDisposable
 
     private static Job Cancelling(string id)
     {
-        Job job = Running(id);
+        Job job = InProgress(id);
         job.Apply(JobTrigger.RequestCancel, Finished);
         return job;
     }
 
     private static Job Terminal(string id, string status)
     {
-        Job job = Running(id);
+        Job job = InProgress(id);
 
         switch (status)
         {

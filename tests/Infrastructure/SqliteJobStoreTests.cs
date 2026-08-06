@@ -205,7 +205,7 @@ public sealed class SqliteJobStoreTests
         await store.AddAsync(cancelling, None);
 
         IReadOnlyList<Job> registered = await store.ListByStatusAsync(JobStatus.Registered, None);
-        IReadOnlyList<Job> runnings = await store.ListByStatusAsync(JobStatus.Running, None);
+        IReadOnlyList<Job> runnings = await store.ListByStatusAsync(JobStatus.InProgress, None);
         IReadOnlyList<Job> completed = await store.ListByStatusAsync(JobStatus.Completed, None);
 
         Assert.Equal(["registered-2", "registered-1"], registered.Select(job => job.Id.Value));
@@ -256,7 +256,7 @@ public sealed class SqliteJobStoreTests
         other.Apply(JobTrigger.Complete, BaseTime.AddMinutes(2));
         Assert.True(await store.UpdateAsync(other, None));
 
-        // こちらは Running のつもりで Cancelling を書こうとしている。
+        // こちらは InProgress のつもりで Cancelling を書こうとしている。
         job.Apply(JobTrigger.RequestCancel, BaseTime.AddMinutes(3));
 
         Assert.False(await store.UpdateAsync(job, None));
@@ -446,7 +446,7 @@ public sealed class SqliteJobStoreTests
         command.CommandText = "SELECT Status FROM Jobs WHERE Id = $id;";
         command.Parameters.AddWithValue("$id", "job-1");
 
-        Assert.Equal("Running", await command.ExecuteScalarAsync(None));
+        Assert.Equal("InProgress", await command.ExecuteScalarAsync(None));
     }
 
     private static async Task<Job> LoadAsync(SqliteJobStore store, string id) =>

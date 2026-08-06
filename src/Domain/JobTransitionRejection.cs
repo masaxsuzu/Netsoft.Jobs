@@ -6,7 +6,7 @@ namespace Netsoft.Jobs.Domain;
 public enum JobTransitionRejection
 {
     /// <summary>
-    /// 同じ要求が既に効いている（Cancelling への RequestCancel、Running への Start など）。
+    /// 同じ要求が既に効いている（Cancelling への RequestCancel、InProgress への Start など）。
     /// 要求の意図は既に満たされているので、API 層は 200 で冪等に返す想定。
     /// </summary>
     AlreadyInEffect,

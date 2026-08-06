@@ -50,7 +50,7 @@ public sealed class StoreFailureTests : IDisposable
     }
 
     /// <summary>
-    /// 結末を書けなかった Job は Running のまま残り、次の起動の復旧が Failed で閉じる。
+    /// 結末を書けなかった Job は InProgress のまま残り、次の起動の復旧が Failed で閉じる。
     /// </summary>
     /// <remarks>
     /// ハンドラは完走しているのに、それを記録できないという最も嫌な形。ここで嘘
@@ -68,7 +68,7 @@ public sealed class StoreFailureTests : IDisposable
 
         Task<bool> execution = engine.RunOnceAsync(CancellationToken.None);
 
-        // ハンドラに入った＝Running は書けている。落とすのはその次の書き戻し（結末）だけ。
+        // ハンドラに入った＝InProgress は書けている。落とすのはその次の書き戻し（結末）だけ。
         // 回数だけで狙うと、間に挟まる書き込みが増えたときに黙って別の場所を落とすようになる。
         await handler.Entered;
         _failing.UpdateFailures = 1;
@@ -76,9 +76,9 @@ public sealed class StoreFailureTests : IDisposable
 
         await Assert.ThrowsAsync<IOException>(() => execution);
 
-        // ハンドラは走り切っている。それでも記録できていないので Running のまま。
+        // ハンドラは走り切っている。それでも記録できていないので InProgress のまま。
         Assert.Single(handler.Executions);
-        Assert.Equal(JobStatus.Running, (await FindAsync("job-1")).Status);
+        Assert.Equal(JobStatus.InProgress, (await FindAsync("job-1")).Status);
 
         // 次の起動。エンジンを作り直すことがプロセスの起動に相当する。
         _ = await CreateEngineAsync(handler);

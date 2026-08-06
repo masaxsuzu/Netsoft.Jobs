@@ -121,7 +121,7 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
         Assert.True(job.Status.IsTerminal(), $"競合の後に {job.Status} で残りました。");
         Assert.Null(JobInvariants.FindViolation(job));
 
-        // 状態は Running → Cancelling → 終端 の高々 2 手しか進めない。
+        // 状態は InProgress → Cancelling → 終端 の高々 2 手しか進めない。
         // 読み直しがその範囲で収まっていることを回数で裏付ける。
         Assert.InRange(hostile.UpdateAttempts - attemptsBeforeFinish, 1, 4);
     }
@@ -176,7 +176,7 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
     public async Task 起動後は何度実行しても起動時復旧は走らない()
     {
         CountingJobHandler handler = new(HandledJobType);
-        GatedJobStore gated = new(_store, JobStatus.Running);
+        GatedJobStore gated = new(_store, JobStatus.InProgress);
 
         // 復旧はここで済む。gate は最初の 1 回だけ止めるが、誰も待っていないので素通しでよい。
         gated.Release();
@@ -185,7 +185,7 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
         int afterStartup = gated.ListByStatusCalls;
         Assert.NotEqual(0, afterStartup);
 
-        // エンジンが立った後に現れた Running。誰かが今まさに動かしている、という想定。
+        // エンジンが立った後に現れた InProgress。誰かが今まさに動かしている、という想定。
         await AddRunningAsync("job-1");
         await AddRegisteredAsync("job-2", createdAt: Now.AddSeconds(1));
 
@@ -200,7 +200,7 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
         Assert.Equal(afterStartup, gated.ListByStatusCalls);
 
         // 走行中とみなした Job は触られず、待機中の Job だけが実行された。
-        Assert.Equal(JobStatus.Running, (await FindAsync("job-1")).Status);
+        Assert.Equal(JobStatus.InProgress, (await FindAsync("job-1")).Status);
         Assert.Equal(JobStatus.Completed, (await FindAsync("job-2")).Status);
     }
 

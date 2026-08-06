@@ -24,7 +24,7 @@ public interface IRunningJobRegistry
     /// 状態遷移を巻き戻さないこと。
     /// <para>
     /// 「これから走るがまだ登録されていない」は<b>この 3 つに含まれない</b>。
-    /// エンジンが Running を書き戻す前に登録を済ませるので、状態が Running に
+    /// エンジンが InProgress を書き戻す前に登録を済ませるので、状態が InProgress に
     /// 見えている間は必ず登録済みで、その状況自体が起きない
     /// （<see cref="JobExecutionEngine.RunOnceAsync"/> の注記を参照）。
     /// もし登録を書き戻しより後ろへ動かすと、false の意味に

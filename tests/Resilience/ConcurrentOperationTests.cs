@@ -78,7 +78,7 @@ public sealed class ConcurrentOperationTests : IAsyncLifetime
     {
         // 1 サブタスク 60 秒。キャンセルが届く前に完走することはない。
         JobsApi.JobDto job = await Api.RegisterAsync("3 60");
-        await Api.WaitForAsync(job.Id, "Running");
+        await Api.WaitForAsync(job.Id, "InProgress");
 
         HttpResponseMessage[] responses = await Task.WhenAll(
             Enumerable.Range(0, Storm).Select(_ => Api.CancelAsync(job.Id)));
@@ -117,7 +117,7 @@ public sealed class ConcurrentOperationTests : IAsyncLifetime
     public async Task 一時停止と再開を連打しても決着する()
     {
         JobsApi.JobDto job = await Api.RegisterAsync("4 1");
-        await Api.WaitForAsync(job.Id, "Running");
+        await Api.WaitForAsync(job.Id, "InProgress");
 
         await Task.WhenAll(Enumerable.Range(0, Storm).Select(i => i % 2 == 0
             ? Api.PauseAsync(job.Id)
@@ -154,7 +154,7 @@ public sealed class ConcurrentOperationTests : IAsyncLifetime
     public async Task 実行中の編集を連打しても行の形は壊れない()
     {
         JobsApi.JobDto job = await Api.RegisterAsync("5 1");
-        await Api.WaitForAsync(job.Id, "Running");
+        await Api.WaitForAsync(job.Id, "InProgress");
 
         string[] edits = ["3 1", "6 1", "4 1", "7 1", "2 1", "5 1", "3 1", "6 1"];
         await Task.WhenAll(edits.Select(parameters => Api.EditAsync(job.Id, parameters)));
@@ -176,7 +176,7 @@ public sealed class ConcurrentOperationTests : IAsyncLifetime
     /// </summary>
     /// <remarks>
     /// <para>
-    /// これがこの基盤で最も避けたい形。<c>Running</c> / <c>Cancelling</c> / <c>Pausing</c> は
+    /// これがこの基盤で最も避けたい形。<c>InProgress</c> / <c>Cancelling</c> / <c>Pausing</c> は
     /// 「今どこかのハンドラが動いている」ことを意味する状態なので、ハンドラが居ないのに
     /// この状態で残ると誰も動かせない。エンジンは待ち行列しか拾わず、キャンセルも
     /// 一時停止も届く先が無い。
@@ -189,7 +189,7 @@ public sealed class ConcurrentOperationTests : IAsyncLifetime
     public async Task 操作の最中に強制終了しても再起動後に固着しない()
     {
         // 登録は順に行う。並行に登録すると、エンジンが拾うのは「登録が最も古いもの」なので
-        // 配列の並びと走り出す順が一致せず、「0 番目が Running になる」が成り立たない
+        // 配列の並びと走り出す順が一致せず、「0 番目が InProgress になる」が成り立たない
         //（並行登録にしていて実際に落ちた）。
         List<JobsApi.JobDto> jobs = [];
         for (int i = 0; i < 3; i++)
@@ -197,7 +197,7 @@ public sealed class ConcurrentOperationTests : IAsyncLifetime
             jobs.Add(await Api.RegisterAsync("3 60"));
         }
 
-        await Api.WaitForAsync(jobs[0].Id, "Running");
+        await Api.WaitForAsync(jobs[0].Id, "InProgress");
 
         // 操作を投げっぱなしにしたまま殺す。応答が返る前に死ぬものがあってよい
         // （利用者がボタンを押した瞬間に電源が落ちた、という状況そのもの）。
@@ -223,7 +223,7 @@ public sealed class ConcurrentOperationTests : IAsyncLifetime
         foreach (JobsApi.JobDto job in jobs)
         {
             JobsApi.JobDto current = await Api.WaitForAsync(
-                job.Id, "Completed", "Failed", "Cancelled", "Paused", "Registered", "Running");
+                job.Id, "Completed", "Failed", "Cancelled", "Paused", "Registered", "InProgress");
 
             Assert.False(
                 current.Status is "Cancelling" or "Pausing",

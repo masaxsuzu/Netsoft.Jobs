@@ -5,13 +5,15 @@ using Netsoft.Jobs.Domain;
 namespace Netsoft.Jobs.Features.Execution;
 
 /// <summary>
-/// 前回のプロセスがやり残した Job を Failed で閉じる、起動時の 1 回きりの仕事。
+/// 前回のプロセスがやり残した Job を静止状態へ落とす、起動時の 1 回きりの仕事。
 /// </summary>
 /// <remarks>
 /// <para>
-/// 前回のプロセスが異常終了すると、実際には誰も動いていないのに Running / Cancelling / Pausing の
-/// まま残った Job ができる。結果が分からない以上 Failed で閉じる。待ち行列は対象外で、
-/// ハンドラを起動していないので副作用が無く、このプロセスがそのまま実行する。
+/// 前回のプロセスが異常終了すると、実際には誰も動いていないのに InProgress や
+/// 確定待ち（Pausing / Cancelling / Resuming）のまま残った Job ができる。
+/// 確定待ちは要求どおりの行き先へ落とし（<see cref="JobStatusExtensions.SettlementTrigger"/>）、
+/// InProgress だけ Failed で閉じる ── 結果が分からない以上、完了とも中断とも言えないため。
+/// 待ち行列は対象外で、ハンドラを起動していないので副作用が無く、このプロセスがそのまま実行する。
 /// </para>
 /// <para>
 /// <b>状態を持たない静的な型で、外へは出さない（internal）。</b>これは「エンジンが動く前」の
@@ -25,7 +27,7 @@ namespace Netsoft.Jobs.Features.Execution;
 /// （理由の本体は StartAsync の注記）。
 /// </para>
 /// <para>
-/// この見立て（Running ＝ 前回の残骸）は条件付き更新では守れない。既に別のホストが
+/// この見立て（InProgress ＝ 前回の残骸）は条件付き更新では守れない。既に別のホストが
 /// 動いている最中に立ち上げると、本当に走っている Job まで閉じてしまう。
 /// 同じ DB を使う実行ホストを 1 つだけにするのは運用の前提で、型では守っていない
 /// （docs/operating.md）。
@@ -36,10 +38,10 @@ internal static class JobCrashRecovery
     /// <summary>復旧で閉じた Job に記録する失敗理由。</summary>
     private const string CrashRecoveryMessage = "前回のプロセスが異常終了したため、実行結果を確認できません。";
 
-    // ハンドラが動いていたはずの状態。待ち行列を含めないことの理由は
-    // JobStatusExtensions.IsHandlerActive に書いてある。
-    private static readonly JobStatus[] HandlerActiveStatuses =
-        [.. Enum.GetValues<JobStatus>().Where(status => status.IsHandlerActive())];
+    // 前回のプロセスが残しうる非静止の状態。待ち行列と Paused を含めないのは、
+    // どちらもハンドラを起動していない（起動を終えている）静止状態で、落とす先が無いから。
+    private static readonly JobStatus[] UnsettledStatuses =
+        [.. Enum.GetValues<JobStatus>().Where(status => status is JobStatus.InProgress || status.IsSettling())];
 
     /// <summary>
     /// やり残された Job をすべて Failed で閉じる。
@@ -68,7 +70,7 @@ internal static class JobCrashRecovery
         // どの一覧にも入らずに取り残されるが、それが起きるのは走査中に書く者が
         // 居るときだけで、ここは受付開始より前なので居ない
         //（JobExecutionHostedService.StartingAsync の注記）。
-        foreach (JobStatus status in HandlerActiveStatuses)
+        foreach (JobStatus status in UnsettledStatuses)
         {
             IReadOnlyList<Job> jobs = await store.ListByStatusAsync(status, cancellationToken);
 
@@ -91,7 +93,7 @@ internal static class JobCrashRecovery
                     // 読み出しから書き込みまでの間に版を進める書き手が居ない。
                     //
                     // 来たとすれば前提が崩れている（同じ DB を別のホストが使っている、
-                    // 復旧が受付開始より後ろへ動かされた、など）。この Job は Running のまま
+                    // 復旧が受付開始より後ろへ動かされた、など）。この Job は非静止のまま
                     // 誰にも閉じられなくなるので、黙って次へ進まずに必ず声を上げる
                     // ── かつてここは成功時にしかログを書かず、閉じ損ねた Job について
                     // 出力が 1 行も無かった（実測: 2960 件成功、警告なし、残り 40 件は無言）。
@@ -103,7 +105,10 @@ internal static class JobCrashRecovery
                     continue;
                 }
 
-                logger.LogWarning("Job {JobId} を前回プロセスの異常終了として Failed にしました。", job.Id.Value);
+                logger.LogWarning(
+                    "Job {JobId} を前回プロセスの異常終了として {Status} にしました。",
+                    job.Id.Value,
+                    job.Status);
             }
         }
     }

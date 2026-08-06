@@ -15,7 +15,7 @@ public sealed class JobStateSequenceOracleTests
     public void 実際に起こりうる列は説明できる()
     {
         Assert.Null(JobStateSequenceOracle.FindViolation(
-            [JobStatus.Registered, JobStatus.Running, JobStatus.Cancelling, JobStatus.Completed]));
+            [JobStatus.Registered, JobStatus.InProgress, JobStatus.Cancelling, JobStatus.Completed]));
     }
 
     [Fact]
@@ -29,22 +29,22 @@ public sealed class JobStateSequenceOracleTests
     public void 同じ状態が続くのは説明できる()
     {
         Assert.Null(JobStateSequenceOracle.FindViolation(
-            [JobStatus.Running, JobStatus.Running, JobStatus.Running]));
+            [JobStatus.InProgress, JobStatus.InProgress, JobStatus.InProgress]));
     }
 
     /// <remarks>
-    /// Resume が入る前は Running から待ち行列へ戻るのも後退だった。いまは
+    /// Resume が入る前は InProgress から待ち行列へ戻るのも後退だった。いまは
     /// Pausing → Paused → Resume を経て正当に戻れるので、オラクルが捕まえられる後退は
     /// Cancelling と終端から出る列だけに狭まっている。検出力の低下は閉路の正直な代償で、
     /// 閉路そのものが合法であることは下の「一時停止と再開の列は説明できる」が固定する。
     /// </remarks>
     [Theory]
-    [InlineData(JobStatus.Cancelling, JobStatus.Running)]
+    [InlineData(JobStatus.Cancelling, JobStatus.InProgress)]
     [InlineData(JobStatus.Cancelling, JobStatus.Resumed)]
     [InlineData(JobStatus.Cancelling, JobStatus.Paused)]
     [InlineData(JobStatus.Completed, JobStatus.Cancelling)]
     [InlineData(JobStatus.Cancelled, JobStatus.Completed)]
-    [InlineData(JobStatus.Failed, JobStatus.Running)]
+    [InlineData(JobStatus.Failed, JobStatus.InProgress)]
     public void 後退した列は説明できない(JobStatus from, JobStatus to)
     {
         Assert.NotNull(JobStateSequenceOracle.FindViolation([from, to]));
@@ -53,10 +53,10 @@ public sealed class JobStateSequenceOracleTests
     [Fact]
     public void 一時停止と再開の列は説明できる()
     {
-        // 待ち行列へ戻る唯一の道。観測が飛んでいても（Running → Resumed だけでも）説明できる。
+        // 待ち行列へ戻る唯一の道。観測が飛んでいても（InProgress → Resumed だけでも）説明できる。
         Assert.Null(JobStateSequenceOracle.FindViolation(
-            [JobStatus.Running, JobStatus.Pausing, JobStatus.Paused, JobStatus.Resumed, JobStatus.Running]));
-        Assert.Null(JobStateSequenceOracle.FindViolation([JobStatus.Running, JobStatus.Resumed]));
+            [JobStatus.InProgress, JobStatus.Pausing, JobStatus.Paused, JobStatus.Resumed, JobStatus.InProgress]));
+        Assert.Null(JobStateSequenceOracle.FindViolation([JobStatus.InProgress, JobStatus.Resumed]));
     }
 
     [Fact]

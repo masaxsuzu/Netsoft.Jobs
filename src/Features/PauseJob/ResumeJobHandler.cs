@@ -6,8 +6,8 @@ using Netsoft.Jobs.Domain;
 namespace Netsoft.Jobs.Features.PauseJob;
 
 /// <summary>
-/// Job の再開を要求する。停止中（Paused）なら Resumed へ戻して既存のディスパッチに乗せ、
-/// 受理前（Pausing）なら Running へ揺り戻すだけで済ませる。
+/// Job の再開を要求する。停止中（Paused）なら Resuming を経て待ち行列へ戻し、
+/// 受理前（Pausing）なら InProgress へ揺り戻すだけで済ませる。
 /// </summary>
 /// <remarks>
 /// どちらへ進むかは状態機械が決める。ここでは分岐しない。
@@ -67,13 +67,47 @@ public sealed class ResumeJobHandler
                 continue;
             }
 
-            // Resumed（停止中からの再開）か Running（受理前の取り消し）かは遷移後の状態で読み取れる。
+            // Resuming（停止中からの再開）か InProgress（受理前の取り消し）かは遷移後の状態で読み取れる。
             _logger.LogInformation(
                 "Job {JobId} の再開要求を受理しました。状態は {Status} になりました。",
                 jobId.Value,
                 job.Status);
 
-            return JobControlResult.Accepted(JobDto.From(job));
+            Job settled = transition.Previous.IsHandlerActive()
+                ? job
+                : await SettleAsync(job, cancellationToken);
+
+            return JobControlResult.Accepted(JobDto.From(settled));
+        }
+    }
+
+    /// <summary>
+    /// 要求を確定させる。ハンドラが居ない相手にだけ呼ぶ。
+    /// </summary>
+    /// <remarks>
+    /// 判断は <see cref="PauseJobHandler"/> の同名メソッドと同じで、理由もそちらに書いてある。
+    /// 呼ぶ相手が違う（ここは Resuming → Resumed）だけなので、共通化せずに写してある。
+    /// </remarks>
+    private async Task<Job> SettleAsync(Job requested, CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            Job? job = await _store.FindAsync(requested.Id, cancellationToken);
+            if (job is null)
+            {
+                return requested;
+            }
+
+            if (job.Status.SettlementTrigger() is not { } confirm
+                || !job.Apply(confirm, _timeProvider.GetUtcNow()).IsAllowed)
+            {
+                return job;
+            }
+
+            if (await _store.UpdateAsync(job, cancellationToken))
+            {
+                return job;
+            }
         }
     }
 }

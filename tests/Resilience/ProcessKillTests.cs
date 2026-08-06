@@ -59,7 +59,7 @@ public sealed class ProcessKillTests : IAsyncLifetime
     {
         // 1 サブタスクにつき 60 秒。殺すまでの間に走り切らせない。
         JobsApi.JobDto registered = await Api.RegisterAsync("3 60");
-        await Api.WaitForAsync(registered.Id, "Running");
+        await Api.WaitForAsync(registered.Id, "InProgress");
 
         // 停止要求ではなく電源断。走っている Job は結末を書けない。
         await Host.KillAsync();
@@ -107,7 +107,7 @@ public sealed class ProcessKillTests : IAsyncLifetime
     {
         // 1 つ目が長く占有している間に登録されたものは待機中のまま。
         JobsApi.JobDto running = await Api.RegisterAsync("1 60");
-        await Api.WaitForAsync(running.Id, "Running");
+        await Api.WaitForAsync(running.Id, "InProgress");
 
         JobsApi.JobDto waiting = await Api.RegisterAsync("1 1");
         await Api.WaitForAsync(waiting.Id, "Registered");

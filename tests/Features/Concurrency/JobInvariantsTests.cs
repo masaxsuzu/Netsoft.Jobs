@@ -38,7 +38,7 @@ public sealed class JobInvariantsTests
     [Fact]
     public void 終端でないのにFinishedAtがあれば見つかる()
     {
-        Job broken = Rehydrate(JobStatus.Running, startedAt: Created, finishedAt: Created);
+        Job broken = Rehydrate(JobStatus.InProgress, startedAt: Created, finishedAt: Created);
 
         Assert.Contains("FinishedAt", JobInvariants.FindViolation(broken));
     }
@@ -67,12 +67,21 @@ public sealed class JobInvariantsTests
         Assert.Contains("FailureMessage", JobInvariants.FindViolation(broken));
     }
 
+    /// <summary>
+    /// 実行中に開始時刻が無くても、この検査は違反と言わない。
+    /// </summary>
+    /// <remarks>
+    /// かつては言えた。要求が ing を経由するようになって
+    /// <c>Registered → Pausing → Resume → InProgress</c> という、一度も Start を通らずに
+    /// 実行中へ入る列が状態機械の上に現れたため、状態だけからは決まらなくなっている
+    /// （実際の系にこの列は現れない。理由は <see cref="JobInvariants"/> の注記）。
+    /// <b>検出力が落ちたことを黙って通さないよう、落ちたこと自体をここで固定する。</b>
+    /// </remarks>
     [Fact]
-    public void 実行中なのにStartedAtが無ければ見つかる()
+    public void 実行中に開始時刻が無くても状態だけでは違反と言えない()
     {
-        Job broken = Rehydrate(JobStatus.Running, startedAt: null, finishedAt: null);
-
-        Assert.Contains("StartedAt", JobInvariants.FindViolation(broken));
+        Assert.Null(JobInvariants.FindViolation(
+            Rehydrate(JobStatus.InProgress, startedAt: null, finishedAt: null)));
     }
 
     /// <summary>
@@ -105,7 +114,7 @@ public sealed class JobInvariantsTests
     {
         Assert.Contains(
             "StartedAt",
-            JobInvariants.FindViolation(Rehydrate(JobStatus.Running, startedAt: Created.AddSeconds(-1), finishedAt: null)));
+            JobInvariants.FindViolation(Rehydrate(JobStatus.InProgress, startedAt: Created.AddSeconds(-1), finishedAt: null)));
 
         Assert.Contains(
             "FinishedAt",

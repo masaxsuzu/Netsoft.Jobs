@@ -50,14 +50,14 @@ public sealed class JobStateMachineTests
     /// </summary>
     [Theory]
     [InlineData(JobStatus.Cancelling, JobTrigger.RequestCancel, JobTransitionRejection.AlreadyInEffect)]
-    [InlineData(JobStatus.Running, JobTrigger.Start, JobTransitionRejection.AlreadyInEffect)]
+    [InlineData(JobStatus.InProgress, JobTrigger.Start, JobTransitionRejection.AlreadyInEffect)]
     [InlineData(JobStatus.Pausing, JobTrigger.Start, JobTransitionRejection.AlreadyInEffect)]
     [InlineData(JobStatus.Pausing, JobTrigger.RequestPause, JobTransitionRejection.AlreadyInEffect)]
     [InlineData(JobStatus.Paused, JobTrigger.RequestPause, JobTransitionRejection.AlreadyInEffect)]
     [InlineData(JobStatus.Registered, JobTrigger.Resume, JobTransitionRejection.AlreadyInEffect)]
-    [InlineData(JobStatus.Running, JobTrigger.Resume, JobTransitionRejection.AlreadyInEffect)]
+    [InlineData(JobStatus.InProgress, JobTrigger.Resume, JobTransitionRejection.AlreadyInEffect)]
     [InlineData(JobStatus.Registered, JobTrigger.Complete, JobTransitionRejection.InvalidForCurrentStatus)]
-    [InlineData(JobStatus.Running, JobTrigger.ConfirmCancelled, JobTransitionRejection.InvalidForCurrentStatus)]
+    [InlineData(JobStatus.InProgress, JobTrigger.ConfirmCancelled, JobTransitionRejection.InvalidForCurrentStatus)]
     [InlineData(JobStatus.Cancelling, JobTrigger.Resume, JobTransitionRejection.InvalidForCurrentStatus)]
     public void 終端以外の拒否は既に効いているかどうかで理由が分かれる(
         JobStatus current, JobTrigger trigger, JobTransitionRejection expected)
@@ -82,21 +82,27 @@ public sealed class JobStateMachineTests
     {
         foreach (JobStatus waiting in JobTransitionTable.AllStatuses.Where(status => status.IsWaiting()))
         {
-            JobTransitionResult paused = JobStateMachine.Evaluate(waiting, JobTrigger.RequestPause);
+            JobTransitionResult pausing = JobStateMachine.Evaluate(waiting, JobTrigger.RequestPause);
+            Assert.Equal(JobStatus.Pausing, pausing.Status);
+
+            JobTransitionResult paused = JobStateMachine.Evaluate(pausing.Status, JobTrigger.ConfirmPaused);
             Assert.Equal(JobStatus.Paused, paused.Status);
 
-            JobTransitionResult back = JobStateMachine.Evaluate(paused.Status, JobTrigger.Resume);
+            JobTransitionResult resuming = JobStateMachine.Evaluate(paused.Status, JobTrigger.Resume);
+            Assert.Equal(JobStatus.Resuming, resuming.Status);
+
+            JobTransitionResult back = JobStateMachine.Evaluate(resuming.Status, JobTrigger.ConfirmResumed);
             Assert.Equal(JobStatus.Resumed, back.Status);
         }
     }
 
     [Fact]
-    public void ハンドラ稼働中と判定されるのはRunningとCancellingとPausingだけ()
+    public void ハンドラ稼働中と判定されるのはInProgressとCancellingとPausingだけ()
     {
         // 起動時復旧の対象を決める判定なので、対象がずれないことを明示的に固定する。
         foreach (JobStatus status in JobTransitionTable.AllStatuses)
         {
-            bool expected = status is JobStatus.Running or JobStatus.Cancelling or JobStatus.Pausing;
+            bool expected = status is JobStatus.InProgress or JobStatus.Cancelling or JobStatus.Pausing;
 
             Assert.Equal(expected, status.IsHandlerActive());
         }
