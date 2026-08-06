@@ -256,7 +256,6 @@ public sealed class JobExecutionEngine
 
             if (executed)
             {
-                // 続けて次を拾う。溜まっている間は待たない。
                 continue;
             }
 
@@ -288,20 +287,17 @@ public sealed class JobExecutionEngine
     /// </param>
     private async Task RunHandlerAsync(Job job, CancellationTokenSource cancellation)
     {
-        // ハンドラには識別子と parameters だけを渡す（Job 全体は渡さない。状態を
-        // 触られる形にしない）。ログへの JobId の付与はこのスコープが担い、
-        // ハンドラや await の継続が将来書くログ行すべてに JobId と JobType が自動で付く。
+        // ハンドラへ Job 全体は渡さない（識別子と parameters だけ）。渡すと状態を
+        // 触れてしまい、結末の書き手がエンジンだけという分担が崩れる。
         using IDisposable? scope = _logger.BeginScope("Job {JobId} ({JobType})", job.Id.Value, job.JobType);
 
         // 購読者がいなければ null が返り、以降の activity?. はすべて no-op になる。
         // つまり購読者ゼロのときは挙動が一切変わらない。スパンの開始（機構）は
         // instrumentation の仕事で、エンジンが持つのは結末に応じた終わり方の判断だけ。
-        // トークンを渡さないのは FinishAsync と同じ理由で、プロセス停止は
-        // 利用者のキャンセル要求ではないから。
+        // トークンを渡さない理由は FinishAsync の注記と同じ。
         using Activity? activity =
             await _instrumentation.StartExecuteActivityAsync(job, CancellationToken.None);
 
-        // Running を書き戻せた直後、つまりこの Job を実行すると確定した点の記録。
         _logger.LogInformation("Job {JobId} ({JobType}) の実行を開始します。", job.Id.Value, job.JobType);
 
         // 一時停止の受理と再開が交差したときだけ 2 周目がある。ハンドラは境界で
@@ -437,7 +433,6 @@ public sealed class JobExecutionEngine
                 return (Rerun: false, Settled: job.Status);
             }
 
-            // 書き戻しに負けた。窓に割り込んだ要求を次の周回で正しい行き先へ送る。
         }
     }
 
@@ -494,8 +489,8 @@ public sealed class JobExecutionEngine
                     $"実行の結末 {trigger} を状態 {job.Status} に記録できませんでした。");
             }
 
-            // 拒否されて Fail を再適用した場合も、状態は 1 回目の拒否で変わっていないので
-            // 期待状態は同じ。どちらの経路でも result.Previous が読み出したときの状態を指す。
+            // 拒否されて Fail を再適用した場合も、状態は 1 回目の拒否で変わっていないので、
+            // 下で読む result.Previous はどちらの経路でも「読み出したときの状態」を指す。
             if (await _store.UpdateAsync(job, CancellationToken.None))
             {
                 // 結末の確定＝終端の書き戻しに成功した点。所要時間と終端到達数はここで確定する。

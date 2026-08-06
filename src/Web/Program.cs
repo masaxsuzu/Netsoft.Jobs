@@ -29,10 +29,8 @@ builder.Services.AddSingleton<IJobStore>(provider => new NotifyingJobStore(
     provider.GetRequiredService<JobChangeFeed>()));
 
 // 登録時 trace context の置き場。AddJobFeatures が TryAdd した no-op より後に登録するので、
-// 単一解決はこちら（最後の登録）が勝つ。Jobs と同じ DB ファイルの別表を使う。
-// 具象型（Infrastructure）も登録しておくのは、起動時初期化が InitializeAsync を
-// 具象型でしか呼べないため。port への結線はアダプタが担う。
-// サブタスクも同じ DB ファイルに載せる。具象型も登録するのは InitializeAsync のため（上と同じ）。
+// 単一解決はこちら（最後の登録）が勝つ。port への結線はアダプタが担う。
+// サブタスクと trace context も Jobs と同じ DB ファイルに載せる。
 builder.Services.AddSingleton(new SqliteSubTaskStore(databasePath));
 builder.Services.AddSingleton<ISubTaskStore>(provider => new NotifyingSubTaskStore(
     provider.GetRequiredService<SqliteSubTaskStore>(),

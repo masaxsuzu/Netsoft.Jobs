@@ -198,9 +198,6 @@ public sealed class SubTaskJobHandler : IJobHandler
             return (waits, pauseRequested);
         }
 
-        // 削除の範囲は編集された N をそのまま使う。着手済みへ切り上げない ── 着手済みは
-        // 必ず先頭から連続するので、範囲を広げても消えるのは未着手の行だけで結果が変わらない。
-        // 守りは RemovePendingFromAsync の SQL が持つ（クラスの注記を参照）。
         int target = count;
 
         if (target > subTasks.Count)

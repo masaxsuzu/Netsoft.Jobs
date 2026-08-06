@@ -9,9 +9,6 @@ namespace Netsoft.Jobs.Features.QueryJobTypes;
 /// <summary>
 /// Job の種類の読み出しの HTTP 入口。
 /// </summary>
-/// <remarks>
-/// ここに置くのはハンドラを呼んで結果を HTTP へ写す処理だけ。判断を書かない。
-/// </remarks>
 public static class QueryJobTypesEndpoint
 {
     /// <summary>

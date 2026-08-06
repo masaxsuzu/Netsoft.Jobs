@@ -9,10 +9,6 @@ namespace Netsoft.Jobs.Features.RegisterJob;
 /// <summary>
 /// 登録の HTTP 入口。
 /// </summary>
-/// <remarks>
-/// ここに置くのはハンドラを呼んで結果を HTTP へ写す処理だけ。判断を書かない。
-/// 画面（Blazor）は HTTP を通らずハンドラを直接呼ぶので、ここにロジックがあると画面から使えない。
-/// </remarks>
 public static class RegisterJobEndpoint
 {
     /// <summary>

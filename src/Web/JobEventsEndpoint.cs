@@ -93,8 +93,6 @@ public static class JobEventsEndpoint
 
                 try
                 {
-                    // 値は見ない。合図は「変更があった」以上の情報を運ばない
-                    // （JobQueueSignal と同じ契約）。待って消費するまでを 1 回で済ませる。
                     _ = await signals.Reader.ReadAsync(waiting.Token);
                 }
                 catch (OperationCanceledException) when (!disconnected.IsCancellationRequested)
