@@ -40,6 +40,7 @@ public sealed class ConcurrentOperationTests : IAsyncLifetime
 
         if (_host is not null)
         {
+            SubTaskRows.ClearPool(_host.DatabasePath);
             await _host.DisposeAsync();
         }
 
