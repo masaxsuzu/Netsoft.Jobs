@@ -2,7 +2,7 @@ using System.Net.Http.Json;
 
 using Microsoft.Data.Sqlite;
 
-namespace Netsoft.Jobs.Chaos.Tests;
+namespace Netsoft.Jobs.Resilience.Tests;
 
 /// <summary>
 /// 別のプロセスが DB の書き込みロックを握っている間の振る舞い。
@@ -21,7 +21,7 @@ namespace Netsoft.Jobs.Chaos.Tests;
 public sealed class LockedDatabaseTests : IAsyncLifetime
 {
     private readonly string _directory =
-        Path.Combine(Path.GetTempPath(), "netsoft-jobs-chaos", Path.GetRandomFileName());
+        Path.Combine(Path.GetTempPath(), "netsoft-jobs-resilience", Path.GetRandomFileName());
 
     private JobsHost? _host;
 

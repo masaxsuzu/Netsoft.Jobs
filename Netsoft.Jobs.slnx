@@ -8,7 +8,7 @@
     <Project Path="src/Web/Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/Chaos/Chaos.csproj" />
+    <Project Path="tests/Resilience/Resilience.csproj" />
     <Project Path="tests/Domain/Domain.csproj" />
     <Project Path="tests/E2E/E2E.csproj" />
     <Project Path="tests/Features/Features.csproj" />
