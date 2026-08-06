@@ -76,9 +76,9 @@ public sealed class CancelJobHandler
             {
                 // Job は拒否時に自身を変更しないので、保存しなければ store の内容も変わらない。
                 // 理由は Domain が決めたものをそのまま渡す。ここで作り直さない。
-                // 拒否には必ず理由が付く。無いなら状態機械側の不整合なので、既定値で埋めずに落とす。
-                JobTransitionRejection rejection = transition.Rejection
-                    ?? throw new InvalidOperationException("拒否された遷移に理由がありません。");
+                // 拒否には必ず理由が付くことは JobTransitionResult が型で保証している
+                //（Rejected は非 null しか受け取らない）。ここで確かめ直さない。
+                JobTransitionRejection rejection = transition.Rejection.Value;
 
                 // 既に終わっていた・不正な状態への要求は、利用者の操作として普通に起きること。
                 // 異常ではないので Warning にしない。Job 行には要求の痕跡が残らないため、

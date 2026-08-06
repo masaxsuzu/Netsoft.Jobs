@@ -51,8 +51,7 @@ public sealed class ResumeJobHandler
             JobTransitionResult transition = job.Apply(JobTrigger.Resume, _timeProvider.GetUtcNow());
             if (!transition.IsAllowed)
             {
-                JobTransitionRejection rejection = transition.Rejection
-                    ?? throw new InvalidOperationException("拒否された遷移に理由がありません。");
+                JobTransitionRejection rejection = transition.Rejection.Value;
 
                 _logger.LogInformation(
                     "Job {JobId} の再開要求を受け付けませんでした。理由は {Rejection}、現在の状態は {Status} です。",

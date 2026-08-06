@@ -52,8 +52,7 @@ public sealed class PauseJobHandler
             JobTransitionResult transition = job.Apply(JobTrigger.RequestPause, _timeProvider.GetUtcNow());
             if (!transition.IsAllowed)
             {
-                JobTransitionRejection rejection = transition.Rejection
-                    ?? throw new InvalidOperationException("拒否された遷移に理由がありません。");
+                JobTransitionRejection rejection = transition.Rejection.Value;
 
                 // 要求の痕跡は Job 行に残らない。事実と時刻はこのログだけが持つ（キャンセルと同じ）。
                 _logger.LogInformation(
