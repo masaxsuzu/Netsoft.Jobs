@@ -28,3 +28,16 @@ dotnet test -p:CollectCoverage=true   # カバレッジ計測 + 基準判定。C
 - 設定は `tests/Directory.Build.props`（計測と除外）と `tests/Web/Web.csproj`（基準）
 - 除外してよいのは「E2E が実プロセスで検証しているが coverlet が計測できないもの」だけ。
   テストを書けるものを除外で隠さない
+
+## テストの後始末
+
+一時ファイルを使うテストはこの形にそろえる。同じ注意書きを各ファイルに写さず、ここを参照する。
+
+- **一時ディレクトリはインスタンスごとに分ける**（`Path.GetRandomFileName()`）。
+  xUnit はクラスをまたいで並行に走るので、固定名だと別のテストと同じファイルを掴む
+- **SQLite のプールは自分の DB だけ閉じる**。`SqliteConnection.ClearPool(自分の接続文字列)` を使う。
+  `ClearAllPools` は<b>プロセス全域</b>に効き、並行して走っている他のテストが使用中の接続まで
+  破棄して `ObjectDisposedException` のフレークを起こす（実際に起きた）。
+  接続文字列は store 側と同じ組み立て（`DataSource` のみ）にする。違うと別のプールに当たって効かない
+- プールを閉じるのは削除の前。接続を握ったままだとファイルが開いたままで、Windows では削除に失敗する
+- **後始末の失敗でテストの結果を変えない**。`IOException` は握りつぶす。一時ディレクトリはいずれ OS が回収する

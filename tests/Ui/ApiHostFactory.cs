@@ -27,7 +27,7 @@ internal sealed class ApiHostFactory : WebApplicationFactory<Web.JobsOptions>
 
     public ApiHostFactory()
     {
-        // テストは並行して走るので、ディレクトリごと分けて衝突を避ける。
+        // 並行するテストと衝突しないよう、インスタンスごとに分ける（docs/build.md）。
         _directory = Path.Combine(Path.GetTempPath(), "netsoft-jobs-ui-tests", Path.GetRandomFileName());
         Directory.CreateDirectory(_directory);
     }
@@ -69,7 +69,7 @@ internal sealed class ApiHostFactory : WebApplicationFactory<Web.JobsOptions>
         }
         catch (IOException)
         {
-            // 後始末の失敗でテストの結果を変えたくない。一時ディレクトリはいずれ OS が回収する。
+            // 後始末の失敗でテストの結果を変えない（docs/build.md「テストの後始末」）。
         }
     }
 }

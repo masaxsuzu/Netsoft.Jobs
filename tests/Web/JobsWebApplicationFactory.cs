@@ -29,7 +29,7 @@ internal sealed class JobsWebApplicationFactory : WebApplicationFactory<Program>
     {
         _runExecutionEngine = runExecutionEngine;
 
-        // テストは並行して走るので、ディレクトリごと分けて衝突を避ける。
+        // 並行するテストと衝突しないよう、インスタンスごとに分ける（docs/build.md）。
         _directory = Path.Combine(Path.GetTempPath(), "netsoft-jobs-web-tests", Path.GetRandomFileName());
         Directory.CreateDirectory(_directory);
     }
@@ -60,10 +60,8 @@ internal sealed class JobsWebApplicationFactory : WebApplicationFactory<Program>
             return;
         }
 
-        // プールが接続を握ったままだとファイルが開きっぱなしになり、削除に失敗しうる。
-        // 閉じるのは自分の DB のプールだけ。ClearAllPools はプロセス全域に効き、
-        // 並列で走っている他のテストの接続まで破棄してフレークを起こす（実際に起きた）。
-        // Jobs と JobTraceContexts は同じ DB ファイルを使うので、この 1 回で両方のプールに当たる。
+        // プールを閉じてから消す。閉じるのは自分の DB のプールだけ
+        // （理由は docs/build.md「テストの後始末」）。
         using SqliteConnection connection = new(
             new SqliteConnectionStringBuilder { DataSource = Path.Combine(_directory, "jobs.db") }.ToString());
         SqliteConnection.ClearPool(connection);
@@ -74,7 +72,7 @@ internal sealed class JobsWebApplicationFactory : WebApplicationFactory<Program>
         }
         catch (IOException)
         {
-            // 後始末の失敗でテストの結果を変えたくない。一時ディレクトリはいずれ OS が回収する。
+            // 後始末の失敗でテストの結果を変えない（docs/build.md「テストの後始末」）。
         }
     }
 }

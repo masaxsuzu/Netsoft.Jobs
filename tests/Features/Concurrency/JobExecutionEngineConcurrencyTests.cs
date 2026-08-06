@@ -156,18 +156,10 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
     /// </summary>
     /// <remarks>
     /// <para>
-    /// かつてここには不具合の再現テストがあり、Skip してあった。復旧の完了は
-    /// <c>_recovered</c> という bool で表され、実行の入口で毎回それを見ていた。
-    /// bool では「まだ」と「走っている最中」を区別できないので、復旧の最中に実行が入ると
-    /// 二重に復旧が走り、片方が Running にした Job をもう片方が残骸として Failed で閉じた。
-    /// 条件付き更新では防げない。期待した状態（Running）は合っていて、間違っているのは
-    /// 「Running ＝ 残骸」という見立ての方だから。
-    /// </para>
-    /// <para>
-    /// いまは <see cref="JobExecutionEngine.StartAsync"/> が復旧をやり切ってから
-    /// インスタンスを返すので、その重なりは書けない。復旧中はエンジンが存在せず、
-    /// 存在してからは復旧を呼ぶ口が無い。<b>再現テストは書けないので消してある。</b>
-    /// 代わりに、消えた経路が本当に消えていることをここで押さえる。
+    /// かつてここには二重復旧の再現テストがあり、Skip してあった（何が壊れていたかは
+    /// <see cref="JobExecutionEngine.StartAsync"/> の注記）。いまはその重なりを
+    /// 書けないので<b>再現テストは消してある</b>。代わりに、消えた経路が本当に
+    /// 消えていることをここで押さえる。
     /// </para>
     /// <para>
     /// <see cref="GatedJobStore.ListByStatusCalls"/> を数えるのは、状態で絞った読み出しを
@@ -212,7 +204,6 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
         Assert.Equal(JobStatus.Completed, (await FindAsync("job-2")).Status);
     }
 
-    // 起動時復旧を済ませたエンジンを起こす。復旧を経ないと手に入らないので await が要る。
     private Task<JobExecutionEngine> CreateEngineAsync(IJobStore store, params IJobHandler[] handlers) =>
         JobExecutionEngine.StartAsync(
             store,

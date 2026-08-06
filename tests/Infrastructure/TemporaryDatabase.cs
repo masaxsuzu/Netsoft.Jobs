@@ -16,7 +16,7 @@ internal sealed class TemporaryDatabase : IDisposable
 
     public TemporaryDatabase()
     {
-        // テストは並行して走るので、ディレクトリごと分けて衝突を避ける。
+        // 並行するテストと衝突しないよう、インスタンスごとに分ける（docs/build.md）。
         _directory = Path.Combine(Path.GetTempPath(), "netsoft-jobs-tests", Path.GetRandomFileName());
         Directory.CreateDirectory(_directory);
         FilePath = Path.Combine(_directory, "jobs.db");
@@ -35,12 +35,8 @@ internal sealed class TemporaryDatabase : IDisposable
 
     public void Dispose()
     {
-        // プールが接続を握ったままだとファイルを開いたままになり、
-        // Windows では削除に失敗する。閉じてから消す。
-        // 閉じるのは自分の DB のプールだけ。ClearAllPools はプロセス全域に効き、
-        // 並列で走っている他のテストが使っている最中の接続まで破棄して
-        // ObjectDisposedException のフレークを起こす（実際に起きた）。
-        // 接続文字列は store と同じ組み立て（DataSource のみ）なので、同じプールに当たる。
+        // プールを閉じてから消す。閉じるのは自分の DB のプールだけ
+        // （理由は docs/build.md「テストの後始末」）。
         using SqliteConnection connection = new(
             new SqliteConnectionStringBuilder { DataSource = FilePath }.ToString());
         SqliteConnection.ClearPool(connection);
