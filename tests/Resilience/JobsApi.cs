@@ -56,9 +56,6 @@ internal sealed class JobsApi : IDisposable
     public Task<HttpResponseMessage> EditAsync(string id, string parameters) =>
         _client.PutAsJsonAsync($"/api/jobs/{id}/parameters", new { parameters });
 
-    public async Task<IReadOnlyList<SubTaskDto>> SubTasksAsync(string id) =>
-        await _client.GetFromJsonAsync<IReadOnlyList<SubTaskDto>>($"/api/jobs/{id}/subtasks") ?? [];
-
     /// <summary>いずれかの状態になるまで待つ。</summary>
     public Task<JobDto> WaitForAsync(string id, params string[] statuses) =>
         _host.PollAsync(
@@ -79,8 +76,4 @@ internal sealed class JobsApi : IDisposable
         [property: JsonPropertyName("parameters")] string Parameters,
         [property: JsonPropertyName("finishedAt")] DateTimeOffset? FinishedAt,
         [property: JsonPropertyName("failureMessage")] string? FailureMessage);
-
-    internal sealed record SubTaskDto(
-        [property: JsonPropertyName("index")] int Index,
-        [property: JsonPropertyName("status")] string Status);
 }

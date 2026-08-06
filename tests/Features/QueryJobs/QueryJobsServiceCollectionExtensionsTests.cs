@@ -32,6 +32,5 @@ public sealed class QueryJobsServiceCollectionExtensionsTests
         using IServiceScope scope = provider.CreateScope();
 
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<QueryJobsHandler>());
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<QuerySubTasksHandler>());
     }
 }

@@ -36,6 +36,9 @@ internal sealed class JobsHost : IAsyncDisposable
     /// <summary>この起動が待ち受けている URL。</summary>
     public string BaseUrl { get; }
 
+    /// <summary>このホストが使っている DB のパス。</summary>
+    public string DatabasePath => _databasePath;
+
     /// <summary>プロセスの標準出力と標準エラー。失敗時の診断に使う。</summary>
     public string Output
     {

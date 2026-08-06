@@ -26,7 +26,6 @@ public static class JobFeaturesEndpointRouteBuilderExtensions
         endpoints.MapCancelJob();
         endpoints.MapPauseJob();
         endpoints.MapEditJob();
-        endpoints.MapQuerySubTasks();
 
         return endpoints;
     }

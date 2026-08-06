@@ -89,9 +89,9 @@ public sealed class ProcessKillTests : IAsyncLifetime
 
         await Api.WaitForAsync(registered.Id, "Failed");
 
-        IReadOnlyList<JobsApi.SubTaskDto> subTasks = await Api.SubTasksAsync(registered.Id);
-
-        Assert.Equal(["Running", "Pending", "Pending"], subTasks.Select(subTask => subTask.Status));
+        Assert.Equal(
+            ["Running", "Pending", "Pending"],
+            await SubTaskRows.ReadAsync(Host.DatabasePath, registered.Id));
     }
 
     /// <summary>
@@ -119,9 +119,11 @@ public sealed class ProcessKillTests : IAsyncLifetime
         await Api.WaitForAsync(queued.Id, "Completed");
     }
 
-    private Task<JobsApi.SubTaskDto> WaitForSubTaskStatusAsync(string id, int index, string status) =>
+    private Task<string> WaitForSubTaskStatusAsync(string id, int index, string status) =>
         Host.PollAsync(
-            async _ => (await Api.SubTasksAsync(id))
-                .FirstOrDefault(subTask => subTask.Index == index && subTask.Status == status),
+            async _ => (await SubTaskRows.ReadAsync(Host.DatabasePath, id)) is { } rows
+                && rows.Count > index && rows[index] == status
+                ? status
+                : null,
             $"Job {id} の {index} 番目が {status} になること");
 }
