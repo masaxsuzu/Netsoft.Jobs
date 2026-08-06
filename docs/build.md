@@ -5,7 +5,12 @@ dotnet build
 dotnet test
 dotnet format            # CI では --verify-no-changes で検査される
 dotnet test -p:CollectCoverage=true   # カバレッジ計測 + 基準判定。CI の Test はこれ
+
+tools/gate.sh                         # 上の 3 つをコミットした木で通し、push を解錠する
 ```
+
+`tools/gate.sh` を通していないコミットは push できない（`tools/gate-hook.sh` が止める）。
+手順ごと通すなら `/ship` を使う。
 
 **.NET 10 SDK が必要**（`global.json` で固定）。ターゲットは `net10.0`、C# 14。
 

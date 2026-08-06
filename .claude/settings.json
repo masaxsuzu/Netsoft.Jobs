@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "tools/gate-hook.sh",
+            "timeout": 20,
+            "statusMessage": "ゲートを通ったコミットか確認しています"
+          }
+        ]
+      }
+    ]
+  }
+}

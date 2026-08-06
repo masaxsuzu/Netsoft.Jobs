@@ -12,7 +12,8 @@ Job の登録・監視・キャンセルができる。動かし方は [README](
 3. **実装** — サブエージェントに 1 タスクずつ渡す。受け入れ条件・触ってよいファイルの範囲・
    従う規約・**build と test を通すまでがタスク**であることを明記する。
    並行させるのはファイルが重ならない場合のみ
-4. **PR** — 1 タスク = 1 PR。`.github/pull_request_template.md` を埋める
+4. **PR** — 1 タスク = 1 PR。**`/ship` を使う**。`.github/pull_request_template.md` を埋める。
+   ゲート（`tools/gate.sh`）を通っていないコミットは push できない（`tools/gate-hook.sh` が止める）
 5. **CI と修正** — 落ちたら診断して修正を push。放置して次のタスクへ進まない。
    原因が main 側なら PR にコメントして main を先に直す
 6. **マージ** — ルールセットが CI を必須チェックにしており、auto-merge を有効にした PR は
