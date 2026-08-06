@@ -47,7 +47,7 @@ auto-merge を有効にしてよいのは、受け入れ条件を満たし、ロ
 - `src/Infrastructure` — SQLite
 - `src/Web` — API + 実行エンジンのホスト
 - `src/Ui` — 画面（Blazor Server）のホスト
-- `tests/` — src と対応。`E2E` は 2 プロセスを実起動する
+- `tests/` — src と対応。`E2E` は 2 プロセスを実起動し、`Chaos` はホストを実起動して壊す
 - `docs/` — 開発の決めごと。**作業を始める前に読むこと**
 
 ## docs
