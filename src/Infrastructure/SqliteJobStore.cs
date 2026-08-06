@@ -19,24 +19,6 @@ public sealed class SqliteJobStore : IJobStore
     private const string Columns =
         "Id, Name, JobType, Parameters, Status, CreatedAt, StartedAt, FinishedAt, FailureMessage, Version";
 
-    // 実行を待っている状態。どれが待ちかを SQL に書き写さず JobStatusExtensions.IsWaiting から
-    // 導くのは、状態が増えたときに「拾われない待ち行列」ができないようにするため
-    // （増えても黙って滞留するだけで、エラーはどこにも出ない）。
-    // 中身は起動時に決まるので、SQL 文もパラメータ名もここで 1 度だけ組み立てる。
-    private static readonly JobStatus[] WaitingStatuses =
-        [.. Enum.GetValues<JobStatus>().Where(status => status.IsWaiting())];
-
-    private static readonly string[] WaitingParameterNames =
-        [.. WaitingStatuses.Select((_, index) => $"$waiting{index}")];
-
-    private static readonly string FindOldestWaitingSql =
-        $"""
-        SELECT {Columns} FROM Jobs
-        WHERE Status IN ({string.Join(", ", WaitingParameterNames)})
-        ORDER BY CreatedAt ASC, Id ASC
-        LIMIT 1;
-        """;
-
     private readonly string _connectionString;
 
     /// <summary>
@@ -214,13 +196,19 @@ public sealed class SqliteJobStore : IJobStore
         await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
         await using SqliteCommand command = connection.CreateCommand();
 
-        command.CommandText = FindOldestWaitingSql;
-
-        for (int index = 0; index < WaitingStatuses.Length; index++)
-        {
-            command.Parameters.AddWithValue(
-                WaitingParameterNames[index], JobStatusText.ToText(WaitingStatuses[index]));
-        }
+        // 待ち行列の状態はここに書き写してある。JobStatusExtensions.IsWaiting から
+        // 動的に組み立てる形も試したが、2 状態のために static を 3 つ置くのは割に合わなかった。
+        // 書き写しが IsWaiting とずれると Job が黙って滞留する（エラーはどこにも出ない）ので、
+        // ずれを SqliteJobStoreTests の「IsWaiting が true の状態をすべて拾う」が捕まえる。
+        command.CommandText =
+            $"""
+            SELECT {Columns} FROM Jobs
+            WHERE Status IN ($registered, $resumed)
+            ORDER BY CreatedAt ASC, Id ASC
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$registered", JobStatusText.ToText(JobStatus.Registered));
+        command.Parameters.AddWithValue("$resumed", JobStatusText.ToText(JobStatus.Resumed));
 
         return await ReadOneAsync(command, cancellationToken).ConfigureAwait(false);
     }

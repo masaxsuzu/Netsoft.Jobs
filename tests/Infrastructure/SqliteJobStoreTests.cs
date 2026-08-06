@@ -134,6 +134,45 @@ public sealed class SqliteJobStoreTests
         Assert.Equal("registered-古", oldest.Id.Value);
     }
 
+    /// <summary>
+    /// IsWaiting が true の状態はひとつ残らず拾われる。
+    /// </summary>
+    /// <remarks>
+    /// SQL は待ち行列の状態を書き写しているので、状態を足して IsWaiting だけ直すと
+    /// その Job は誰にも拾われず黙って滞留する（エラーはどこにも出ない）。
+    /// 個別のケースを並べず総当たりにしてあるのは、状態が増えたときに
+    /// テストを書き足さなくてもここが落ちるようにするため。
+    /// </remarks>
+    [Fact]
+    public async Task FindOldestWaitingAsyncはIsWaitingが真の状態をすべて拾う()
+    {
+        JobStatus[] waiting = [.. Enum.GetValues<JobStatus>().Where(status => status.IsWaiting())];
+        Assert.NotEmpty(waiting);
+
+        foreach (JobStatus status in waiting)
+        {
+            using TemporaryDatabase database = new();
+            SqliteJobStore store = await database.OpenStoreAsync();
+
+            await store.AddAsync(
+                Job.Rehydrate(
+                    JobId.From($"{status}"),
+                    $"{status} の Job",
+                    "Demo",
+                    string.Empty,
+                    status,
+                    BaseTime,
+                    startedAt: null,
+                    finishedAt: null,
+                    failureMessage: null),
+                None);
+
+            Job? found = await store.FindOldestWaitingAsync(None);
+
+            Assert.Equal($"{status}", found?.Id.Value);
+        }
+    }
+
     [Fact]
     public async Task FindOldestWaitingAsyncは待機中が無ければnullを返す()
     {
