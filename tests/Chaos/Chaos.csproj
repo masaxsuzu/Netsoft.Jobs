@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!--
+    ビルド済みの Netsoft.Jobs.Web.dll を実プロセスとして起動する。参照アセンブリとしては
+    使わないが、ProjectReference を張ることで `dotnet test tests/Chaos` 単独でも
+    先にビルドされることを保証する（E2E と同じ理由）。
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Web\Web.csproj" />
+  </ItemGroup>
+
+  <!--
+    アプリを別プロセスで起動するため coverlet の計測に乗らない。有効にしても
+    空の結果でマージを汚すだけなので、常に無効にする（E2E と同じ）。
+  -->
+  <PropertyGroup>
+    <CollectCoverage>false</CollectCoverage>
+  </PropertyGroup>
+
+</Project>
