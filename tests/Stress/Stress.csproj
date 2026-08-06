@@ -12,7 +12,7 @@
 
   <!--
     ビルド済みの Netsoft.Jobs.Web.dll を実プロセスとして起動する。参照アセンブリとしては
-    使わないが、ProjectReference を張ることで `dotnet test tests/Chaos` 単独でも
+    使わないが、ProjectReference を張ることで `dotnet test tests/Stress` 単独でも
     先にビルドされることを保証する（E2E と同じ理由）。
   -->
   <ItemGroup>

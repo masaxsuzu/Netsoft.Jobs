@@ -88,7 +88,7 @@ Job の登録・監視・キャンセルができる。動かし方は [README](
 - `src/Infrastructure` — SQLite
 - `src/Web` — API + 実行エンジンのホスト
 - `src/Ui` — 画面（Blazor Server）のホスト
-- `tests/` — src と対応。`E2E` は 2 プロセスを実起動し、`Resilience` はホストを実起動して壊し、外から同時に叩く
+- `tests/` — src と対応。`E2E` は 2 プロセスを実起動し、`Stress` はホストを実起動して壊し、外から同時に叩く
 - `docs/` — 開発の決めごと。**作業を始める前に読むこと**
 
 ## docs

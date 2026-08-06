@@ -1,4 +1,4 @@
-namespace Netsoft.Jobs.Resilience.Tests;
+namespace Netsoft.Jobs.Stress.Tests;
 
 /// <summary>
 /// DB が使えない状態で起動したとき、黙って動き続けないこと。

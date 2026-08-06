@@ -1,4 +1,4 @@
-namespace Netsoft.Jobs.Resilience.Tests;
+namespace Netsoft.Jobs.Stress.Tests;
 
 /// <summary>
 /// 走っている最中にプロセスが消えたとき、次の起動で何が起きるか。

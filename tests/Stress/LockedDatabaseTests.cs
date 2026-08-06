@@ -2,7 +2,7 @@ using System.Net.Http.Json;
 
 using Microsoft.Data.Sqlite;
 
-namespace Netsoft.Jobs.Resilience.Tests;
+namespace Netsoft.Jobs.Stress.Tests;
 
 /// <summary>
 /// 別のプロセスが DB の書き込みロックを握っている間の振る舞い。
