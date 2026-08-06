@@ -167,25 +167,6 @@ public sealed class JobsApiClientTests : IDisposable
         Assert.True(invalid.Errors.ContainsKey("parameters"));
     }
 
-    [Fact]
-    public async Task サブタスクの一覧は連番順で写り対象なしはnull()
-    {
-        RegisterJobResponse registered = await _client.RegisterJobAsync(
-            "進捗を見る Job", "subtasks", "2 1", CancellationToken.None);
-        Assert.NotNull(registered.Job);
-
-        ISubTaskStore subTasks = _factory.Api.Services.GetRequiredService<ISubTaskStore>();
-        await subTasks.AddRangeAsync(
-            [SubTask.Create(JobId.From(registered.Job.Id), 0), SubTask.Create(JobId.From(registered.Job.Id), 1)],
-            CancellationToken.None);
-
-        IReadOnlyList<SubTaskDto>? listed =
-            await _client.ListSubTasksAsync(registered.Job.Id, CancellationToken.None);
-        Assert.Equal([new SubTaskDto(0, "Pending"), new SubTaskDto(1, "Pending")], listed);
-
-        Assert.Null(await _client.ListSubTasksAsync("does-not-exist", CancellationToken.None));
-    }
-
     /// <summary>store を直接進めて実行中にする。エンジンは止まっているのでこれが唯一の道。</summary>
     private async Task StartAsync(string id)
     {

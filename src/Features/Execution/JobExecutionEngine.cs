@@ -338,7 +338,7 @@ public sealed class JobExecutionEngine
 
                 if (settled is { } paused)
                 {
-                    activity?.SetTag("job.status", paused.ToString());
+                    activity?.SetTag("job.status", JobStatusText.ToText(paused));
                 }
 
                 return;
@@ -365,7 +365,7 @@ public sealed class JobExecutionEngine
             JobStatus? finished = await FinishAsync(job.Id, trigger, failureMessage);
             if (finished is { } status)
             {
-                activity?.SetTag("job.status", status.ToString());
+                activity?.SetTag("job.status", JobStatusText.ToText(status));
             }
 
             return;

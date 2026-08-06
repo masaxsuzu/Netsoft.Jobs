@@ -13,14 +13,20 @@ namespace Netsoft.Jobs.Features.Execution;
 /// </remarks>
 public static class SubTaskParameters
 {
+    /// <summary>受け付ける形を利用者へ案内する文。</summary>
+    /// <remarks>
+    /// 受理条件を持つのは <see cref="TryParse"/> だけなので、それを説明する文もここに置く。
+    /// 写しを別の場所（編集 API の検証など）に置くと、条件を変えたときに片方だけが嘘になる。
+    /// </remarks>
+    public const string Expectation = "「個数 秒数」を空白区切りの正の整数で指定してください（例: 3 5）。";
+
     /// <summary>解釈する。読めなければ例外。実行の入口（ハンドラ）用。</summary>
     /// <exception cref="FormatException">「個数 秒数」として読めない場合。</exception>
     public static (int Count, int Waits) Parse(string parameters) =>
         TryParse(parameters, out int count, out int waits)
             ? (count, waits)
             : throw new FormatException(
-                $"サブタスクの指定として解釈できません: \"{parameters}\"。"
-                + "「個数 秒数」を空白区切りの正の整数で指定してください（例: 3 5）。");
+                $"サブタスクの指定として解釈できません: \"{parameters}\"。" + Expectation);
 
     /// <summary>例外を投げずに解釈する。外部入力（編集 API）の検証用。</summary>
     public static bool TryParse(string parameters, out int count, out int waits)

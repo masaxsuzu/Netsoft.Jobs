@@ -32,6 +32,4 @@ internal static class JobApiRoutes
     /// <summary>指定した Job のパラメータの差し替え（PUT）。</summary>
     public static string ParametersFor(string id) => $"{Jobs}/{Uri.EscapeDataString(id)}/parameters";
 
-    /// <summary>指定した Job のサブタスクの一覧（GET）。</summary>
-    public static string SubTasksFor(string id) => $"{Jobs}/{Uri.EscapeDataString(id)}/subtasks";
 }

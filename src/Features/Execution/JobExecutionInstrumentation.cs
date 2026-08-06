@@ -174,7 +174,7 @@ public sealed class JobExecutionInstrumentation : IDisposable
         ArgumentNullException.ThrowIfNull(job);
 
         KeyValuePair<string, object?> type = new("job.type", job.JobType);
-        KeyValuePair<string, object?> status = new("job.status", job.Status.ToString());
+        KeyValuePair<string, object?> status = new("job.status", JobStatusText.ToText(job.Status));
 
         _executionDuration.Record((job.FinishedAt!.Value - job.StartedAt!.Value).TotalSeconds, type, status);
         _finished.Add(1, status);

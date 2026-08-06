@@ -45,6 +45,11 @@ description: src/ を 4 観点（再利用・単純化・効率・深さ）で�
   `JobExecutionInstrumentation` へ移動 / traceparent 保存を `Recorded` でガード /
   ポーリングを keep-alive 認知型に / `JobEventsEndpoint` を `ReadAsync` 1 回に /
   UI 分離後に古くなったコメントの修正
+- **4 巡目**: 観測の 3 か所（メトリクスのタグ・スパン属性）を `JobStatusText.ToText` へ通す /
+  「個数 秒数」の案内文を `SubTaskParameters.Expectation` へ集約 /
+  `JobsApiClient` の 400 本文読み取りを `ReadValidationErrorsAsync` へ /
+  `EditJobHandler` の到達不能な `parameters is null` を削除 /
+  Ui の `ListSubTasksAsync` と `JobApiRoutes.SubTasksFor` を削除（画面から呼ばれない）
 
 ### 畳むべきでない・意図的（再提案禁止）
 
@@ -72,6 +77,16 @@ description: src/ を 4 観点（再利用・単純化・効率・深さ）で�
 - 「観測の失敗で本務を失敗させない」catch 2 箇所 / `JobParameterHints` のキー写し
 - `RunAsync` 先頭の `EnsureRecoveredAsync`（削ると復旧失敗の挙動が変わる）
 - `FinishAsync` のログ if/else（三項にすると CA2254）
+- **`transition.Rejection ?? throw` 3 箇所**（Cancel / Pause / Resume）。型の上では到達不能だが、
+  `CancelJobHandler` に「拒否には必ず理由が付く。無いなら状態機械側の不整合なので、
+  既定値で埋めずに落とす」と意図が明記されている。消すには Domain に非 null の読み口を
+  足すことになり設計判断を含む。4 巡目で 2 エージェントの判定が割れ、コメントを採用した
+- **`JobExecutionEngine` と `JobExecutionEngineFactory` の依存 7 個**（2 ファイルに 11 回）。
+  畳むには依存を束ねる新しい型が要り設計判断。コンパイラが同期を強制するので黙って
+  食い違う経路は無い。4 巡目で計数のうえ見送り
+- **`JobBoard.CancelAsync` と `ControlAsync` の統合**（26 行・直す箇所 2）。手続きは逐語で
+  同じだが、畳むには `CancelJobResponse` と `JobControlResponse` の間に変換を挟むことになり、
+  「用途ごとに独立して動ける方が良い」という利用者の方針に触れる。4 巡目は適用せず PR で相談
 
 ### 効率: 実測・計数済み（再計測不要）
 
@@ -87,6 +102,10 @@ description: src/ を 4 観点（再利用・単純化・効率・深さ）で�
   3 分半で 377 往復・うち 230 回（61%）がサブタスク取得だった。一覧の応答に進捗を載せ、
   集計を `CountByJobAsync` の 1 クエリ（GROUP BY）にして、変更通知 1 回あたり 1 往復に固定。
   **一覧の応答へ「Job ごとに引く」項目を足すときは、必ず集計側も 1 回で取れる形にする**
+- **`SqliteSubTaskStore.AddRangeAsync` の command 使い回しは却下**（4 巡目に実測）。
+  N=1000 で 17.8 ms 速くなるが、サブタスク 1 個は最低 1 秒かかる仕様なので実行時間の 0.002%。
+  現実的な N（"3 5"）では 14 µs。`EditJobHandler` の全行読み・境界の線形走査・SSE の CTS 生成・
+  画面の 2 つの GET の直列も同巡で計数のうえ却下
 - 既知のフレーク: `TemporaryJobStore.Dispose` 等のプロセス全域 `ClearAllPools()` が
   並列テストの `InitializeAsync` と稀に競合する（tests 4 箇所）。直すなら性能でなく
   フレーク解消として。fixture 設計の判断を含むため未着手

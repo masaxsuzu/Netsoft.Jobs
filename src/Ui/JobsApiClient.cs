@@ -40,9 +40,9 @@ public sealed class JobsApiClient
     /// すべての Job を、サブタスクの進捗つきで取得する。
     /// </summary>
     /// <remarks>
-    /// 進捗が応答に載っているので、行ごとに <see cref="ListSubTasksAsync"/> を呼ばない。
-    /// 呼ぶと画面の 1 回の更新が Job の件数だけ往復することになり、
-    /// 更新はサブタスクが 1 つ進むたびに起きる。
+    /// 進捗が応答に載っているので、画面は Job ごとにサブタスクを引かない。引くと 1 回の更新が
+    /// Job の件数だけ往復することになり、更新はサブタスクが 1 つ進むたびに起きる。
+    /// サブタスクの明細を出す画面ができたら、そのときに口を足す（いま使わない口は置かない）。
     /// </remarks>
     public async Task<IReadOnlyList<JobListItemDto>> ListJobsAsync(CancellationToken cancellationToken) =>
         await _client.GetFromJsonAsync<IReadOnlyList<JobListItemDto>>(JobApiRoutes.Jobs, cancellationToken) ?? [];
@@ -69,9 +69,7 @@ public sealed class JobsApiClient
 
         if (response.StatusCode == HttpStatusCode.BadRequest)
         {
-            HttpValidationProblemDetails? problem =
-                await response.Content.ReadFromJsonAsync<HttpValidationProblemDetails>(cancellationToken);
-            return RegisterJobResponse.Invalid(problem?.Errors ?? new Dictionary<string, string[]>());
+            return RegisterJobResponse.Invalid(await ReadValidationErrorsAsync(response, cancellationToken));
         }
 
         response.EnsureSuccessStatusCode();
@@ -120,9 +118,7 @@ public sealed class JobsApiClient
 
         if (response.StatusCode == HttpStatusCode.BadRequest)
         {
-            HttpValidationProblemDetails? problem =
-                await response.Content.ReadFromJsonAsync<HttpValidationProblemDetails>(cancellationToken);
-            return EditJobResponse.Invalid(problem?.Errors ?? new Dictionary<string, string[]>());
+            return EditJobResponse.Invalid(await ReadValidationErrorsAsync(response, cancellationToken));
         }
 
         if (response.StatusCode == HttpStatusCode.NotFound)
@@ -138,25 +134,6 @@ public sealed class JobsApiClient
         response.EnsureSuccessStatusCode();
 
         return EditJobResponse.Accepted(await ReadJobAsync(response, cancellationToken));
-    }
-
-    /// <summary>
-    /// Job のサブタスクを連番順で取得する。Job が無い（404）場合は null、
-    /// まだ行が無い場合は空（登録直後の正常な姿）。
-    /// </summary>
-    public async Task<IReadOnlyList<SubTaskDto>?> ListSubTasksAsync(string id, CancellationToken cancellationToken)
-    {
-        using HttpResponseMessage response = await _client.GetAsync(
-            JobApiRoutes.SubTasksFor(id), cancellationToken);
-
-        if (response.StatusCode == HttpStatusCode.NotFound)
-        {
-            return null;
-        }
-
-        response.EnsureSuccessStatusCode();
-
-        return await response.Content.ReadFromJsonAsync<IReadOnlyList<SubTaskDto>>(cancellationToken) ?? [];
     }
 
     private async Task<JobControlResponse> ControlAsync(string route, CancellationToken cancellationToken)
@@ -177,6 +154,16 @@ public sealed class JobsApiClient
 
         return JobControlResponse.Accepted(await ReadJobAsync(response, cancellationToken));
     }
+
+    /// <summary>400 の本文（RFC 9457 の errors）を読む。読めなければ空。</summary>
+    /// <remarks>
+    /// 読めない応答を例外にしない。項目ごとの内訳が無くても「受け付けられなかった」ことは
+    /// 伝わるので、画面は既定の文言で知らせられる。
+    /// </remarks>
+    private static async Task<IDictionary<string, string[]>> ReadValidationErrorsAsync(
+        HttpResponseMessage response, CancellationToken cancellationToken) =>
+        (await response.Content.ReadFromJsonAsync<HttpValidationProblemDetails>(cancellationToken))?.Errors
+            ?? new Dictionary<string, string[]>();
 
     private static async Task<JobDto> ReadJobAsync(HttpResponseMessage response, CancellationToken cancellationToken) =>
         await response.Content.ReadFromJsonAsync<JobDto>(cancellationToken)
