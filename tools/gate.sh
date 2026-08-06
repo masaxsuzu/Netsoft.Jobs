@@ -11,6 +11,11 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
+# フックの置き場を repo の中に向ける。core.hooksPath は clone ごとの設定で、
+# .git/hooks は git 管理下に置けないため、ゲートを通すたびに冪等に貼り直す。
+# これで clone した誰でも、最初にゲートを通した時点で pre-push が入る。
+git config core.hooksPath tools/git-hooks
+
 if [ -n "$(git status --porcelain)" ]; then
     echo "gate: 未コミットの変更があります。先にコミットしてください。" >&2
     git status --short >&2
