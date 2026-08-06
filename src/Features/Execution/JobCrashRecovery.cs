@@ -64,6 +64,10 @@ internal static class JobCrashRecovery
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
 
+        // 状態ごとに別々の一覧を取る。走査の途中で Job が状態を跨いで動くと
+        // どの一覧にも入らずに取り残されるが、それが起きるのは走査中に書く者が
+        // 居るときだけで、ここは受付開始より前なので居ない
+        //（JobExecutionHostedService.StartingAsync の注記）。
         foreach (JobStatus status in HandlerActiveStatuses)
         {
             IReadOnlyList<Job> jobs = await store.ListByStatusAsync(status, cancellationToken);
@@ -80,12 +84,26 @@ internal static class JobCrashRecovery
                     continue;
                 }
 
-                // 書き戻せなかったのは他が先にこの Job を処理したということなので、
-                // 復旧の対象ではなくなっている。読み直して試し直さずに次へ進む。
-                if (await store.UpdateAsync(job, cancellationToken))
+                if (!await store.UpdateAsync(job, cancellationToken))
                 {
-                    logger.LogWarning("Job {JobId} を前回プロセスの異常終了として Failed にしました。", job.Id.Value);
+                    // ここへは来ない。復旧が走るのは HTTP の受付が始まる前で、エンジンも
+                    // まだ動いていない（JobExecutionHostedService.StartingAsync の注記）ので、
+                    // 読み出しから書き込みまでの間に版を進める書き手が居ない。
+                    //
+                    // 来たとすれば前提が崩れている（同じ DB を別のホストが使っている、
+                    // 復旧が受付開始より後ろへ動かされた、など）。この Job は Running のまま
+                    // 誰にも閉じられなくなるので、黙って次へ進まずに必ず声を上げる
+                    // ── かつてここは成功時にしかログを書かず、閉じ損ねた Job について
+                    // 出力が 1 行も無かった（実測: 2960 件成功、警告なし、残り 40 件は無言）。
+                    logger.LogError(
+                        "Job {JobId} を復旧できませんでした。読み出しから書き込みまでの間に他の書き手が変更しています。"
+                        + "この Job は非終端のまま残ります。",
+                        job.Id.Value);
+
+                    continue;
                 }
+
+                logger.LogWarning("Job {JobId} を前回プロセスの異常終了として Failed にしました。", job.Id.Value);
             }
         }
     }

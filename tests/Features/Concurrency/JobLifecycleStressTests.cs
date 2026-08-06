@@ -2,13 +2,15 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 using Netsoft.Jobs.Domain;
 using Netsoft.Jobs.Features.CancelJob;
+using Netsoft.Jobs.Features.EditJob;
 using Netsoft.Jobs.Features.Execution;
+using Netsoft.Jobs.Features.PauseJob;
 using Netsoft.Jobs.Features.Tests.Fakes;
 
 namespace Netsoft.Jobs.Features.Tests.Concurrency;
 
 /// <summary>
-/// 実行エンジン・キャンセル・読み取りを、本物の store の上で同時に動かす。
+/// 実行エンジン・キャンセル・編集・一時停止・再開・読み取りを、本物の store の上で同時に動かす。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -29,20 +31,23 @@ public sealed class JobLifecycleStressTests : IDisposable
     private const int Jobs = 60;
     private const int Engines = 2;
     private const int Cancellers = 2;
+    private const int Operators = 2;
 
     private static readonly DateTimeOffset Origin = new(2026, 8, 3, 9, 0, 0, TimeSpan.Zero);
 
     private readonly TemporaryJobStore _store = new();
+    private readonly TemporarySubTaskStore _subTasks = new();
     private readonly TestMeterFactory _meterFactory = new();
 
     public void Dispose()
     {
         _meterFactory.Dispose();
+        _subTasks.Dispose();
         _store.Dispose();
     }
 
     [Fact]
-    public async Task 実行とキャンセルと読み取りを同時に走らせても状態が壊れない()
+    public async Task 実行とキャンセルと編集と一時停止を同時に走らせても状態が壊れない()
     {
         JobObservationLog log = new();
         RecordingJobStore store = new(_store, log);
@@ -88,9 +93,17 @@ public sealed class JobLifecycleStressTests : IDisposable
             ids.Add(id);
         }
 
+        // 画面から届く残りの操作。編集は状態を動かさずに版だけ進めるので、
+        // 「読み出しから書き戻しまでの間に版が変わる」窓をエンジンとキャンセルの両方に作る
+        // ── 版で守るようにしてから現れた形で、状態だけを見ていたころは素通りしていた。
+        EditJobHandler editing = new(store, _subTasks, NullLogger<EditJobHandler>.Instance);
+        PauseJobHandler pausing = new(store, timeProvider, NullLogger<PauseJobHandler>.Instance);
+        ResumeJobHandler resuming = new(store, timeProvider, NullLogger<ResumeJobHandler>.Instance);
+
         bool draining = true;
+        int acceptedOperations = 0;
         List<Exception> failures = [];
-        AsyncStartGate start = new(Engines + Cancellers + 1);
+        AsyncStartGate start = new(Engines + Cancellers + Operators + 1);
 
         Task running = Task.WhenAll(engines.Select(engine => Task.Run(async () =>
         {
@@ -130,6 +143,44 @@ public sealed class JobLifecycleStressTests : IDisposable
             }
         })));
 
+        Task operators = Task.WhenAll(Enumerable.Range(0, Operators).Select(worker => Task.Run(async () =>
+        {
+            Random random = new(Seed + 500 + worker);
+            await start.SignalAndWaitAsync();
+
+            while (Volatile.Read(ref draining))
+            {
+                JobId id = ids[random.Next(ids.Count)];
+
+                try
+                {
+                    // 受け付けられるかは状態次第で、拒否も正常な結末。見ているのは
+                    // 「どの順で割り込んでも状態が壊れないか」なので、拒否されても構わない。
+                    // ただし 1 度も受け付けられていないなら割り込めていないので、数えておく
+                    //（全部が拒否で終わる回では、この試験は何も見ていないことになる）。
+                    bool accepted = random.Next(3) switch
+                    {
+                        0 => (await editing.HandleAsync(
+                            id.Value, $"{random.Next(1, 5)} {random.Next(1, 5)}", CancellationToken.None)).IsSuccess,
+                        1 => (await pausing.HandleAsync(id.Value, CancellationToken.None)).IsSuccess,
+                        _ => (await resuming.HandleAsync(id.Value, CancellationToken.None)).IsSuccess,
+                    };
+
+                    if (accepted)
+                    {
+                        Interlocked.Increment(ref acceptedOperations);
+                    }
+                }
+                catch (Exception exception)
+                {
+                    Collect(failures, exception);
+                    return;
+                }
+
+                await Task.Yield();
+            }
+        })));
+
         Task observing = Task.Run(async () =>
         {
             Random random = new(Seed + 991);
@@ -145,7 +196,7 @@ public sealed class JobLifecycleStressTests : IDisposable
 
         await running;
         Volatile.Write(ref draining, false);
-        await Task.WhenAll(cancellers, observing);
+        await Task.WhenAll(cancellers, operators, observing);
 
         // 最後の姿も観測に加える。終端まで含めた列で検査したい。
         foreach (JobId id in ids)
@@ -174,6 +225,9 @@ public sealed class JobLifecycleStressTests : IDisposable
         }
 
         Assert.True(log.AcceptedUpdateCount > 0, $"seed={Seed} 状態が 1 度も進んでいません。");
+        Assert.True(
+            acceptedOperations > 0,
+            $"seed={Seed} 編集・一時停止・再開が 1 度も受け付けられていません（割り込めていない）。");
     }
 
     /// <summary>
