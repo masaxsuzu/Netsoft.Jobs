@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
@@ -25,12 +26,20 @@ internal sealed class JobsHost : IAsyncDisposable
     private readonly StringBuilder _output = new();
     private readonly string _databasePath;
 
+    // 走りながら書き出す先。溜めたものは投げた例外にしか付かず、CI では実行が
+    // 終わるとホストごと消えて追いようが無くなる。ここへ落としておけば
+    // artifact として後から読める（.github/workflows/ci.yml）。
+    // インスタンスごとにファイルを分ける。この層は同じ DB を何度も起こし直すので、
+    // 1 本にまとめると再起動の前後が混ざって読めない。
+    private readonly StreamWriter _log;
+
     private Process? _process;
 
     private JobsHost(string databasePath, string baseUrl)
     {
         _databasePath = databasePath;
         BaseUrl = baseUrl;
+        _log = OpenLog(baseUrl);
     }
 
     /// <summary>この起動が待ち受けている URL。</summary>
@@ -109,7 +118,12 @@ internal sealed class JobsHost : IAsyncDisposable
         _process = null;
     }
 
-    public async ValueTask DisposeAsync() => await KillAsync();
+    public async ValueTask DisposeAsync()
+    {
+        // プロセスを止めてから閉じる。先に閉じると終了間際の出力を落とす。
+        await KillAsync();
+        await _log.DisposeAsync();
+    }
 
     /// <summary>
     /// 条件が満たされるまで API を叩き続ける。時間で仮定せず、状態を見て進む。
@@ -201,7 +215,48 @@ internal sealed class JobsHost : IAsyncDisposable
         lock (_output)
         {
             _output.AppendLine(line);
+            _log.WriteLine(line);
         }
+
+
+    }
+
+
+    /// <summary>
+    /// このホストの出力を落とす先を開く。ポート番号でインスタンスを見分ける。
+    /// </summary>
+    /// <remarks>
+    /// 追記ではなく作り直す。前回の実行が残っていると、CI の artifact を開いたときに
+    /// どちらの実行のものか分からなくなる。TestResults/ は tools/coverage.sh が
+    /// テストの前に消すので、1 回の実行分だけが残る。
+    /// </remarks>
+    private static StreamWriter OpenLog(string baseUrl)
+    {
+        string directory = Path.Combine(FindRepositoryRoot(), "TestResults", "hosts");
+        Directory.CreateDirectory(directory);
+
+        string port = new Uri(baseUrl).Port.ToString(CultureInfo.InvariantCulture);
+
+        return new StreamWriter(Path.Combine(directory, $"stress-{port}.log"), append: false)
+        {
+            // 壊すのがこの層の仕事で、プロセスは容赦なく殺される。
+            // 溜めたまま持っていると、一番見たい最後の数行が失われる。
+            AutoFlush = true,
+        };
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        for (DirectoryInfo? current = new(AppContext.BaseDirectory); current is not null; current = current.Parent)
+        {
+            if (File.Exists(Path.Combine(current.FullName, "Netsoft.Jobs.slnx")))
+            {
+                return current.FullName;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Netsoft.Jobs.slnx が {AppContext.BaseDirectory} の親に見つかりません。");
     }
 
     /// <summary>

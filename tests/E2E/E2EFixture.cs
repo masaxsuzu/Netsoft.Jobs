@@ -36,6 +36,11 @@ public sealed class E2EFixture : IAsyncLifetime
     // 2 プロセス分を 1 つに混ぜ、行頭の [api] / [ui] で見分ける。
     private readonly StringBuilder _appOutput = new();
 
+    // 走りながら書き出す先。溜めたものは失敗した 1 件にしか付かず、
+    // CI では実行が終わるとホストごと消えて追いようが無くなる。
+    // ここへ落としておけば artifact として後から読める（.github/workflows/ci.yml）。
+    private StreamWriter? _log;
+
     private Process? _api;
     private Process? _ui;
     private IPlaywright? _playwright;
@@ -110,6 +115,7 @@ public sealed class E2EFixture : IAsyncLifetime
         string uiDll = FindHostDll(repositoryRoot, "Ui");
 
         Directory.CreateDirectory(_tempDirectory);
+        _log = OpenLog(repositoryRoot, "e2e");
 
         ApiBaseUrl = $"http://127.0.0.1:{GetFreePort()}";
         BaseUrl = $"http://127.0.0.1:{GetFreePort()}";
@@ -167,6 +173,9 @@ public sealed class E2EFixture : IAsyncLifetime
         // 害は無いが、診断ログを汚さないに越したことはない。
         await StopAsync(_ui);
         await StopAsync(_api);
+
+        // ホストを止めてから閉じる。先に閉じると終了間際の出力を落とす。
+        await (_log?.DisposeAsync() ?? ValueTask.CompletedTask);
 
         try
         {
@@ -309,10 +318,36 @@ public sealed class E2EFixture : IAsyncLifetime
             return;
         }
 
+        string entry = $"[{label}] {line}";
+
         lock (_appOutput)
         {
-            _appOutput.AppendLine($"[{label}] {line}");
+            _appOutput.AppendLine(entry);
+            _log?.WriteLine(entry);
         }
+
+
+    }
+
+
+    /// <summary>
+    /// ホストの出力を落とす先を開く。**追記ではなく作り直す。**
+    /// </summary>
+    /// <remarks>
+    /// 前回の実行が残っていると、CI の artifact を開いたときに
+    /// どちらの実行のものか分からなくなる。TestResults/ は
+    /// tools/coverage.sh がテストの前に消すので、1 回の実行分だけが残る。
+    /// </remarks>
+    private static StreamWriter OpenLog(string repositoryRoot, string layer)
+    {
+        string directory = Path.Combine(repositoryRoot, "TestResults", "hosts");
+        Directory.CreateDirectory(directory);
+
+        return new StreamWriter(Path.Combine(directory, $"{layer}.log"), append: false)
+        {
+            // 落ちた直後にプロセスを殺すので、溜めたまま失うことがある。
+            AutoFlush = true,
+        };
     }
 
     private string ReadOutput()
