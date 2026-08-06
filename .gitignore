@@ -13,3 +13,8 @@ src/Ui/wwwroot/_framework/
 
 # coverlet.msbuild 時代の名残。collector は TestResults/ にしか書かない
 coverage.json
+
+# サブエージェントが使う worktree。repo の中に作られるので、
+# git add -A が丸ごと拾ってコミットに巻き込む（.claude/skills は追跡しているため
+# .claude/ ごとの除外にはできない）。
+.claude/worktrees/
