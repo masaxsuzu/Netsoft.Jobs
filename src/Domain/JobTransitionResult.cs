@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace Netsoft.Jobs.Domain;
 
 /// <summary>
@@ -38,9 +40,18 @@ public readonly record struct JobTransitionResult
 
     /// <summary>遷移が許可されたか。</summary>
     /// <remarks>
+    /// <para>
     /// 理由の有無から導く。別に持つと「許可されたのに理由がある」ような、
     /// 生成側が間違えないと作れないはずの組み合わせを表現できてしまう。
+    /// </para>
+    /// <para>
+    /// 属性で「false なら <see cref="Rejection"/> は非 null」を伝える。無いと呼び出し側が
+    /// CS8629（null かもしれない値型）を避けるために <c>?? throw</c> を書くことになり、
+    /// <see cref="Rejected"/> が非 null しか受け取らない以上<b>決して発火しない分岐</b>が
+    /// 拒否を読むすべての場所に増える。値型にも効くことは実測して確かめた。
+    /// </para>
     /// </remarks>
+    [MemberNotNullWhen(false, nameof(Rejection))]
     public bool IsAllowed => Rejection is null;
 
     /// <summary>許可された結果を作る。</summary>
