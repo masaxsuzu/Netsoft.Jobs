@@ -178,6 +178,10 @@ internal sealed class JobsHost : IAsyncDisposable
         startInfo.ArgumentList.Add($"--urls={BaseUrl}");
         startInfo.Environment["Jobs__DatabasePath"] = _databasePath;
 
+        // スパンを出力に混ぜる。計装は購読者が居ないとスパンを作らないので、
+        // これが無いと壊したときのトレースが「空」ではなく「無い」ことになる。
+        startInfo.Environment["Jobs__TraceToConsole"] = "true";
+
         _process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("ホストのプロセスを起動できませんでした。");
 

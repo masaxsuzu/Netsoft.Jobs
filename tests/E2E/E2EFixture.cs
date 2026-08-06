@@ -52,18 +52,6 @@ public sealed class E2EFixture : IAsyncLifetime
     public string ApiBaseUrl { get; private set; } = string.Empty;
 
     /// <summary>
-    /// API から見た Job の一覧を返す。**失敗したときの切り分けにだけ使う。**
-    /// </summary>
-    /// <remarks>
-    /// 画面が終端まで進まなかったとき、原因は 2 つある。Job が本当に進まなかったか、
-    /// 進んだのに変更通知が画面へ届かなかったかで、**どちらなのかは DOM からは読めない**。
-    /// 落ちてから調べようとしても、そのときにはホストが終了していて手が無い。
-    ///
-    /// CI で 1 度だけ、キャンセルが Cancelling のまま 30 秒進まない形で落ちた
-    /// （run 31098403904）。手元では 10 回連続で再現せず、この切り分けが無いために
-    /// 原因を特定できなかった。次に落ちたときは判断できるようにしてある。
-    /// </remarks>
-    /// <summary>
     /// 2 つのホストの出力の末尾を返す。**失敗したときの切り分けにだけ使う。**
     /// </summary>
     /// <remarks>
@@ -89,6 +77,18 @@ public sealed class E2EFixture : IAsyncLifetime
                     .TakeLast(linesPerHost)));
     }
 
+    /// <summary>
+    /// API から見た Job の一覧を返す。**失敗したときの切り分けにだけ使う。**
+    /// </summary>
+    /// <remarks>
+    /// 画面が終端まで進まなかったとき、原因は 2 つある。Job が本当に進まなかったか、
+    /// 進んだのに変更通知が画面へ届かなかったかで、**どちらなのかは DOM からは読めない**。
+    /// 落ちてから調べようとしても、そのときにはホストが終了していて手が無い。
+    ///
+    /// CI で 1 度だけ、キャンセルが Cancelling のまま 30 秒進まない形で落ちた
+    /// （run 31098403904）。手元では 10 回連続で再現せず、この切り分けが無いために
+    /// 原因を特定できなかった。次に落ちたときは判断できるようにしてある。
+    /// </remarks>
     public async Task<string> DescribeJobsAsync()
     {
         try
@@ -118,6 +118,10 @@ public sealed class E2EFixture : IAsyncLifetime
         {
             // DB は使い捨ての一時ディレクトリへ。開発用の DB を汚さず、テスト間の残骸も残らない。
             startInfo.Environment["Jobs__DatabasePath"] = Path.Combine(_tempDirectory, "jobs.db");
+
+            // スパンを出力に混ぜる。計装は購読者が居ないとスパンを作らないので、
+            // これが無いと失敗したときのトレースが「空」ではなく「無い」ことになる。
+            startInfo.Environment["Jobs__TraceToConsole"] = "true";
         });
 
         // API が応答してから UI を立てる（クラスの注記を参照）。
