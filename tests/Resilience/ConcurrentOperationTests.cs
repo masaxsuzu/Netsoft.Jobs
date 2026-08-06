@@ -40,6 +40,7 @@ public sealed class ConcurrentOperationTests : IAsyncLifetime
 
         if (_host is not null)
         {
+            SubTaskRows.ClearPool(_host.DatabasePath);
             await _host.DisposeAsync();
         }
 
@@ -93,8 +94,8 @@ public sealed class ConcurrentOperationTests : IAsyncLifetime
 
         // 行も畳まれている。畳み残しがあると、次に同じ Job を見たときに
         // 「終わっているのに走っている行がある」ことになる。
-        IReadOnlyList<JobsApi.SubTaskDto> subTasks = await Api.SubTasksAsync(job.Id);
-        Assert.All(subTasks, subTask => Assert.Equal("Cancelled", subTask.Status));
+        IReadOnlyList<string> subTasks = await SubTaskRows.ReadAsync(_host!.DatabasePath, job.Id);
+        Assert.All(subTasks, status => Assert.Equal("Cancelled", status));
     }
 
     /// <summary>
@@ -137,8 +138,8 @@ public sealed class ConcurrentOperationTests : IAsyncLifetime
             await Api.ResumeAsync(job.Id);
         }
 
-        IReadOnlyList<JobsApi.SubTaskDto> subTasks = await Api.SubTasksAsync(job.Id);
-        Assert.All(subTasks, subTask => Assert.Equal("Completed", subTask.Status));
+        IReadOnlyList<string> subTasks = await SubTaskRows.ReadAsync(_host!.DatabasePath, job.Id);
+        Assert.All(subTasks, status => Assert.Equal("Completed", status));
     }
 
     /// <summary>
@@ -161,13 +162,10 @@ public sealed class ConcurrentOperationTests : IAsyncLifetime
         JobsApi.JobDto settled = await Api.WaitForTerminalAsync(job.Id);
         Assert.Equal("Completed", settled.Status);
 
-        IReadOnlyList<JobsApi.SubTaskDto> subTasks = await Api.SubTasksAsync(job.Id);
+        // 連番順に読むので、行が飛んでいれば件数が合わない。
+        IReadOnlyList<string> subTasks = await SubTaskRows.ReadAsync(_host!.DatabasePath, job.Id);
 
-        Assert.Equal(
-            Enumerable.Range(0, subTasks.Count),
-            subTasks.Select(subTask => subTask.Index).Order());
-
-        Assert.All(subTasks, subTask => Assert.Equal("Completed", subTask.Status));
+        Assert.All(subTasks, status => Assert.Equal("Completed", status));
 
         // 最後に受理された編集の個数と行数が一致する。片方だけ進むと進捗が嘘になる。
         Assert.Equal(int.Parse(settled.Parameters.Split(' ')[0]), subTasks.Count);

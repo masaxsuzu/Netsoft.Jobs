@@ -124,31 +124,6 @@ public sealed class JobControlApiTests : IDisposable
         Assert.Equal("Cancelled", job?.Status);
     }
 
-    [Fact]
-    public async Task サブタスクは連番順で返り存在しないJobは404()
-    {
-        JobDto registered = await RegisterAsync();
-
-        // 登録直後は行が無い（実行の開始時に作られる）。空の 200 が正常な姿。
-        IReadOnlyList<SubTaskDto>? empty =
-            await _client.GetFromJsonAsync<IReadOnlyList<SubTaskDto>>($"/api/jobs/{registered.Id}/subtasks");
-        Assert.NotNull(empty);
-        Assert.Empty(empty);
-
-        ISubTaskStore subTasks = _factory.Services.GetRequiredService<ISubTaskStore>();
-        await subTasks.AddRangeAsync(
-            [SubTask.Create(JobId.From(registered.Id), 0), SubTask.Create(JobId.From(registered.Id), 1)],
-            CancellationToken.None);
-
-        IReadOnlyList<SubTaskDto>? listed =
-            await _client.GetFromJsonAsync<IReadOnlyList<SubTaskDto>>($"/api/jobs/{registered.Id}/subtasks");
-        Assert.Equal([new SubTaskDto(0, "Pending"), new SubTaskDto(1, "Pending")], listed);
-
-        Assert.Equal(
-            HttpStatusCode.NotFound,
-            (await _client.GetAsync("/api/jobs/does-not-exist/subtasks")).StatusCode);
-    }
-
     /// <summary>
     /// 一覧の応答が進捗を運ぶこと。画面はこれを見て行ごとの取得をやめているので、
     /// 落ちると N+1 が黙って戻る（表示は「-」のままになって気づきにくい）。

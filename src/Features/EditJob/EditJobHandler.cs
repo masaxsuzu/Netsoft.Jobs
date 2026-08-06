@@ -48,7 +48,7 @@ public sealed class EditJobHandler
             return EditJobResult.NotFound();
         }
 
-        if (parameters is null || !SubTaskParameters.TryParse(parameters, out int count, out _))
+        if (!SubTaskParameters.TryParse(parameters, out int count, out _))
         {
             return EditJobResult.Invalid(
                 [new ValidationError("parameters", "「個数 秒数」を空白区切りの正の整数で指定してください（例: 3 5）。")]);

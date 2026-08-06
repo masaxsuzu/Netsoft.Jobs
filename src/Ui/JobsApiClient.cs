@@ -40,9 +40,9 @@ public sealed class JobsApiClient
     /// すべての Job を、サブタスクの進捗つきで取得する。
     /// </summary>
     /// <remarks>
-    /// 進捗が応答に載っているので、行ごとに <see cref="ListSubTasksAsync"/> を呼ばない。
-    /// 呼ぶと画面の 1 回の更新が Job の件数だけ往復することになり、
-    /// 更新はサブタスクが 1 つ進むたびに起きる。
+    /// 進捗が応答に載っているので、画面は Job ごとにサブタスクを引かない。引くと 1 回の更新が
+    /// Job の件数だけ往復することになり、更新はサブタスクが 1 つ進むたびに起きる。
+    /// サブタスクの明細を出す画面ができたら、そのときに口を足す（いま使わない口は置かない）。
     /// </remarks>
     public async Task<IReadOnlyList<JobListItemDto>> ListJobsAsync(CancellationToken cancellationToken) =>
         await _client.GetFromJsonAsync<IReadOnlyList<JobListItemDto>>(JobApiRoutes.Jobs, cancellationToken) ?? [];
@@ -138,25 +138,6 @@ public sealed class JobsApiClient
         response.EnsureSuccessStatusCode();
 
         return EditJobResponse.Accepted(await ReadJobAsync(response, cancellationToken));
-    }
-
-    /// <summary>
-    /// Job のサブタスクを連番順で取得する。Job が無い（404）場合は null、
-    /// まだ行が無い場合は空（登録直後の正常な姿）。
-    /// </summary>
-    public async Task<IReadOnlyList<SubTaskDto>?> ListSubTasksAsync(string id, CancellationToken cancellationToken)
-    {
-        using HttpResponseMessage response = await _client.GetAsync(
-            JobApiRoutes.SubTasksFor(id), cancellationToken);
-
-        if (response.StatusCode == HttpStatusCode.NotFound)
-        {
-            return null;
-        }
-
-        response.EnsureSuccessStatusCode();
-
-        return await response.Content.ReadFromJsonAsync<IReadOnlyList<SubTaskDto>>(cancellationToken) ?? [];
     }
 
     private async Task<JobControlResponse> ControlAsync(string route, CancellationToken cancellationToken)

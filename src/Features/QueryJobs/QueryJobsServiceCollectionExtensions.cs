@@ -15,7 +15,6 @@ public static class QueryJobsServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddScoped<QueryJobsHandler>();
-        services.AddScoped<QuerySubTasksHandler>();
 
         return services;
     }
