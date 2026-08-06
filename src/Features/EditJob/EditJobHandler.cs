@@ -18,8 +18,9 @@ namespace Netsoft.Jobs.Features.EditJob;
 /// </para>
 /// <para>
 /// 「N ≥ 着手済み」はここでも検証するが、これは利用者への親切（早い 400）。
-/// 検証と反映の間に次のサブタスクが走り出す窓があるので、本当の守りは境界の
-/// 突き合わせが持つ（着手済みへの切り上げ）。CAS の「検証は親切、確定は書く場所で」と同じ構図。
+/// 検証と反映の間に次のサブタスクが走り出す窓があるので、本当の守りは
+/// <see cref="ISubTaskStore.RemovePendingFromAsync"/> の SQL が持つ（未着手の行しか消さない）。
+/// CAS の「検証は親切、確定は書く場所で」と同じ構図。
 /// </para>
 /// </remarks>
 public sealed class EditJobHandler

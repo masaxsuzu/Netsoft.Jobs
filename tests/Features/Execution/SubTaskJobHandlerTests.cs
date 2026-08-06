@@ -17,6 +17,7 @@ public sealed class SubTaskJobHandlerTests : IDisposable
 {
     private static readonly TimeSpan WaitLimit = TimeSpan.FromSeconds(10);
     private static readonly JobId Job1 = JobId.From("job-1");
+    private static readonly DateTimeOffset Created = new(2026, 8, 6, 9, 0, 0, TimeSpan.Zero);
 
     private readonly TemporarySubTaskStore _store = new();
     private readonly TemporaryJobStore _jobs = new();
@@ -154,6 +155,108 @@ public sealed class SubTaskJobHandlerTests : IDisposable
             () => _handler.ExecuteAsync(Job1, "3 5", cancellation.Token));
 
         Assert.Empty(await _store.ListByJobAsync(Job1, CancellationToken.None));
+    }
+
+    /// <summary>
+    /// 最後のサブタスクを走らせている最中に一時停止を要求されても、走り切ったなら完走。
+    /// </summary>
+    /// <remarks>
+    /// 境界は「行の突き合わせ → 残りがあるか → 中断の観測」の順で見る。順序が逆だと、
+    /// 全部終えた後の境界で Pausing を観測して <see cref="JobPausedException"/> を投げ、
+    /// <b>完走した Job が Paused として記録される</b>（状態機械の Pausing + Complete →
+    /// Completed という判断とも食い違う）。
+    /// </remarks>
+    [Fact]
+    public async Task 走り切った後に一時停止が要求されていても完走として終わる()
+    {
+        await AddRunningJobAsync("1 1");
+
+        Task execution = _handler.ExecuteAsync(Job1, "1 1", CancellationToken.None);
+        await _time.WaitForTimersAsync(1).WaitAsync(WaitLimit);
+
+        await RequestPauseAsync();
+        _time.Advance(SubTaskJobHandler.Step);
+
+        await execution.WaitAsync(WaitLimit);
+        Assert.Equal([SubTaskStatus.Completed], await StatusesAsync());
+    }
+
+    /// <summary>
+    /// 最後の完了を書いた直後にキャンセルが届いても、走り切ったなら完走。
+    /// </summary>
+    /// <remarks>
+    /// キャンセル側の同じ話（<see cref="走り切った後に一時停止が要求されていても完走として終わる"/>）。
+    /// 窓は「最後の完了の書き込み」と「次の周回」の間しかないので、書き込みを合図にして起こす。
+    /// </remarks>
+    [Fact]
+    public async Task 走り切った後にキャンセルが届いても完走として終わる()
+    {
+        using CancellationTokenSource cancellation = new();
+        InterferingSubTaskStore interfering = new(_store);
+        SubTaskJobHandler handler = new(interfering, _jobs, _time);
+
+        await AddRunningJobAsync("1 1");
+
+        Task execution = handler.ExecuteAsync(Job1, "1 1", cancellation.Token);
+        await _time.WaitForTimersAsync(1).WaitAsync(WaitLimit);
+
+        interfering.AfterNextUpdate = cancellation.Cancel;
+        _time.Advance(SubTaskJobHandler.Step);
+
+        await execution.WaitAsync(WaitLimit);
+        Assert.Equal([SubTaskStatus.Completed], await StatusesAsync());
+    }
+
+    /// <summary>
+    /// 走り出す前のキャンセルでも、行が既にあるなら畳んでから抜ける。
+    /// </summary>
+    /// <remarks>
+    /// 行が無いときだけ入口で抜けてよい（<see cref="走り出す前のキャンセルは行を作らずに抜ける"/>）。
+    /// 再開した Job には前回の行が残っているので、同じ場所で抜けると
+    /// <b>Job は Cancelled なのに未着手の行が Pending のまま残る</b>。
+    /// 畳めるようになった後の観測点まで進んでから抜ける。
+    /// </remarks>
+    [Fact]
+    public async Task 再開した直後のキャンセルは残っている行を畳む()
+    {
+        using CancellationTokenSource cancellation = new();
+        await cancellation.CancelAsync();
+
+        await AddRunningJobAsync("2 1");
+
+        // 前回の実行が 1 つ目まで終えて止まった姿を作る。
+        SubTask[] rows = [SubTask.Create(Job1, 0), SubTask.Create(Job1, 1)];
+        await _store.AddRangeAsync(rows, CancellationToken.None);
+        await ApplyAsync(rows[0], SubTaskTrigger.Start);
+        await ApplyAsync(rows[0], SubTaskTrigger.Complete);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => _handler.ExecuteAsync(Job1, "2 1", cancellation.Token));
+
+        Assert.Equal([SubTaskStatus.Completed, SubTaskStatus.Cancelled], await StatusesAsync());
+    }
+
+    private async Task AddRunningJobAsync(string parameters)
+    {
+        Job job = Job.Create(Job1, "集計", SubTaskJobHandler.SubTaskJobType, parameters, Created);
+        job.Apply(JobTrigger.Start, Created.AddMinutes(1));
+
+        await _jobs.AddAsync(job, CancellationToken.None);
+    }
+
+    private async Task RequestPauseAsync()
+    {
+        Job job = await _jobs.FindAsync(Job1, CancellationToken.None)
+            ?? throw new InvalidOperationException("Job が保存されていません。");
+
+        job.Apply(JobTrigger.RequestPause, Created.AddMinutes(2));
+        Assert.True(await _jobs.UpdateAsync(job, CancellationToken.None));
+    }
+
+    private async Task ApplyAsync(SubTask subTask, SubTaskTrigger trigger)
+    {
+        SubTaskTransition transition = subTask.Apply(trigger);
+        Assert.True(await _store.UpdateAsync(subTask, transition.Previous, CancellationToken.None));
     }
 
     private async Task<IReadOnlyList<SubTaskStatus>> StatusesAsync() =>
