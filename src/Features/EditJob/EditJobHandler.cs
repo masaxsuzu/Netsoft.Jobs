@@ -50,7 +50,8 @@ public sealed class EditJobHandler
 
         if (!SubTaskParameters.TryParse(parameters, out int count, out _))
         {
-            return EditJobResult.Invalid([new ValidationError("parameters", SubTaskParameters.Expectation)]);
+            return EditJobResult.Invalid(
+                [new ValidationError("parameters", "「個数 秒数」を空白区切りの正の整数で指定してください（例: 3 5）。")]);
         }
 
         while (true)

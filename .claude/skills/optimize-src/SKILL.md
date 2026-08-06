@@ -46,13 +46,17 @@ description: src/ を 4 観点（再利用・単純化・効率・深さ）で�
   ポーリングを keep-alive 認知型に / `JobEventsEndpoint` を `ReadAsync` 1 回に /
   UI 分離後に古くなったコメントの修正
 - **4 巡目**: 観測の 3 か所（メトリクスのタグ・スパン属性）を `JobStatusText.ToText` へ通す /
-  「個数 秒数」の案内文を `SubTaskParameters.Expectation` へ集約 /
-  `JobsApiClient` の 400 本文読み取りを `ReadValidationErrorsAsync` へ /
   `EditJobHandler` の到達不能な `parameters is null` を削除 /
   Ui の `ListSubTasksAsync` と `JobApiRoutes.SubTasksFor` を削除（画面から呼ばれない）
 
 ### 畳むべきでない・意図的（再提案禁止）
 
+- **再利用性は Domain に限る**（利用者の方針。2026-08 に明示）。Domain の外（Features /
+  Infrastructure / Web / Ui）では、重複していることそのものを畳む理由にしない。
+  DRY を根拠にした提案は Domain の中だけで出す。**4 巡目で適用しかけて戻した実例**:
+  Ui の 400 本文の読み取りヘルパー、Features の案内文の共有 const。
+  Domain の型（`JobStatusText` など）を通していない箇所を通すのは、重複の畳み込みではなく
+  Domain の集約への合流なので対象外（4 巡目に適用済み）
 - **定義の形式的な重複はむしろ推奨**（利用者の方針。2026-08 に明示）。型・結果型・応答型・
   ハンドラが「見た目が同じ」ことは畳む理由にならない。用途ごとに独立して動けるほうが、
   片方を変えたい日にもう片方まで動くより良い。**以下は判定済みで再提案禁止**:
@@ -84,9 +88,8 @@ description: src/ を 4 観点（再利用・単純化・効率・深さ）で�
 - **`JobExecutionEngine` と `JobExecutionEngineFactory` の依存 7 個**（2 ファイルに 11 回）。
   畳むには依存を束ねる新しい型が要り設計判断。コンパイラが同期を強制するので黙って
   食い違う経路は無い。4 巡目で計数のうえ見送り
-- **`JobBoard.CancelAsync` と `ControlAsync` の統合**（26 行・直す箇所 2）。手続きは逐語で
-  同じだが、畳むには `CancelJobResponse` と `JobControlResponse` の間に変換を挟むことになり、
-  「用途ごとに独立して動ける方が良い」という利用者の方針に触れる。4 巡目は適用せず PR で相談
+- **`JobBoard.CancelAsync` と `ControlAsync` の統合**（26 行・直す箇所 2）。**却下**。
+  Ui は Domain の外なので、重複を畳む理由にならない（4 巡目に利用者が判断）
 
 ### 効率: 実測・計数済み（再計測不要）
 

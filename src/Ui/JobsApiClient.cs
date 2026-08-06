@@ -69,7 +69,9 @@ public sealed class JobsApiClient
 
         if (response.StatusCode == HttpStatusCode.BadRequest)
         {
-            return RegisterJobResponse.Invalid(await ReadValidationErrorsAsync(response, cancellationToken));
+            HttpValidationProblemDetails? problem =
+                await response.Content.ReadFromJsonAsync<HttpValidationProblemDetails>(cancellationToken);
+            return RegisterJobResponse.Invalid(problem?.Errors ?? new Dictionary<string, string[]>());
         }
 
         response.EnsureSuccessStatusCode();
@@ -118,7 +120,9 @@ public sealed class JobsApiClient
 
         if (response.StatusCode == HttpStatusCode.BadRequest)
         {
-            return EditJobResponse.Invalid(await ReadValidationErrorsAsync(response, cancellationToken));
+            HttpValidationProblemDetails? problem =
+                await response.Content.ReadFromJsonAsync<HttpValidationProblemDetails>(cancellationToken);
+            return EditJobResponse.Invalid(problem?.Errors ?? new Dictionary<string, string[]>());
         }
 
         if (response.StatusCode == HttpStatusCode.NotFound)
@@ -154,16 +158,6 @@ public sealed class JobsApiClient
 
         return JobControlResponse.Accepted(await ReadJobAsync(response, cancellationToken));
     }
-
-    /// <summary>400 の本文（RFC 9457 の errors）を読む。読めなければ空。</summary>
-    /// <remarks>
-    /// 読めない応答を例外にしない。項目ごとの内訳が無くても「受け付けられなかった」ことは
-    /// 伝わるので、画面は既定の文言で知らせられる。
-    /// </remarks>
-    private static async Task<IDictionary<string, string[]>> ReadValidationErrorsAsync(
-        HttpResponseMessage response, CancellationToken cancellationToken) =>
-        (await response.Content.ReadFromJsonAsync<HttpValidationProblemDetails>(cancellationToken))?.Errors
-            ?? new Dictionary<string, string[]>();
 
     private static async Task<JobDto> ReadJobAsync(HttpResponseMessage response, CancellationToken cancellationToken) =>
         await response.Content.ReadFromJsonAsync<JobDto>(cancellationToken)
