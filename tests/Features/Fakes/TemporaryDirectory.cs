@@ -12,7 +12,7 @@ public sealed class TemporaryDirectory : IDisposable
 {
     public TemporaryDirectory()
     {
-        // テストは並行して走るので、ディレクトリごと分けて衝突を避ける。
+        // 並行するテストと衝突しないよう、インスタンスごとに分ける（docs/build.md）。
         FullPath = Path.Combine(Path.GetTempPath(), "netsoft-jobs-features-tests", Path.GetRandomFileName());
         Directory.CreateDirectory(FullPath);
     }
@@ -52,7 +52,7 @@ public sealed class TemporaryDirectory : IDisposable
         }
         catch (IOException)
         {
-            // 後始末の失敗でテストの結果を変えたくない。一時ディレクトリはいずれ OS が回収する。
+            // 後始末の失敗でテストの結果を変えない（docs/build.md「テストの後始末」）。
         }
     }
 }

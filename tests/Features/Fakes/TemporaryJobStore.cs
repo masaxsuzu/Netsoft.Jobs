@@ -25,7 +25,7 @@ public sealed class TemporaryJobStore : IJobStore, IDisposable
     /// </remarks>
     public TemporaryJobStore()
     {
-        // テストは並行して走るので、ディレクトリごと分けて衝突を避ける。
+        // 並行するテストと衝突しないよう、インスタンスごとに分ける（docs/build.md）。
         _directory = Path.Combine(Path.GetTempPath(), "netsoft-jobs-features-tests", Path.GetRandomFileName());
         Directory.CreateDirectory(_directory);
 
@@ -59,9 +59,8 @@ public sealed class TemporaryJobStore : IJobStore, IDisposable
 
     public void Dispose()
     {
-        // プールが接続を握ったままだとファイルが開きっぱなしになり、削除に失敗しうる。閉じてから消す。
-        // 閉じるのは自分の DB のプールだけ。ClearAllPools はプロセス全域に効き、
-        // 並列で走っている他のテストの接続まで破棄してフレークを起こす（実際に起きた）。
+        // プールを閉じてから消す。閉じるのは自分の DB のプールだけ
+        // （理由は docs/build.md「テストの後始末」）。
         using SqliteConnection connection = new(
             new SqliteConnectionStringBuilder { DataSource = Path.Combine(_directory, "jobs.db") }.ToString());
         SqliteConnection.ClearPool(connection);
@@ -72,7 +71,7 @@ public sealed class TemporaryJobStore : IJobStore, IDisposable
         }
         catch (IOException)
         {
-            // 後始末の失敗でテストの結果を変えたくない。一時ディレクトリはいずれ OS が回収する。
+            // 後始末の失敗でテストの結果を変えない（docs/build.md「テストの後始末」）。
         }
     }
 }

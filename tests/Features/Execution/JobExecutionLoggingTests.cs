@@ -154,7 +154,6 @@ public sealed class JobExecutionLoggingTests : IDisposable
         Assert.Equal(JobTrigger.Complete, finished.State["Trigger"]);
     }
 
-    // 起動時復旧を済ませたエンジンを起こす。復旧を経ないと手に入らないので await が要る。
     private Task<JobExecutionEngine> CreateEngineAsync(params IJobHandler[] handlers) =>
         JobExecutionEngine.StartAsync(
             _store,

@@ -118,7 +118,7 @@ public sealed class E2EFixture : IAsyncLifetime
         }
         catch (IOException)
         {
-            // 後始末の失敗でテストの結果を変えたくない。一時ディレクトリはいずれ OS が回収する。
+            // 後始末の失敗でテストの結果を変えない（docs/build.md「テストの後始末」）。
         }
     }
 
