@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+#
+# push の瞬間に走り、ゲートを通した木だけを通す。
+#
+# tools/gate-hook.sh（PreToolUse）だけでは塞げない。あちらは**コマンドの実行前**に
+# 判定するので、commit と push を 1 つのコマンドに束ねると、判定の時点では HEAD が
+# まだ前のコミットで、古いマーカーが一致してしまう。
+#
+#     git commit …        ← HEAD が変わる（フックはもう判定済み）
+#     tools/gate.sh       ← ここで落ちてもマーカーは古いまま
+#     git push            ← 通ってしまう
+#
+# 実際にこれで、format に落ちたコミットが push できた。こちらは git 自身が
+# push の直前に呼ぶので、**コマンドをどう組んでも迂回できない**。
+#
+# 逃げ道は環境変数でよい。このフックは push を走らせる shell の子なので変数が届く
+# （PreToolUse の方は別プロセスで届かず、コマンドの文字列を見ている）。
+#
+set -uo pipefail
+
+[ "${SHIP_GATE_SKIP:-}" = "1" ] && exit 0
+
+marker="$(git rev-parse --git-dir)/ship-gate-ok"
+stamped=$([ -f "$marker" ] && cat "$marker")
+
+deny() {
+    cat >&2 <<MSG
+
+push を止めました: $1
+
+    tools/gate.sh    # build / test / format を通してマーカーを押す
+
+手順ごと通すなら /ship を使ってください。
+素で押す必要があるなら SHIP_GATE_SKIP=1 を付けてください。
+MSG
+    exit 1
+}
+
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+    # ブランチの削除。押し出す木が無いので見るものが無い。
+    [ "$local_sha" = "0000000000000000000000000000000000000000" ] && continue
+
+    tree=$(git rev-parse "$local_sha^{tree}" 2>/dev/null) || deny "$local_sha を読めません"
+    [ "$tree" = "$stamped" ] || deny "$(git rev-parse --short "$local_sha") はゲートを通っていません"
+done
+
+exit 0

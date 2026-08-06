@@ -9,7 +9,9 @@ tools/coverage.sh        # 計測 → マージ → 基準判定。CI の Test �
 tools/gate.sh            # build / coverage.sh / format をコミットした木で通し、push を解錠する
 ```
 
-`tools/gate.sh` を通していないコミットは push できない（`tools/gate-hook.sh` が止める）。
+`tools/gate.sh` を通していないコミットは push できない。止めるのは 2 つで、
+`tools/gate-hook.sh`（コマンドの実行前）と `tools/git-hooks/pre-push`（押す直前）。
+後者は `tools/gate.sh` が `core.hooksPath` を貼るので、一度通せば入る。
 手順ごと通すなら `/ship` を使う。
 
 **.NET 10 SDK が必要**（`global.json` で固定）。ターゲットは `net10.0`、C# 14。

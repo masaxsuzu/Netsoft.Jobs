@@ -79,7 +79,12 @@ git push -u origin <branch>
 
 失敗したらネットワークの失敗のときだけ 4 回まで指数バックオフ（2s, 4s, 8s, 16s）。
 
-ゲートを通っていないと `tools/gate-hook.sh` がここで止める。止められたら 5 に戻る。
+ゲートを通っていないと止まる。止められたら 5 に戻る。
+
+止める仕掛けは 2 つある。`tools/gate-hook.sh`（PreToolUse）は**コマンドの実行前**に
+判定するので、`commit` と `push` を 1 つのコマンドに束ねると素通りする（実際にした）。
+`tools/git-hooks/pre-push` は git が押す直前に呼ぶので、**束ね方に左右されない**。
+後者は `tools/gate.sh` が `core.hooksPath` を貼るので、一度ゲートを通せば入る。
 
 ## 7. PR
 
