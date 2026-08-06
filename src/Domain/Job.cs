@@ -107,8 +107,9 @@ public sealed class Job
     /// <remarks>
     /// 一度立ったら二度と動かない（停止して待ち行列へ戻っても消えないし、再開後の
     /// 起動でも書き直さない）。したがって「値がある ⟺ 一度でも走った」が成り立つ。
-    /// 状態からは完全には導けない事実。<see cref="JobStatus.Resumed"/> は必ず値を持ち、
-    /// <see cref="JobStatus.Registered"/> は必ず持たないが、終端はどちらもありうる
+    /// これは状態からは導けない事実で、<see cref="JobStatus.Registered"/> が必ず持たないこと
+    /// （<c>Create</c> でしか作られないため）以外に言えることは無い ──
+    /// <see cref="JobStatus.Resumed"/> にも走る前に保留した Job が居る
     /// （理由は <see cref="Apply"/> の注記に）。
     /// </remarks>
     public DateTimeOffset? StartedAt { get; private set; }

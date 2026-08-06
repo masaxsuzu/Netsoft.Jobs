@@ -65,6 +65,31 @@ public sealed class JobStateMachineTests
         Assert.Equal(expected, JobStateMachine.Evaluate(current, trigger).Rejection);
     }
 
+    /// <summary>
+    /// 待ち行列の 2 状態は 1 手ではすべての契機で同じ結果になるが、
+    /// <b>一時停止と再開の往復は Registered だけ元に戻らない</b>。
+    /// </summary>
+    /// <remarks>
+    /// 「Registered と Resumed はできることが同じ」は 1 手の話に限る。往復まで見ると
+    /// 保留は Registered にとって片道で、走っていない Job も Resumed になる。
+    /// Paused が 1 つしか無い以上、戻り先はどちらか一方にしか決められない
+    /// （戻り先を StartedAt で分けるには状態機械が Job の中身を見る必要があり、
+    /// 遷移の判断が状態と契機だけで決まるという形が壊れる）。
+    /// この非対称は承知のうえで受け入れているので、忘れないようここで固定する。
+    /// </remarks>
+    [Fact]
+    public void 保留と再開の往復で戻るのはResumedだけ()
+    {
+        foreach (JobStatus waiting in JobTransitionTable.AllStatuses.Where(status => status.IsWaiting()))
+        {
+            JobTransitionResult paused = JobStateMachine.Evaluate(waiting, JobTrigger.RequestPause);
+            Assert.Equal(JobStatus.Paused, paused.Status);
+
+            JobTransitionResult back = JobStateMachine.Evaluate(paused.Status, JobTrigger.Resume);
+            Assert.Equal(JobStatus.Resumed, back.Status);
+        }
+    }
+
     [Fact]
     public void ハンドラ稼働中と判定されるのはRunningとCancellingとPausingだけ()
     {
