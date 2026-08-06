@@ -20,12 +20,5 @@
     <ProjectReference Include="..\..\src\Web\Web.csproj" />
   </ItemGroup>
 
-  <!--
-    E2E はアプリを別プロセスで起動するため coverlet の計測に乗らない。
-    計測を有効にしても空の結果でマージを汚すだけなので、常に無効にする。
-  -->
-  <PropertyGroup>
-    <CollectCoverage>false</CollectCoverage>
-  </PropertyGroup>
 
 </Project>

@@ -31,7 +31,7 @@ squash merge 済みのコミットを含んだまま出して `mergeable_state: 
 
 ```bash
 for i in $(seq 10); do
-  dotnet test tests/<Project>/<Project>.csproj -m:1 --no-build 2>&1 | grep -E "^(Passed!|Failed!)"
+  dotnet test tests/<Project>/<Project>.csproj --no-build 2>&1 | grep -E "^(Passed!|Failed!)"
 done
 ```
 

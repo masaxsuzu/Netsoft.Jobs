@@ -27,7 +27,7 @@ description: src/ を 4 観点（再利用・単純化・効率・深さ）で�
 4. **突き合わせて適用**。適用するのは behaviour を変えない確定的なものだけ。
    設計判断を含むものは適用せず PR の「レビューで見てほしい点」へ。
    **巡をまたいで矛盾する提案は却下する**（前巡の判定と突き合わせること）
-5. **ゲート**: build / `dotnet test -m:1 -p:CollectCoverage=true`（90/80）/ format。
+5. **ゲート**: `tools/gate.sh`（build / カバレッジ判定 / format）。
    動きが変わる項目を含むなら E2E 込みで 3 回連続
 6. **PR**: 設計判断を含むなら needs-review。出したら subscribe_pr_activity を張る
 7. **このファイルの判定済みを更新する。** 怠ると次回が同じ議論を繰り返す

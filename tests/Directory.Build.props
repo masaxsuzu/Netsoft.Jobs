@@ -13,29 +13,8 @@
   </PropertyGroup>
 
   <!--
-    カバレッジ計測の設定。-p:CollectCoverage=true を付けたときだけ効く
-    （普段の dotnet test を計測で遅くしないため）。
-
-    基準の判定は tests/Web にだけ置いてある。全プロジェクトの結果を 1 つの
-    ファイルにマージし、最後に走るものがまとめて判定する形。基準を全体に置くのは
-    テストが層をまたいで書かれているため（Web の結合テストが Features のハンドラを、
-    Features のテストが Domain を通す）。プロジェクト単位で測ると、実際には
-    検証されているコードが未カバーに見える（実測: Features 単独 73.7%）。
-
-    除外は「E2E が実プロセスで検証しているが、coverlet が別プロセスを計測できないもの」だけ。
-    *.razor に残るのは markup と、回路 (WebSocket) が無いと呼ばれないライフサイクル
-    (OnAfterRender・変更通知の載せ替え) だけである。
-    テストを書けるのに書いていないものを除外で隠さないこと。
-
-    かつてこの除外は画面のロジックまで丸ごと隠していた。@code に 200 行が入っていて、
-    「一時停止ボタンが再開を叩く」ように壊しても全テストが通る状態だった（変異検査で発覚）。
-    状態と操作は JobBoard へ出して計測下に置いた。**.razor に振る舞いを戻さないこと。**
+    カバレッジの設定は coverage.runsettings にある（coverlet.collector が読む）。
+    csproj / props に置くと、計測の有無がプロジェクトごとにばらつく。
   -->
-  <PropertyGroup Condition="'$(CollectCoverage)' == 'true'">
-    <CoverletOutput>$(MSBuildThisFileDirectory)../TestResults/coverage.json</CoverletOutput>
-    <MergeWith>$(CoverletOutput)</MergeWith>
-    <Exclude>[*.Tests]*</Exclude>
-    <ExcludeByFile>**/*.razor</ExcludeByFile>
-  </PropertyGroup>
 
 </Project>

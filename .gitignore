@@ -11,5 +11,5 @@ jobs.db*
 # ビルドが NuGet キャッシュからコピーするフレームワークのスクリプト
 src/Ui/wwwroot/_framework/
 
-# coverlet が既定で吐くカバレッジ出力（実際の出力先は TestResults/ に設定してある）
+# coverlet.msbuild 時代の名残。collector は TestResults/ にしか書かない
 coverage.json

@@ -19,12 +19,5 @@
     <ProjectReference Include="..\..\src\Web\Web.csproj" />
   </ItemGroup>
 
-  <!--
-    アプリを別プロセスで起動するため coverlet の計測に乗らない。有効にしても
-    空の結果でマージを汚すだけなので、常に無効にする（E2E と同じ）。
-  -->
-  <PropertyGroup>
-    <CollectCoverage>false</CollectCoverage>
-  </PropertyGroup>
 
 </Project>

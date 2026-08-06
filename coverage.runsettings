@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+
+  <!--
+    カバレッジ計測の設定。coverlet.collector が読む。
+
+    各テストプロジェクトが**自分のファイル**に書く。共有ファイルへ積み上げないので、
+    どの順で走っても、何本並列に走っても結果が変わらない。マージと基準の判定は
+    全部終わってから tools/coverage.sh が一度だけ行う。
+
+    かつては coverlet.msbuild の MergeWith で 1 つの json に積み上げていた。coverlet は
+    その形では -m:1（直列）を要求しており、実測で 2 倍遅かった（44〜52 秒 → 23〜28 秒）。
+    基準を全テストプロジェクトに置いて順序依存を消そうとしても駄目で、
+    カバレッジはプロジェクトをまたいで積み上がるため中間状態が偽の赤になる
+    （Contracts は tests/Web が走るまで分岐 0%。その分岐は Web の結合テストでしか通らない）。
+    **判定は「全部そろった後に一度だけ」でなければ成立しない。**
+  -->
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+
+          <!--
+            除外してよいのは「E2E が実プロセスで検証しているが、coverlet が別プロセスを
+            計測できないもの」だけ。*.razor に残るのは markup と、回路 (WebSocket) が
+            無いと呼ばれないライフサイクル (OnAfterRender・変更通知の載せ替え) だけである。
+            テストを書けるのに書いていないものを除外で隠さないこと。
+
+            かつてこの除外は画面のロジックまで丸ごと隠していた。@code に 200 行が入っていて、
+            「一時停止ボタンが再開を叩く」ように壊しても全テストが通る状態だった（変異検査で発覚）。
+            状態と操作は JobBoard へ出して計測下に置いた。**.razor に振る舞いを戻さないこと。**
+          -->
+          <Exclude>[*.Tests]*</Exclude>
+          <ExcludeByFile>**/*.razor</ExcludeByFile>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+
+</RunSettings>
