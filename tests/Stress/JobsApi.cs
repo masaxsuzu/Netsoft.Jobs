@@ -1,7 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 
-namespace Netsoft.Jobs.Resilience.Tests;
+namespace Netsoft.Jobs.Stress.Tests;
 
 /// <summary>
 /// 起動しているホストへ、画面と同じ HTTP の口から操作する。

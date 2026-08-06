@@ -35,7 +35,7 @@ for i in $(seq 10); do
 done
 ```
 
-実プロセスを起こすテスト（tests/Resilience、tests/E2E）は特に必ず回す。
+実プロセスを起こすテスト（tests/Stress、tests/E2E）は特に必ず回す。
 
 ## 3. 変異を入れて網が効くことを確かめる
 

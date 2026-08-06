@@ -3,7 +3,7 @@ using Microsoft.Data.Sqlite;
 using Netsoft.Jobs.Domain;
 using Netsoft.Jobs.Infrastructure;
 
-namespace Netsoft.Jobs.Resilience.Tests;
+namespace Netsoft.Jobs.Stress.Tests;
 
 /// <summary>
 /// 走っているホストの DB から、サブタスクの行を読む。

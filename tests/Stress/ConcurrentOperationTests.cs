@@ -1,4 +1,4 @@
-namespace Netsoft.Jobs.Resilience.Tests;
+namespace Netsoft.Jobs.Stress.Tests;
 
 /// <summary>
 /// 画面から同じ Job を同時に叩いたとき、システムとして決着するか。
