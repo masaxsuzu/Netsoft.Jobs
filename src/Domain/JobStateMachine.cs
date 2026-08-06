@@ -30,14 +30,14 @@ public static class JobStateMachine
             (JobStatus.Registered, JobTrigger.RequestCancel) => JobTransitionResult.Allowed(current, JobStatus.Cancelled),
             (JobStatus.Resumed, JobTrigger.RequestCancel) => JobTransitionResult.Allowed(current, JobStatus.Cancelled),
 
-            // 走ったことのある Job の保留。ここも受理を待つ相手がいないので、要求と受理の
-            // 2 段を踏まずに直接 Paused へ。エンジンは待ち行列しか claim しないので、
-            // これだけで走り出さなくなる。
+            // 待ち行列の保留。ここも受理を待つ相手がいないので、要求と受理の 2 段を踏まずに
+            // 直接 Paused へ。エンジンは待ち行列しか claim しないので、これだけで走り出さなくなる。
             //
-            // Registered には同じ行を作らない。**一度も走っていない Job を保留しても意味が無い**
-            // ── 守るべき進捗が無く、要らないなら消せばよい。逆に走ったことがある Job には
-            // 進捗があるので、消さずに止められる必要がある（無いと Paused → Resumed の片側通行になり、
-            // 再開したあとで気が変わっても走り出すまで止め直せない）。
+            // 「一度も走っていない Job（Registered）は保留しても意味が無い、要らないなら消せばよい」
+            // という理由で Registered を外したことがあるが、戻した。キャンセルは終端で、消すことと
+            // 「いま走らせない」は別の意図である。走る前に止めたい場面（順番を入れ替えたい、
+            // 依存する準備が整っていない）は普通にあり、そこで消させるのは筋が悪い。
+            (JobStatus.Registered, JobTrigger.RequestPause) => JobTransitionResult.Allowed(current, JobStatus.Paused),
             (JobStatus.Resumed, JobTrigger.RequestPause) => JobTransitionResult.Allowed(current, JobStatus.Paused),
 
             (JobStatus.Running, JobTrigger.Complete) => JobTransitionResult.Allowed(current, JobStatus.Completed),
@@ -77,7 +77,10 @@ public static class JobStateMachine
 
             // 再開は待ち行列へ戻す。専用の再実行経路は作らず、既存のディスパッチに乗せる。
             // 進捗はサブタスクの行が持っているので、ハンドラは続きから走れる。
-            // 戻り先が Registered ではなく Resumed なのは、また止められる必要があるため。
+            //
+            // 戻り先を Registered にしないのは、Registered を「Create でしか作られない状態」の
+            // ままにしておくため。ここで合流させると、登録直後と再開待ちが同じ状態に混ざり、
+            // 「まだ一度も待ち行列を出ていない」と言える状態がどこにも無くなる。
             (JobStatus.Paused, JobTrigger.Resume) => JobTransitionResult.Allowed(current, JobStatus.Resumed),
 
             // 停止中は誰も走っていない。待ち行列への要求と同じく、受理を待つ相手がいないので即終端。

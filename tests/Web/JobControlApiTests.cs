@@ -45,35 +45,40 @@ public sealed class JobControlApiTests : IDisposable
         Assert.Equal("Pausing", job?.Status);
     }
 
+    /// <summary>
+    /// 登録直後でも保留できる。走る前に止めたい場面（順番を入れ替えたい、準備が整っていない）は
+    /// 普通にあり、そこで「消す」しか手が無いのは筋が悪い。
+    /// </summary>
     [Fact]
-    public async Task 一度も走っていないJobへの一時停止は409で現在のJobが返る()
+    public async Task 登録直後のJobは200で保留でき再開すると再開待ちへ戻る()
     {
         JobDto registered = await RegisterAsync();
 
-        // 守るべき進捗が無いので保留は認めない。要らないならキャンセルすればよい。
-        HttpResponseMessage response = await _client.PostAsync($"/api/jobs/{registered.Id}/pause", content: null);
-
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Equal("Registered", (await response.Content.ReadFromJsonAsync<JobDto>())?.Status);
-    }
-
-    [Fact]
-    public async Task 再開待ちのJobは200で保留でき再開すると待ち行列へ戻る()
-    {
-        JobDto registered = await RegisterAsync();
-        await AdvanceAsync(
-            registered.Id, JobTrigger.Start, JobTrigger.RequestPause, JobTrigger.ConfirmPaused, JobTrigger.Resume);
-
-        // 走ったことがあるので進捗がある。消さずに止められる必要がある。
+        // 走り出す前は受理を待つ相手がいないので、Pausing を経ずに直接 Paused。
         HttpResponseMessage paused = await _client.PostAsync($"/api/jobs/{registered.Id}/pause", content: null);
 
         Assert.Equal(HttpStatusCode.OK, paused.StatusCode);
         Assert.Equal("Paused", (await paused.Content.ReadFromJsonAsync<JobDto>())?.Status);
 
+        // 消さずに保留できることに意味があるので、戻せるところまで見る。
+        // 一度も走っていなくても、戻り先は Registered ではなく Resumed。
         HttpResponseMessage resumed = await _client.PostAsync($"/api/jobs/{registered.Id}/resume", content: null);
 
         Assert.Equal(HttpStatusCode.OK, resumed.StatusCode);
         Assert.Equal("Resumed", (await resumed.Content.ReadFromJsonAsync<JobDto>())?.Status);
+    }
+
+    [Fact]
+    public async Task 再開待ちのJobも200で保留できる()
+    {
+        JobDto registered = await RegisterAsync();
+        await AdvanceAsync(
+            registered.Id, JobTrigger.Start, JobTrigger.RequestPause, JobTrigger.ConfirmPaused, JobTrigger.Resume);
+
+        HttpResponseMessage paused = await _client.PostAsync($"/api/jobs/{registered.Id}/pause", content: null);
+
+        Assert.Equal(HttpStatusCode.OK, paused.StatusCode);
+        Assert.Equal("Paused", (await paused.Content.ReadFromJsonAsync<JobDto>())?.Status);
     }
 
     [Fact]

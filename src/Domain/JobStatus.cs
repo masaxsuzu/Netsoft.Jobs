@@ -35,14 +35,15 @@ public enum JobStatus
     Paused,
 
     /// <summary>
-    /// 再開待ち。一度は走っており、待ち行列で実行を待っている。
+    /// 再開待ち。一度 <see cref="Paused"/> になった Job が、待ち行列へ戻って実行を待っている。
     /// </summary>
     /// <remarks>
-    /// <see cref="Registered"/> と分けてあるのは、止められるかどうかが違うため。
-    /// 走ったことがある Job には守るべき進捗があるので保留（<see cref="Paused"/> へ戻す）を
-    /// 認めるが、一度も走っていない Job を保留しても意味が無い ── 要らないなら消せばよく、
-    /// 失うものが無い。<b>待ち行列としての扱いはどちらも同じ</b>で、
-    /// <see cref="JobStatusExtensions.IsWaiting"/> がその 2 つをまとめている。
+    /// <see cref="Registered"/> と分けてあるのは、<b>できることの違いではなく、経てきた道の違い</b>。
+    /// 待ち行列としての扱いも、受け付ける操作も 2 つは同じで
+    /// （<see cref="JobStatusExtensions.IsWaiting"/> がまとめている）、
+    /// 分けることで <see cref="Registered"/> を「<c>Create</c> でしか作られない」状態に保っている。
+    /// 合流させると登録直後と再開待ちが混ざり、「まだ一度も待ち行列を出ていない」と
+    /// 言える状態がどこにも無くなる。
     /// </remarks>
     Resumed,
 }
@@ -78,9 +79,9 @@ public static class JobStatusExtensions
     /// 実行を待っている状態か。エンジンが拾う対象はこれ。
     /// </summary>
     /// <remarks>
-    /// 一度も走っていない（<see cref="JobStatus.Registered"/>）か、走ったことがあって
-    /// 待ち行列へ戻った（<see cref="JobStatus.Resumed"/>）か。<b>ディスパッチから見れば同じ</b>で、
-    /// 違うのは保留を認めるかどうかだけ（<see cref="JobStatus.Resumed"/> の注記を参照）。
+    /// 登録されたまま（<see cref="JobStatus.Registered"/>）か、一時停止から戻ってきた
+    /// （<see cref="JobStatus.Resumed"/>）か。<b>どちらも扱いは同じ</b>で、
+    /// 分かれている理由は <see cref="JobStatus.Resumed"/> の注記に。
     /// </remarks>
     public static bool IsWaiting(this JobStatus status) =>
         status is JobStatus.Registered or JobStatus.Resumed;

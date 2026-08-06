@@ -23,9 +23,9 @@ internal static class JobTransitionTable
             [(JobStatus.Registered, JobTrigger.RequestCancel)] = JobStatus.Cancelled,
             [(JobStatus.Resumed, JobTrigger.RequestCancel)] = JobStatus.Cancelled,
 
-            // 保留も同じ理由で 2 段を踏まず直接 Paused へ。ただし**走ったことがあるものだけ**。
-            // 一度も走っていない Job（Registered）に行が無いのは、守るべき進捗が無く、
-            // 要らないなら消せばよいから（保留しても意味が無い）。
+            // 保留も同じ理由で 2 段を踏まず直接 Paused へ。「消す（キャンセル）」は終端で、
+            // 「いま走らせない」とは別の意図なので、走る前でも止められる必要がある。
+            [(JobStatus.Registered, JobTrigger.RequestPause)] = JobStatus.Paused,
             [(JobStatus.Resumed, JobTrigger.RequestPause)] = JobStatus.Paused,
 
             [(JobStatus.Running, JobTrigger.Complete)] = JobStatus.Completed,

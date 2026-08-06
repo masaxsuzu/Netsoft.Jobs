@@ -76,28 +76,28 @@ public sealed class JobInvariantsTests
     }
 
     /// <summary>
-    /// 待機中の 2 状態は、開始時刻の有無まで含めて言い切れる。
+    /// 登録直後だけは開始時刻が無いと言い切れる。再開待ちは言い切れない。
     /// </summary>
     /// <remarks>
-    /// 待ち行列を Registered と Resumed に分けたので、「まだ走っていない」と
-    /// 「走ったあと停止して再開待ち」を状態で見分けられる。かつては同じ待ち行列の状態に
-    /// 両方が居たため、開始時刻の有無はどちらでもよいとするしかなかった。
+    /// Registered は Create でしか作られず、戻ってくる道が無いので「必ず無い」。
+    /// Resumed は Paused からしか来ないが、その Paused には走る前の保留
+    /// （Registered からの直行）も居るので、有無は状態から決まらない。
+    /// 逆転（開始が登録より前）だけはどちらでも違反で、それは下のテストが持つ。
     /// </remarks>
     [Fact]
-    public void 再開待ちは開始時刻を持ち登録直後は持たない()
+    public void 登録直後は開始時刻を持たず再開待ちはどちらでもよい()
     {
         Assert.Null(JobInvariants.FindViolation(
-            Rehydrate(JobStatus.Resumed, startedAt: Created.AddMinutes(1), finishedAt: null)));
-        Assert.Null(JobInvariants.FindViolation(
             Rehydrate(JobStatus.Registered, startedAt: null, finishedAt: null)));
-
-        Assert.Contains(
-            "StartedAt",
-            JobInvariants.FindViolation(Rehydrate(JobStatus.Resumed, startedAt: null, finishedAt: null)));
         Assert.Contains(
             "StartedAt",
             JobInvariants.FindViolation(
                 Rehydrate(JobStatus.Registered, startedAt: Created.AddMinutes(1), finishedAt: null)));
+
+        Assert.Null(JobInvariants.FindViolation(
+            Rehydrate(JobStatus.Resumed, startedAt: Created.AddMinutes(1), finishedAt: null)));
+        Assert.Null(JobInvariants.FindViolation(
+            Rehydrate(JobStatus.Resumed, startedAt: null, finishedAt: null)));
     }
 
     [Fact]
