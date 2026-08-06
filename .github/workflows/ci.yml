@@ -58,8 +58,14 @@ jobs:
           # 旧キャッシュが復元されても playwright install が差分だけ取り直す。
           restore-keys: playwright-${{ runner.os }}-
 
+      # --with-deps は付けない。ubuntu-latest には Chromium が要る共有ライブラリが
+      # 既に入っていて、apt が実際に取るのは CJK・タイ語などのフォント 9 個だけになる。
+      # それが 21.1 MB を 34 kB/s で引いて 10 分 16 秒かかり、12 分のジョブのうち
+      # 10 分半を占めていた（run 31085712729）。E2E は DOM の文字列で照合していて
+      # 描画結果を見ないので、字形が豆腐になっても判定は変わらない。
+      # 将来 runner から共有ライブラリが消えたら、ブラウザの起動が失敗して PR で分かる。
       - name: Install Playwright browser
-        run: pwsh tests/E2E/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+        run: pwsh tests/E2E/bin/Release/net10.0/playwright.ps1 install chromium
 
       # カバレッジ計測込みで実行する。基準を下回ると coverlet がビルドを失敗させる。
       # 基準と除外は tests/Directory.Build.props と tests/Web/Web.csproj にある。
