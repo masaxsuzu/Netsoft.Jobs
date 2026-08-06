@@ -58,7 +58,6 @@ public sealed class JobStateMachineTests
     [InlineData(JobStatus.Running, JobTrigger.Resume, JobTransitionRejection.AlreadyInEffect)]
     [InlineData(JobStatus.Queued, JobTrigger.Complete, JobTransitionRejection.InvalidForCurrentStatus)]
     [InlineData(JobStatus.Running, JobTrigger.ConfirmCancelled, JobTransitionRejection.InvalidForCurrentStatus)]
-    [InlineData(JobStatus.Queued, JobTrigger.RequestPause, JobTransitionRejection.InvalidForCurrentStatus)]
     [InlineData(JobStatus.Cancelling, JobTrigger.Resume, JobTransitionRejection.InvalidForCurrentStatus)]
     public void 終端以外の拒否は既に効いているかどうかで理由が分かれる(
         JobStatus current, JobTrigger trigger, JobTransitionRejection expected)

@@ -32,6 +32,7 @@ public sealed class JobLifecycleStressTests : IDisposable
     private const int Engines = 2;
     private const int Cancellers = 2;
     private const int Operators = 2;
+    private const int OperationsPerWorker = 200;
 
     private static readonly DateTimeOffset Origin = new(2026, 8, 3, 9, 0, 0, TimeSpan.Zero);
 
@@ -102,18 +103,40 @@ public sealed class JobLifecycleStressTests : IDisposable
 
         bool draining = true;
         int acceptedOperations = 0;
+        int operatorsLeft = Operators;
+
+        // 最初の 1 操作が済むまでエンジンとキャンセルを待たせる。この時点では全部が待機中
+        // なので、編集も一時停止も再開も必ず受理される（Queued はどれも受け付ける状態）。
+        // 待たせないと、操作が始まる前に全部終端へ行き着く回ができて
+        // 「1 度も受け付けられていません」でフレークする（実際に 8 回中 4 回落ちた）。
+        // 残りの操作は今までどおり全部と重なるので、見ている窓は狭まらない。
+        TaskCompletionSource firstOperation = new(TaskCreationOptions.RunContinuationsAsynchronously);
         List<Exception> failures = [];
         AsyncStartGate start = new(Engines + Cancellers + Operators + 1);
 
+        // 待機中の Job が尽きても、操作が続いている限り降りない。保留（Queued → Paused）が
+        // 入ると待ち行列は一瞬で空になるので、枯れたら即降りる作りだと操作の窓が消える
+        //（実際に「1 度も受け付けられていません」でフレークした）。
         Task running = Task.WhenAll(engines.Select(engine => Task.Run(async () =>
         {
             await start.SignalAndWaitAsync();
+            await firstOperation.Task;
 
             try
             {
-                while (await engine.RunOnceAsync(CancellationToken.None))
+                while (true)
                 {
-                    // 待機中の Job が尽きるまで回す。
+                    if (await engine.RunOnceAsync(CancellationToken.None))
+                    {
+                        continue;
+                    }
+
+                    if (Volatile.Read(ref operatorsLeft) == 0)
+                    {
+                        return;
+                    }
+
+                    await Task.Yield();
                 }
             }
             catch (Exception exception)
@@ -126,6 +149,7 @@ public sealed class JobLifecycleStressTests : IDisposable
         {
             Random random = new(Seed + worker);
             await start.SignalAndWaitAsync();
+            await firstOperation.Task;
 
             while (Volatile.Read(ref draining))
             {
@@ -148,7 +172,7 @@ public sealed class JobLifecycleStressTests : IDisposable
             Random random = new(Seed + 500 + worker);
             await start.SignalAndWaitAsync();
 
-            while (Volatile.Read(ref draining))
+            for (int i = 0; i < OperationsPerWorker; i++)
             {
                 JobId id = ids[random.Next(ids.Count)];
 
@@ -174,11 +198,19 @@ public sealed class JobLifecycleStressTests : IDisposable
                 catch (Exception exception)
                 {
                     Collect(failures, exception);
-                    return;
+                    break;
+                }
+                finally
+                {
+                    // 1 回目を終えたら他を放す。例外で抜けても放す（待たせたまま詰まらせない）。
+                    firstOperation.TrySetResult();
                 }
 
                 await Task.Yield();
             }
+
+            firstOperation.TrySetResult();
+            Interlocked.Decrement(ref operatorsLeft);
         })));
 
         Task observing = Task.Run(async () =>
@@ -197,6 +229,20 @@ public sealed class JobLifecycleStressTests : IDisposable
         await running;
         Volatile.Write(ref draining, false);
         await Task.WhenAll(cancellers, operators, observing);
+
+        // 保留された Job は終端に達しない（利用者が止めた状態なので、それが正しい姿）。
+        // 全部再開してから、もう一度エンジンを回して決着させる。
+        // 「止めたものを必ず動かし直せる」ことの確認でもあり、ここが通らなければ
+        // 保留は行き止まりになっている。
+        foreach (JobId id in ids)
+        {
+            await resuming.HandleAsync(id.Value, CancellationToken.None);
+        }
+
+        while (await engines[0].RunOnceAsync(CancellationToken.None))
+        {
+            // 再開したものが尽きるまで回す。
+        }
 
         // 最後の姿も観測に加える。終端まで含めた列で検査したい。
         foreach (JobId id in ids)
@@ -227,7 +273,8 @@ public sealed class JobLifecycleStressTests : IDisposable
         Assert.True(log.AcceptedUpdateCount > 0, $"seed={Seed} 状態が 1 度も進んでいません。");
         Assert.True(
             acceptedOperations > 0,
-            $"seed={Seed} 編集・一時停止・再開が 1 度も受け付けられていません（割り込めていない）。");
+            $"seed={Seed} 編集・一時停止・再開が 1 度も受け付けられていません（割り込めていない）。"
+            + $" 受理数={acceptedOperations}");
     }
 
     /// <summary>

@@ -145,12 +145,15 @@ public sealed class JobBoardTests : IDisposable
     [Fact]
     public async Task 状態が合わない一時停止は現在の状態つきの知らせになる()
     {
-        string id = await RegisterViaApiAsync("まだの Job");
+        // 待機中と実行中は保留できるので、拒否されるのは中止の受理待ち（Cancelling）。
+        string id = await RegisterViaApiAsync("中止中の Job");
+        await StartAsync(id);
+        await CancelViaApiAsync(id);
         await _board.InitializeAsync(None);
 
         await _board.PauseAsync(id, None);
 
-        Assert.Equal("一時停止できませんでした。現在の状態: Queued", _board.Notice);
+        Assert.Equal("一時停止できませんでした。現在の状態: Cancelling", _board.Notice);
     }
 
     [Fact]

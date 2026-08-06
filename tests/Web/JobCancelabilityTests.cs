@@ -38,7 +38,7 @@ public sealed class JobCancelabilityTests
     /// 一時停止・再開・編集の可否も同じ流儀（判断は Domain、ここは写像と未知の値の検査）。
     /// </summary>
     [Theory]
-    [InlineData("Queued", false, false, true)]
+    [InlineData("Queued", true, false, true)]
     [InlineData("Running", true, false, true)]
     [InlineData("Pausing", false, true, true)]
     [InlineData("Paused", false, true, true)]

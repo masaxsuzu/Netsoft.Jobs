@@ -35,15 +35,16 @@ public sealed class PauseResumeHandlerTests : IDisposable
     /// <summary>
     /// 一時停止要求の状態ごとの結末。要求済み・停止済みへの再要求は
     /// ボタンを 2 回押しただけなので成功として写る（キャンセルと同じ判断）。
+    /// 待機中は受理を待つ相手がいないので、2 段を踏まず直接 Paused になる。
     /// </summary>
     [Theory]
     [InlineData(nameof(JobStatus.Running), true, nameof(JobStatus.Pausing))]
     [InlineData(nameof(JobStatus.Pausing), true, nameof(JobStatus.Pausing))]
     [InlineData(nameof(JobStatus.Paused), true, nameof(JobStatus.Paused))]
-    [InlineData(nameof(JobStatus.Queued), false, nameof(JobStatus.Queued))]
+    [InlineData(nameof(JobStatus.Queued), true, nameof(JobStatus.Paused))]
     [InlineData(nameof(JobStatus.Cancelling), false, nameof(JobStatus.Cancelling))]
     [InlineData(nameof(JobStatus.Completed), false, nameof(JobStatus.Completed))]
-    public async Task 一時停止要求は実行中だけを受理し要求済みには冪等に成功する(
+    public async Task 一時停止要求は実行中と待機中を受理し要求済みには冪等に成功する(
         string current, bool success, string expected)
     {
         await AddAsync(JobAt("job-1", current));

@@ -20,6 +20,10 @@ internal static class JobTransitionTable
             // 待機中はハンドラを起動していないので、受理を待つ相手がいない。即座に終端へ。
             [(JobStatus.Queued, JobTrigger.RequestCancel)] = JobStatus.Cancelled,
 
+            // 保留も同じ理由で 2 段を踏まず直接 Paused へ。エンジンは Queued しか claim
+            // しないので走り出さなくなる。Paused → Queued があるので往復できる。
+            [(JobStatus.Queued, JobTrigger.RequestPause)] = JobStatus.Paused,
+
             [(JobStatus.Running, JobTrigger.Complete)] = JobStatus.Completed,
             [(JobStatus.Running, JobTrigger.Fail)] = JobStatus.Failed,
             [(JobStatus.Running, JobTrigger.RequestCancel)] = JobStatus.Cancelling,

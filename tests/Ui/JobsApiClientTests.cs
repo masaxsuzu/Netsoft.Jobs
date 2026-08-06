@@ -137,16 +137,17 @@ public sealed class JobsApiClientTests : IDisposable
     }
 
     [Fact]
-    public async Task 待機中のJobへの一時停止は拒否として写る()
+    public async Task 待機中のJobへの一時停止は保留として写る()
     {
         RegisterJobResponse registered = await _client.RegisterJobAsync(
             "まだの Job", "subtasks", "3 1", CancellationToken.None);
         Assert.NotNull(registered.Job);
 
+        // 走り出す前なので受理を待つ相手がいない。Pausing を経ずに直接 Paused。
         JobControlResponse result = await _client.PauseJobAsync(registered.Job.Id, CancellationToken.None);
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal("Queued", result.Job?.Status);
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Paused", result.Job?.Status);
     }
 
     [Fact]

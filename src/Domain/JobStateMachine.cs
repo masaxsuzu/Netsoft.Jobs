@@ -28,6 +28,12 @@ public static class JobStateMachine
             // ハンドラをまだ起動していないので、受理を待つ相手がいない。即座に終端へ落とす。
             (JobStatus.Queued, JobTrigger.RequestCancel) => JobTransitionResult.Allowed(current, JobStatus.Cancelled),
 
+            // 待ち行列の保留。ここも受理を待つ相手がいないので、要求と受理の 2 段を踏まずに
+            // 直接 Paused へ。エンジンは Queued しか claim しないので、これだけで走り出さなくなる。
+            // これが無いと Queued は「消す（キャンセル）」以外に止める手が無く、
+            // Paused + Resume で戻した Job を止め直せない（Paused → Queued の片側通行になる）。
+            (JobStatus.Queued, JobTrigger.RequestPause) => JobTransitionResult.Allowed(current, JobStatus.Paused),
+
             (JobStatus.Running, JobTrigger.Complete) => JobTransitionResult.Allowed(current, JobStatus.Completed),
             (JobStatus.Running, JobTrigger.Fail) => JobTransitionResult.Allowed(current, JobStatus.Failed),
             (JobStatus.Running, JobTrigger.RequestCancel) => JobTransitionResult.Allowed(current, JobStatus.Cancelling),

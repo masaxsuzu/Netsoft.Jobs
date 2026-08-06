@@ -46,15 +46,21 @@ public sealed class JobControlApiTests : IDisposable
     }
 
     [Fact]
-    public async Task 待機中のJobへの一時停止は409で現在のJobが返る()
+    public async Task 待機中のJobは200で保留でき再開すると待ち行列へ戻る()
     {
         JobDto registered = await RegisterAsync();
 
-        HttpResponseMessage response = await _client.PostAsync($"/api/jobs/{registered.Id}/pause", content: null);
+        // 走り出す前は受理を待つ相手がいないので、Pausing を経ずに直接 Paused。
+        HttpResponseMessage paused = await _client.PostAsync($"/api/jobs/{registered.Id}/pause", content: null);
 
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        JobDto? job = await response.Content.ReadFromJsonAsync<JobDto>();
-        Assert.Equal("Queued", job?.Status);
+        Assert.Equal(HttpStatusCode.OK, paused.StatusCode);
+        Assert.Equal("Paused", (await paused.Content.ReadFromJsonAsync<JobDto>())?.Status);
+
+        // 消さずに保留できることに意味があるので、戻せるところまで見る。
+        HttpResponseMessage resumed = await _client.PostAsync($"/api/jobs/{registered.Id}/resume", content: null);
+
+        Assert.Equal(HttpStatusCode.OK, resumed.StatusCode);
+        Assert.Equal("Queued", (await resumed.Content.ReadFromJsonAsync<JobDto>())?.Status);
     }
 
     [Fact]
