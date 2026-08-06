@@ -17,9 +17,8 @@ if [ -n "$(git status --porcelain)" ]; then
     exit 1
 fi
 
-# docs/build.md の通り。-m:1 は外さない（並列だとカバレッジのマージ順が崩れる）。
 dotnet build
-dotnet test -m:1 -p:CollectCoverage=true
+tools/coverage.sh --no-build
 dotnet format --verify-no-changes
 
 git rev-parse 'HEAD^{tree}' >"$(git rev-parse --git-dir)/ship-gate-ok"
