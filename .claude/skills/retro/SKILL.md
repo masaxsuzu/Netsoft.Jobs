@@ -19,16 +19,15 @@ MCP の結果は**大きいとファイルに落ちる**ので、そのパスを
 ```
 mcp__github__list_pull_requests   owner/repo, state=all, perPage=100, sort=created, direction=asc
 mcp__github__search_issues        repo:<owner>/<repo> is:pr label:needs-review
-mcp__github__search_issues        repo:<owner>/<repo> is:pr reviewed-by:<owner>
 ```
 
-3 つとも「result exceeds maximum allowed tokens」で保存されるので、
+どちらも「result exceeds maximum allowed tokens」で保存されるので、
 `/root/.claude/projects/.../tool-results/` のパスを控える。落ちなかったら自分で書き出す。
 
 ## 2. 数える
 
 ```bash
-tools/loop-stats/loop-stats.py --prs <prs> --labels <labeled> --reviews <reviewed> --window 20
+tools/loop-stats/loop-stats.py --prs <prs> --labels <labeled> --window 20
 tools/loop-stats/loop-stats.py --self-test        # 数え方だけ先に確かめたいとき
 ```
 
@@ -41,6 +40,11 @@ tools/loop-stats/loop-stats.py --self-test        # 数え方だけ先に確か�
 
 **動いていない数字を探す。** 規則を変えたのに直近が全体と同じなら、その規則は効いていない。
 効いていない規則は、書き足すのではなく**消すか、機械で強制する**（#71 でやった）。
+
+ただし **0 のまま動かない指標は、規則より先に指標を疑う。** 初回は
+「`needs-review` の的中（GitHub 上のレビュー）」が 0/33 で、ラベルを消す候補に見えた。
+実際にはラベルに GitHub のレビューを呼ぶ働きが無く、**測る場所を間違えていた**。
+効き方（auto-merge を保留する）で測り直すと、中央値 8 分 対 2 分ではっきり効いていた。
 
 ## 4. 直す
 
@@ -55,8 +59,7 @@ tools/loop-stats/loop-stats.py --self-test        # 数え方だけ先に確か�
 ## 測れないもの
 
 - **チャットでの差し戻し**。実際の押し戻しはほとんどここで起きていて、GitHub には残らない。
-  「`needs-review` の的中（GitHub 上）」が 0% なのは「誰も読んでいない」ではなく
-  「ラベルが GitHub 上のレビューを呼んでいない」という意味
+  `needs-review` については、止まった事実がマージまでの時間に出るのでそちらで代用している
 - **CI の初回成功率**。run と PR の突き合わせが要る。必要になったら足す
 - **`/ship` を通したか**。マーカーは手元にしか無い。代わりに「テンプレート充足」と
   「実測の記載」で、手順の後半を通ったかを見ている
