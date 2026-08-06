@@ -1,4 +1,4 @@
-namespace Netsoft.Jobs.Chaos.Tests;
+namespace Netsoft.Jobs.Resilience.Tests;
 
 /// <summary>
 /// DB が使えない状態で起動したとき、黙って動き続けないこと。
@@ -20,7 +20,7 @@ public sealed class UnusableDatabaseTests : IDisposable
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(60);
 
     private readonly string _directory =
-        Path.Combine(Path.GetTempPath(), "netsoft-jobs-chaos", Path.GetRandomFileName());
+        Path.Combine(Path.GetTempPath(), "netsoft-jobs-resilience", Path.GetRandomFileName());
 
     public UnusableDatabaseTests() => Directory.CreateDirectory(_directory);
 

@@ -4,7 +4,7 @@ using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
 
-namespace Netsoft.Jobs.Chaos.Tests;
+namespace Netsoft.Jobs.Resilience.Tests;
 
 /// <summary>
 /// API ホスト（Web）を実プロセスとして起動し、いつでも殺せるようにしたもの。
