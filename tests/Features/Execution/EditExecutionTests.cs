@@ -27,7 +27,6 @@ public sealed class EditExecutionTests : IDisposable
     private readonly TestMeterFactory _meterFactory = new();
     private readonly JobExecutionInstrumentation _instrumentation;
     private readonly EditJobHandler _edit;
-    private readonly RunningJobRegistry _runningJobs = new();
 
     public EditExecutionTests()
     {
@@ -216,7 +215,6 @@ public sealed class EditExecutionTests : IDisposable
         await JobExecutionEngine.StartAsync(
             store ?? _jobs,
             new JobHandlerRegistry([new SubTaskJobHandler(_subTasks, _jobs, _time)]),
-            _runningJobs,
             new JobQueueSignal(),
             _time,
             _instrumentation,

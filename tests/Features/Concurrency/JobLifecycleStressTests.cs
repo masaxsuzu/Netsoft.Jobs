@@ -57,30 +57,28 @@ public sealed class JobLifecycleStressTests : IDisposable
         // CreatedAt より前になると、実装ではなく試験の作り方で不変条件が破れる。
         FixedTimeProvider timeProvider = new(Origin.AddMinutes(1));
 
-        CountingJobHandler handler = new(HandledJobType) { Yields = 3 };
+        CountingJobHandler handler = new(HandledJobType, store) { Yields = 3 };
 
         using JobExecutionInstrumentation instrumentation =
             new(_meterFactory, store, timeProvider, new NullJobTraceContextStore(), NullLogger<JobExecutionInstrumentation>.Instance);
-
-        RunningJobRegistry[] registries = [.. Enumerable.Range(0, Engines).Select(_ => new RunningJobRegistry())];
 
         // 立ち上げの時点で復旧は済んでいる。Job を入れるのはこの後なので、
         // 走行中の Job を復旧が見ることはない（走行中に立ち上げる状況は別の話で、
         // そちらは JobExecutionEngineConcurrencyTests に置いてある）。
         JobExecutionEngine[] engines = await Task.WhenAll(
-            registries.Select(registry => JobExecutionEngine.StartAsync(
+            Enumerable.Range(0, Engines).Select(_ => JobExecutionEngine.StartAsync(
                 store,
                 new JobHandlerRegistry([handler]),
-                registry,
                 new JobQueueSignal(),
                 timeProvider,
                 instrumentation,
                 NullLogger<JobExecutionEngine>.Instance,
                 CancellationToken.None)));
 
+        // エンジンが何本居ても、伝えるのは store に Cancelling と書く 1 手だけ。
+        // かつては伝達先がエンジンごとの登録簿だったので、束ねる細工を挟んでいた。
         CancelJobHandler cancelling = new(
             store,
-            new CompositeRunningJobRegistry(registries),
             timeProvider,
             NullLogger<CancelJobHandler>.Instance);
 
@@ -305,33 +303,6 @@ public sealed class JobLifecycleStressTests : IDisposable
         lock (failures)
         {
             failures.Add(exception);
-        }
-    }
-
-    /// <summary>
-    /// 複数のエンジンの登録簿へまとめて伝える。
-    /// </summary>
-    /// <remarks>
-    /// 本番ではエンジンは 1 プロセスに 1 つで、登録簿も 1 つ。ここではエンジンを
-    /// 複数立てているので、キャンセルの伝達先も同じ数だけある。
-    /// どれか 1 つが持っていれば伝わったことにする。
-    /// </remarks>
-    private sealed class CompositeRunningJobRegistry : IRunningJobRegistry
-    {
-        private readonly IReadOnlyList<RunningJobRegistry> _registries;
-
-        public CompositeRunningJobRegistry(IReadOnlyList<RunningJobRegistry> registries) =>
-            _registries = registries;
-
-        public bool TryRequestCancel(JobId id)
-        {
-            bool delivered = false;
-            foreach (RunningJobRegistry registry in _registries)
-            {
-                delivered |= registry.TryRequestCancel(id);
-            }
-
-            return delivered;
         }
     }
 }

@@ -22,8 +22,13 @@ namespace Netsoft.Jobs.Features.Tests.Fakes;
 public sealed class CountingJobHandler : IJobHandler
 {
     private readonly ConcurrentDictionary<string, int> _executions = new();
+    private readonly IJobStore? _jobs;
 
-    public CountingJobHandler(string jobType) => JobType = jobType;
+    public CountingJobHandler(string jobType, IJobStore? jobs = null)
+    {
+        JobType = jobType;
+        _jobs = jobs;
+    }
 
     /// <inheritdoc />
     public string JobType { get; }
@@ -35,7 +40,7 @@ public sealed class CountingJobHandler : IJobHandler
     public int Yields { get; init; } = 1;
 
     /// <inheritdoc />
-    public async Task ExecuteAsync(JobId jobId, string parameters, CancellationToken cancellationToken)
+    public async Task ExecuteAsync(JobId jobId, string parameters)
     {
         _executions.AddOrUpdate(parameters, 1, (_, count) => count + 1);
 
@@ -45,8 +50,12 @@ public sealed class CountingJobHandler : IJobHandler
         {
             await Task.Yield();
 
-            // 実際のハンドラと同じく、キャンセルを見たら自分で降りる。
-            cancellationToken.ThrowIfCancellationRequested();
+            // 実際のハンドラと同じく、譲るたびに自分の行を読んで中断を見つける。
+            if (_jobs is not null
+                && await _jobs.FindAsync(jobId, CancellationToken.None) is { Status: JobStatus.Cancelling })
+            {
+                throw new JobCancelledException(jobId);
+            }
         }
     }
 }

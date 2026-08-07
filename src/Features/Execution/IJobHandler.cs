@@ -29,14 +29,24 @@ public interface IJobHandler
     /// <see cref="Domain.Job.Parameters"/> をそのまま渡したもの。
     /// 形式を決めて解釈するのはハンドラの責務で、エンジンは中身を見ない。
     /// </param>
-    /// <param name="cancellationToken">
-    /// キャンセル要求。長く待つ処理には必ず渡すこと。
-    /// これを無視すると、利用者がキャンセルしても Job が終わらない。
-    /// </param>
     /// <remarks>
-    /// 正常終了は Completed、<see cref="OperationCanceledException"/> は Cancelled、
-    /// それ以外の例外は Failed としてエンジンが記録する。
+    /// <para>
+    /// 正常終了は Completed、<see cref="JobCancelledException"/> は Cancelled、
+    /// <see cref="JobPausedException"/> は Paused、それ以外の例外は Failed としてエンジンが記録する。
     /// つまり「失敗したこと」を伝える手段は例外を投げることだけで、戻り値では表現しない。
+    /// </para>
+    /// <para>
+    /// <b><see cref="CancellationToken"/> は渡らない。</b>中断の要求は store の状態
+    /// （Cancelling / Pausing）として置かれるので、<b>長く待つハンドラは自分で読みに来ること</b>。
+    /// 無視すると、利用者が中止を押しても Job が終わらない。
+    /// </para>
+    /// <para>
+    /// かつてはトークンを渡していた。やめたのは、渡す側が「今どの Job が走っていて、
+    /// そのトークンはどれか」をプロセス内に覚えておく必要があり、それがエンジンのループと
+    /// HTTP のスレッドが同時に触る唯一の入れ物になっていたため。読みに来る形にすると
+    /// その入れ物ごと消える（触れ合わないので、守る仕掛けも要らない）。
+    /// 代わりに、気づくまでの時間はハンドラが読みに来る間隔に等しくなる。
+    /// </para>
     /// </remarks>
-    Task ExecuteAsync(JobId jobId, string parameters, CancellationToken cancellationToken);
+    Task ExecuteAsync(JobId jobId, string parameters);
 }

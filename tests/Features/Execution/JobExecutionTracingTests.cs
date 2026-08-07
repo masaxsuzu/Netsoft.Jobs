@@ -25,7 +25,6 @@ public sealed class JobExecutionTracingTests : IDisposable
 
     private readonly TemporaryJobStore _store = new();
     private readonly FixedTimeProvider _timeProvider = new(Now);
-    private readonly RunningJobRegistry _runningJobs = new();
     private readonly JobQueueSignal _signal = new();
     private readonly TestMeterFactory _meterFactory = new();
     private readonly RecordingJobTraceContextStore _traceContexts = new();
@@ -79,7 +78,7 @@ public sealed class JobExecutionTracingTests : IDisposable
     {
         // キャンセルは利用者が意図した結末で、失敗ではない。Error にすると誤検知になる。
         using RecordedActivities activities = new(_instrumentation.ActivitySource);
-        ControllableJobHandler handler = new(HandledJobType);
+        ControllableJobHandler handler = new(HandledJobType, _store);
         await AddRegisteredAsync("job-1");
         JobExecutionEngine engine = await CreateEngineAsync(handler);
 
@@ -89,7 +88,7 @@ public sealed class JobExecutionTracingTests : IDisposable
         Job job = await FindAsync("job-1");
         Assert.True(job.Apply(JobTrigger.RequestCancel, Now).IsAllowed);
         Assert.True(await _store.UpdateAsync(job, CancellationToken.None));
-        Assert.True(_runningJobs.TryRequestCancel(JobId.From("job-1")));
+        handler.Release();
         Assert.True(await running);
 
         Activity span = Assert.Single(activities.Stopped);
@@ -184,7 +183,6 @@ public sealed class JobExecutionTracingTests : IDisposable
         JobExecutionEngine.StartAsync(
             _store,
             new JobHandlerRegistry(handlers),
-            _runningJobs,
             _signal,
             _timeProvider,
             _instrumentation,

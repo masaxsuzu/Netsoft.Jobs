@@ -35,7 +35,6 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
         RelentlessJobStore hostile = new(_store, Now) { Interfering = true };
         CancelJobHandler handler = new(
             hostile,
-            new RunningJobRegistry(),
             new FixedTimeProvider(Now),
             NullLogger<CancelJobHandler>.Instance);
 
@@ -69,7 +68,6 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
         InterferingJobStore interfering = new(_store);
         CancelJobHandler handler = new(
             interfering,
-            new RunningJobRegistry(),
             new FixedTimeProvider(Now),
             NullLogger<CancelJobHandler>.Instance);
 
@@ -94,23 +92,16 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
     /// </summary>
     /// <remarks>
     /// <para>
-    /// 状態を公開してから受け口（<see cref="RunningJobRegistry"/> への登録）を用意するまでに
-    /// 窓があると、要求は受理されて Cancelling が書けるのに
-    /// <see cref="IRunningJobRegistry.TryRequestCancel"/> が false を返し、
-    /// トークンが永久に発火しない。状態は壊れないが、キャンセルが黙って効かない
-    /// Job ができる（E2E が 30 秒待たされる形で実際に踏んだ）。
+    /// かつてここには窓があった。状態を InProgress として公開してから、キャンセルの受け口を
+    /// プロセス内の入れ物へ登録するまでの間に要求が届くと、Cancelling は書けるのに
+    /// トークンを発火できず、<b>キャンセルが黙って効かない Job</b> ができた
+    /// （E2E が 30 秒待たされる形で実際に踏んだ）。
     /// </para>
     /// <para>
-    /// 登録を書き戻しより前に済ませていれば、窓は構造的に開かない。
-    /// このテストはその順序が保たれていることを、最悪の瞬間を決定的に作って固定する。
-    /// </para>
-    /// <para>
-    /// 判定は結末（Cancelled で終わったか）ではなく<b>不変条件そのもの</b>で行う。
-    /// 「InProgress が見えた瞬間に受け口が在る」を割り込みの中で直接見る。結末だけを見ると、
-    /// 順序を戻したときの症状が「ハンドラが永久に待つ」＝<see cref="HangGuard"/> での
-    /// タイムアウトになり、原因を何も言わないメッセージが 30 秒かけて出る。
-    /// 原因の側で落とせば即座に、しかも名指しで落ちる。
-    /// 結末の確認は不変条件が守られた結果として後ろに残してある。
+    /// 受け口が無くなったので窓も無い。要求は行に書かれ、走っているハンドラが読みに来る。
+    /// <b>それでもこの試験は残す。</b>守りたいのは仕掛けではなく
+    /// 「InProgress が見えた瞬間に届いた要求も効く」という約束の方で、
+    /// 最悪の瞬間を決定的に作れるのはここだけだから。
     /// </para>
     /// </remarks>
     [Fact]
@@ -120,13 +111,13 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
             Job.Create(JobId.From("job-1"), "窓", "test-job", string.Empty, Now),
             CancellationToken.None);
 
-        RunningJobRegistry runningJobs = new();
         InterferingJobStore interfering = new(_store);
-        ControllableJobHandler handler = new("test-job");
+
+        // ハンドラには store を渡す。観測点で自分の行を読み、Cancelling なら抜ける。
+        ControllableJobHandler handler = new("test-job", _store);
 
         CancelJobHandler cancel = new(
             _store,
-            runningJobs,
             new FixedTimeProvider(Now),
             NullLogger<CancelJobHandler>.Instance);
 
@@ -141,7 +132,6 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
         JobExecutionEngine engine = await JobExecutionEngine.StartAsync(
             interfering,
             new JobHandlerRegistry([handler]),
-            runningJobs,
             new JobQueueSignal(),
             new FixedTimeProvider(Now),
             instrumentation,
@@ -152,23 +142,15 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
         interfering.AfterNextUpdate = async () =>
         {
             CancelJobResult result = await cancel.HandleAsync("job-1", CancellationToken.None);
-
-            // ここは順序が壊れていても通る。CancelJobHandler は TryRequestCancel の戻り値を
-            // 見ない（見ないのが正しい）ので、受け口が無くても状態は Cancelling まで進む。
             Assert.True(result.IsSuccess);
 
-            // 守りたい不変条件はこちら。状態が InProgress として公開されたこの瞬間に、
-            // 受け口が既に在ること。既にキャンセル済みの CTS でも true が返るので、
-            // 上の要求と二重になっても壊れない。
-            Assert.True(
-                runningJobs.TryRequestCancel(JobId.From("job-1")),
-                "Running が見えているのに RunningJobRegistry に登録が無い。"
-                    + "Track が書き戻しより後ろに戻っている（JobExecutionEngine.RunOnceAsync の注記を参照）。");
+            // ハンドラを観測点まで進める。行には Cancelling が書けている。
+            handler.Release();
         };
 
         Assert.True(await engine.RunOnceAsync(CancellationToken.None).WaitAsync(HangGuard));
 
-        // ハンドラは最後まで走らずキャンセルを観測した。効かなければ Completed になる。
+        // ハンドラは完走せずキャンセルを観測した。効かなければ Completed になる。
         Assert.Equal(JobStatus.Cancelled, (await FindAsync("job-1")).Status);
         Assert.True(handler.CancellationObserved);
     }

@@ -71,35 +71,3 @@ internal sealed class CallLoggingJobStore : IJobStore
     public Task<IReadOnlyList<Job>> ListByStatusAsync(JobStatus status, CancellationToken cancellationToken) =>
         _inner.ListByStatusAsync(status, cancellationToken);
 }
-
-/// <summary>
-/// 伝達の呼び出しを記録するだけの <see cref="IRunningJobRegistry"/>。
-/// </summary>
-/// <remarks>
-/// 実行エンジンを立てずに「エンジンへ伝えたか」を確かめるためのもの。
-/// エンジンを立てると、伝えたかどうかではなくハンドラが止まったかどうかのテストになり、
-/// 時間や同期の都合が混ざる。
-/// </remarks>
-internal sealed class RecordingRunningJobRegistry : IRunningJobRegistry
-{
-    private readonly List<JobId> _requestedIds = [];
-    private readonly CancelJobCallLog _log;
-
-    public RecordingRunningJobRegistry(CancelJobCallLog log) => _log = log;
-
-    /// <summary>
-    /// <see cref="TryRequestCancel"/> が返す値。既定は「実行中だった」。
-    /// </summary>
-    public bool Result { get; set; } = true;
-
-    /// <summary>キャンセルを伝えられた Job。呼ばれた順。</summary>
-    public IReadOnlyList<JobId> RequestedIds => _requestedIds;
-
-    /// <inheritdoc />
-    public bool TryRequestCancel(JobId id)
-    {
-        _requestedIds.Add(id);
-        _log.Record($"cancel:{id.Value}");
-        return Result;
-    }
-}

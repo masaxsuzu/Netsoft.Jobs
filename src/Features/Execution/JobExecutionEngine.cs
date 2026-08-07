@@ -23,12 +23,18 @@ namespace Netsoft.Jobs.Features.Execution;
 /// （起動時復旧だけは別の前提を置いている。<see cref="StartAsync"/> の注記を参照）。
 /// </para>
 /// <para>
-/// ただし<b>キャンセルの伝達は同一プロセス内に限る</b>。<see cref="RunningJobRegistry"/> は
-/// プロセス内の辞書なので、別プロセスで走っている Job にトークンは届かない。
-/// その場合その Job は <see cref="JobStatus.Cancelling"/> のまま、実際に走らせているプロセスが
-/// 完了か失敗を書くまで止まらない（状態機械が Cancelling からの Complete / Fail を
-/// 認めているのは、この決着を許すため）。プロセスをまたいでキャンセルを効かせたいなら、
-/// 伝達の口を DB など共有の場所へ移すこと。
+/// <b>キャンセルと一時停止の伝達も同じ場所（store）に乗っている。</b>要求は
+/// <see cref="JobStatus.Cancelling"/> / <see cref="JobStatus.Pausing"/> として行に書かれ、
+/// 走っているハンドラがそれを読みに来る。プロセス内で誰かを突く経路は無いので、
+/// <b>別プロセスで走っている Job にも要求が届く</b>。
+/// </para>
+/// <para>
+/// かつてはキャンセルだけが <see cref="CancellationToken"/> で伝わっており、
+/// 「今どの Job が走っていて、そのトークンはどれか」をプロセス内に覚える入れ物が要った。
+/// そのため伝達は同一プロセスに限られ、その入れ物がエンジンのループと HTTP のスレッドが
+/// 同時に触る唯一の物になっていた。読みに来る形にしたので、入れ物ごと消えている。
+/// 代償は、要求に気づくまでの時間がハンドラの読む間隔（<see cref="IJobHandler"/> の注記）に
+/// なること。
 /// </para>
 /// <para>
 /// ホスティング（常駐させる殻）には依存しない。1 回分を進める <see cref="RunOnceAsync"/> と、
@@ -41,7 +47,6 @@ public sealed class JobExecutionEngine
 {
     private readonly IJobStore _store;
     private readonly JobHandlerRegistry _handlers;
-    private readonly RunningJobRegistry _runningJobs;
     private readonly JobQueueSignal _signal;
     private readonly TimeProvider _timeProvider;
     private readonly JobExecutionInstrumentation _instrumentation;
@@ -52,7 +57,6 @@ public sealed class JobExecutionEngine
     private JobExecutionEngine(
         IJobStore store,
         JobHandlerRegistry handlers,
-        RunningJobRegistry runningJobs,
         JobQueueSignal signal,
         TimeProvider timeProvider,
         JobExecutionInstrumentation instrumentation,
@@ -60,7 +64,6 @@ public sealed class JobExecutionEngine
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(handlers);
-        ArgumentNullException.ThrowIfNull(runningJobs);
         ArgumentNullException.ThrowIfNull(signal);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(instrumentation);
@@ -68,7 +71,6 @@ public sealed class JobExecutionEngine
 
         _store = store;
         _handlers = handlers;
-        _runningJobs = runningJobs;
         _signal = signal;
         _timeProvider = timeProvider;
         _instrumentation = instrumentation;
@@ -100,7 +102,6 @@ public sealed class JobExecutionEngine
     public static async Task<JobExecutionEngine> StartAsync(
         IJobStore store,
         JobHandlerRegistry handlers,
-        RunningJobRegistry runningJobs,
         JobQueueSignal signal,
         TimeProvider timeProvider,
         JobExecutionInstrumentation instrumentation,
@@ -118,7 +119,7 @@ public sealed class JobExecutionEngine
         await JobCrashRecovery.RunAsync(store, timeProvider, logger, cancellationToken);
 
         return new JobExecutionEngine(
-            store, handlers, runningJobs, signal, timeProvider, instrumentation, logger);
+            store, handlers, signal, timeProvider, instrumentation, logger);
     }
 
     /// <summary>
@@ -178,38 +179,30 @@ public sealed class JobExecutionEngine
                 return false;
             }
 
-            // キャンセルの受け口は InProgress を書き戻すより前に用意する。順序が逆だと、
-            // 「DB は InProgress（＝画面はキャンセルを受け付ける）なのに、まだ登録されていない」
-            // 窓ができる。その窓に要求が届くと Cancelling は書けてしまうのに
-            // TryRequestCancel が false を返し、トークンが永久に発火しない。
-            // 状態は壊れないが、キャンセルが黙って効かない Job ができる。
+            // キャンセルの受け口を用意する段取りはもう無い。かつてはここで
+            // 「実行中の Job とそのトークン」をプロセス内の入れ物へ登録しており、
+            // InProgress を書き戻すのと登録のどちらが先かに正しさが乗っていた
+            //（逆順だと「DB は InProgress なのに登録がまだ」の窓が開き、そこへ届いた要求は
+            // Cancelling を書けてもトークンを発火できず、キャンセルが黙って効かなくなる）。
             //
-            // この順序なら窓は構造的に開かない。要求が来られるのは InProgress が見えてからで、
-            // InProgress が見えるのは書き戻しの後、登録はその前に済んでいる。
-            // 間に何を挟んでも（観測の記録など）壊れないのが、隣接を約束で守るより強い。
-            //
-            // このトークンはループの停止トークンとは繋がない。上の RunAsync の注記のとおり、
-            // プロセス停止はキャンセル要求ではない。ここが発火するのは利用者のキャンセルだけ。
-            using (JobCancellation cancellation = _runningJobs.Track(job.Id))
+            // ハンドラが自分の行を読む形にしたので、登録する物が無く、窓も存在しない。
+            // 順序で守っていたものが、守る対象ごと消えている。
+
+            // ここで書き戻せた 1 つだけがこの Job を実行する。
+            if (!await _store.UpdateAsync(job, cancellationToken))
             {
-                // ここで書き戻せた 1 つだけがこの Job を実行する。
-                // 負けた場合は using が登録を外すので、他が実行する Job に
-                // こちらのトークンが残ることはない。
-                if (!await _store.UpdateAsync(job, cancellationToken))
-                {
-                    _logger.LogInformation("Job {JobId} は他から開始されました。次の候補を探します。", job.Id.Value);
-                    continue;
-                }
-
-                // InProgress の確定＝待ち行列を抜けた点。待ち時間はここで確定する（初回だけ）。
-                if (firstStart)
-                {
-                    _instrumentation.RecordStarted(job);
-                }
-
-                await RunHandlerAsync(job, cancellation);
-                return true;
+                _logger.LogInformation("Job {JobId} は他から開始されました。次の候補を探します。", job.Id.Value);
+                continue;
             }
+
+            // InProgress の確定＝待ち行列を抜けた点。待ち時間はここで確定する（初回だけ）。
+            if (firstStart)
+            {
+                _instrumentation.RecordStarted(job);
+            }
+
+            await RunHandlerAsync(job);
+            return true;
         }
     }
 
@@ -280,12 +273,7 @@ public sealed class JobExecutionEngine
     /// ハンドラを呼び、その結末を状態遷移として記録する。
     /// </summary>
     /// <param name="job">InProgress を書き戻せた Job。</param>
-    /// <param name="cancellation">
-    /// キャンセル要求の受け口。呼び出し側が InProgress を書き戻す<b>前</b>に
-    /// <see cref="RunningJobRegistry"/> から取ったもの（理由は <see cref="RunOnceAsync"/> に）。
-    /// 登録の解除も呼び出し側が持つので、結末を書き終えるまで受け口は生きている。
-    /// </param>
-    private async Task RunHandlerAsync(Job job, JobCancellation cancellation)
+    private async Task RunHandlerAsync(Job job)
     {
         // ハンドラへ Job 全体は渡さない（識別子と parameters だけ）。渡すと状態を
         // 触れてしまい、結末の書き手がエンジンだけという分担が崩れる。
@@ -321,7 +309,7 @@ public sealed class JobExecutionEngine
                 }
                 else
                 {
-                    await handler.ExecuteAsync(job.Id, job.Parameters, cancellation.Token);
+                    await handler.ExecuteAsync(job.Id, job.Parameters);
 
                     trigger = JobTrigger.Complete;
                 }
@@ -343,10 +331,11 @@ public sealed class JobExecutionEngine
 
                 return;
             }
-            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            catch (JobCancelledException)
             {
-                // 自分が渡したトークンで終わった場合だけキャンセルとして扱う。
-                // 別のトークンで中断されたのなら、それは利用者の意図ではないので失敗。
+                // ハンドラが Cancelling を見つけて抜けた。型で分かるので、
+                // 「利用者の中止」と「別の理由の中断」を取り違えようがない
+                //（かつては OperationCanceledException を自分のトークンかどうかで見分けていた）。
                 trigger = JobTrigger.ConfirmCancelled;
             }
             catch (Exception exception)

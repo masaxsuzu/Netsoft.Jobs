@@ -5,7 +5,7 @@ using Netsoft.Jobs.Features.Tests.Fakes;
 namespace Netsoft.Jobs.Features.Tests.Execution;
 
 /// <summary>
-/// サブタスクの進行・永続化・協調的キャンセルを、針を進める時計で決定的に確かめる。
+/// サブタスクの進行・永続化・中断の観測を、針を進める時計で決定的に確かめる。
 /// </summary>
 /// <remarks>
 /// 実時間は待たない。1 秒の待ちは <see cref="ManualTimeProvider"/> のタイマーで表現され、
@@ -35,7 +35,7 @@ public sealed class SubTaskJobHandlerTests : IDisposable
     [Fact]
     public async Task サブタスクは連番順に進み遷移のたびに永続化される()
     {
-        Task execution = _handler.ExecuteAsync(Job1, "2 2", CancellationToken.None);
+        Task execution = _handler.ExecuteAsync(Job1, "2 2");
 
         // 最初の待ちが張られた時点で、全行の作成と 1 つ目の Running が書き込み済み。
         await _time.WaitForTimersAsync(1).WaitAsync(WaitLimit);
@@ -62,18 +62,20 @@ public sealed class SubTaskJobHandlerTests : IDisposable
     [Fact]
     public async Task キャンセルすると実行中も未着手もCancelledに畳まれて残る()
     {
-        using CancellationTokenSource cancellation = new();
-        Task execution = _handler.ExecuteAsync(Job1, "3 5", cancellation.Token);
+        await AddRunningJobAsync("3 5");
+        Task execution = _handler.ExecuteAsync(Job1, "3 5");
 
-        // 1 つ目が走り出したところで要求する。
+        // 1 つ目が走り出したところで行に Cancelling と書く。突く相手は居ない。
         await _time.WaitForTimersAsync(1).WaitAsync(WaitLimit);
-        await cancellation.CancelAsync();
+        await RequestCancelAsync();
 
-        // Job の結末（Cancelled）は実行エンジンの領分なので、ここでは OCE が出ることまで。
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => execution.WaitAsync(WaitLimit));
+        // 待ちを 1 つ越えさせる。観測点はここ（1 サブタスクにつき m 回）。
+        _time.Advance(SubTaskJobHandler.Step);
+
+        // Job の結末（Cancelled）は実行エンジンの領分なので、ここでは例外が出ることまで。
+        await Assert.ThrowsAsync<JobCancelledException>(() => execution.WaitAsync(WaitLimit));
 
         // 実行中だった 1 つ目も、未着手だった 2 つ目 3 つ目も、畳まれた事実が永続化されている。
-        // トークンは発火済みなので、この書き込みが中断されていないことの確認でもある。
         Assert.Equal(
             [SubTaskStatus.Cancelled, SubTaskStatus.Cancelled, SubTaskStatus.Cancelled],
             await StatusesAsync());
@@ -82,16 +84,17 @@ public sealed class SubTaskJobHandlerTests : IDisposable
     [Fact]
     public async Task 完了済みのサブタスクはキャンセルでも上書きされない()
     {
-        using CancellationTokenSource cancellation = new();
-        Task execution = _handler.ExecuteAsync(Job1, "2 1", cancellation.Token);
+        await AddRunningJobAsync("2 1");
+        Task execution = _handler.ExecuteAsync(Job1, "2 1");
 
         // 1 つ目を完走させ、2 つ目の待ちに入ったところで要求する。
         await _time.WaitForTimersAsync(1).WaitAsync(WaitLimit);
         _time.Advance(SubTaskJobHandler.Step);
         await _time.WaitForTimersAsync(2).WaitAsync(WaitLimit);
-        await cancellation.CancelAsync();
+        await RequestCancelAsync();
+        _time.Advance(SubTaskJobHandler.Step);
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => execution.WaitAsync(WaitLimit));
+        await Assert.ThrowsAsync<JobCancelledException>(() => execution.WaitAsync(WaitLimit));
 
         // 完了の事実は消えない。畳まれるのは終端に達していないものだけ。
         Assert.Equal([SubTaskStatus.Completed, SubTaskStatus.Cancelled], await StatusesAsync());
@@ -104,7 +107,7 @@ public sealed class SubTaskJobHandlerTests : IDisposable
     [Fact]
     public async Task 他所がサブタスクを書き換えていたら失敗として表に出る()
     {
-        Task execution = _handler.ExecuteAsync(Job1, "1 1", CancellationToken.None);
+        Task execution = _handler.ExecuteAsync(Job1, "1 1");
         await _time.WaitForTimersAsync(1).WaitAsync(WaitLimit);
 
         // 横から 1 つ目を畳んでしまう（実行中 → Cancelled は正規の遷移なので書ける）。
@@ -131,7 +134,7 @@ public sealed class SubTaskJobHandlerTests : IDisposable
     public async Task 個数と秒数として読めない指定は失敗し行も作られない(string parameters)
     {
         await Assert.ThrowsAsync<FormatException>(
-            () => _handler.ExecuteAsync(Job1, parameters, CancellationToken.None));
+            () => _handler.ExecuteAsync(Job1, parameters));
 
         Assert.Empty(await _store.ListByJobAsync(Job1, CancellationToken.None));
     }
@@ -140,19 +143,18 @@ public sealed class SubTaskJobHandlerTests : IDisposable
     /// 走り出す前に届いたキャンセルは、行を 1 つも作らずに抜ける。
     /// </summary>
     /// <remarks>
-    /// キャンセルの受け口は Running を書き戻すより前に用意されるので、要求が claim と
-    /// ほぼ同時に届くとハンドラは「もう要らない」と分かった状態で始まる。待機に渡した
-    /// トークンだけに頼ると、その前に N 行を作って 1 つ目を開始済みにしてしまい、
+    /// 要求が claim とほぼ同時に届くと、ハンドラは「もう要らない」と書かれた状態で始まる。
+    /// 待ちの側の観測点だけに頼ると、その前に N 行を作って 1 つ目を開始済みにしてしまい、
     /// <b>走る前に消された Job に走った形跡が残る</b>。
     /// </remarks>
     [Fact]
     public async Task 走り出す前のキャンセルは行を作らずに抜ける()
     {
-        using CancellationTokenSource cancellation = new();
-        await cancellation.CancelAsync();
+        await AddRunningJobAsync("3 5");
+        await RequestCancelAsync();
 
-        await Assert.ThrowsAsync<OperationCanceledException>(
-            () => _handler.ExecuteAsync(Job1, "3 5", cancellation.Token));
+        await Assert.ThrowsAsync<JobCancelledException>(
+            () => _handler.ExecuteAsync(Job1, "3 5"));
 
         Assert.Empty(await _store.ListByJobAsync(Job1, CancellationToken.None));
     }
@@ -171,7 +173,7 @@ public sealed class SubTaskJobHandlerTests : IDisposable
     {
         await AddRunningJobAsync("1 1");
 
-        Task execution = _handler.ExecuteAsync(Job1, "1 1", CancellationToken.None);
+        Task execution = _handler.ExecuteAsync(Job1, "1 1");
         await _time.WaitForTimersAsync(1).WaitAsync(WaitLimit);
 
         await RequestPauseAsync();
@@ -191,16 +193,16 @@ public sealed class SubTaskJobHandlerTests : IDisposable
     [Fact]
     public async Task 走り切った後にキャンセルが届いても完走として終わる()
     {
-        using CancellationTokenSource cancellation = new();
         InterferingSubTaskStore interfering = new(_store);
         SubTaskJobHandler handler = new(interfering, _jobs, _time);
 
         await AddRunningJobAsync("1 1");
 
-        Task execution = handler.ExecuteAsync(Job1, "1 1", cancellation.Token);
+        Task execution = handler.ExecuteAsync(Job1, "1 1");
         await _time.WaitForTimersAsync(1).WaitAsync(WaitLimit);
 
-        interfering.AfterNextUpdate = cancellation.Cancel;
+        // 最後の完了を書いた直後＝次の境界の直前に要求する。
+        interfering.AfterNextUpdate = () => RequestCancelAsync().GetAwaiter().GetResult();
         _time.Advance(SubTaskJobHandler.Step);
 
         await execution.WaitAsync(WaitLimit);
@@ -219,10 +221,8 @@ public sealed class SubTaskJobHandlerTests : IDisposable
     [Fact]
     public async Task 再開した直後のキャンセルは残っている行を畳む()
     {
-        using CancellationTokenSource cancellation = new();
-        await cancellation.CancelAsync();
-
         await AddRunningJobAsync("2 1");
+        await RequestCancelAsync();
 
         // 前回の実行が 1 つ目まで終えて止まった姿を作る。
         SubTask[] rows = [SubTask.Create(Job1, 0), SubTask.Create(Job1, 1)];
@@ -230,8 +230,8 @@ public sealed class SubTaskJobHandlerTests : IDisposable
         await ApplyAsync(rows[0], SubTaskTrigger.Start);
         await ApplyAsync(rows[0], SubTaskTrigger.Complete);
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => _handler.ExecuteAsync(Job1, "2 1", cancellation.Token));
+        await Assert.ThrowsAsync<JobCancelledException>(
+            () => _handler.ExecuteAsync(Job1, "2 1"));
 
         Assert.Equal([SubTaskStatus.Completed, SubTaskStatus.Cancelled], await StatusesAsync());
     }
@@ -242,6 +242,15 @@ public sealed class SubTaskJobHandlerTests : IDisposable
         job.Apply(JobTrigger.Start, Created.AddMinutes(1));
 
         await _jobs.AddAsync(job, CancellationToken.None);
+    }
+
+    private async Task RequestCancelAsync()
+    {
+        Job job = await _jobs.FindAsync(Job1, CancellationToken.None)
+            ?? throw new InvalidOperationException("Job が保存されていません。");
+
+        job.Apply(JobTrigger.RequestCancel, Created.AddMinutes(2));
+        Assert.True(await _jobs.UpdateAsync(job, CancellationToken.None));
     }
 
     private async Task RequestPauseAsync()

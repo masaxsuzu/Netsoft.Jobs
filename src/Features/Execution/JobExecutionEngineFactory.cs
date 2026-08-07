@@ -25,7 +25,6 @@ public sealed class JobExecutionEngineFactory
 {
     private readonly IJobStore _store;
     private readonly JobHandlerRegistry _handlers;
-    private readonly RunningJobRegistry _runningJobs;
     private readonly JobQueueSignal _signal;
     private readonly TimeProvider _timeProvider;
     private readonly JobExecutionInstrumentation _instrumentation;
@@ -34,7 +33,6 @@ public sealed class JobExecutionEngineFactory
     public JobExecutionEngineFactory(
         IJobStore store,
         JobHandlerRegistry handlers,
-        RunningJobRegistry runningJobs,
         JobQueueSignal signal,
         TimeProvider timeProvider,
         JobExecutionInstrumentation instrumentation,
@@ -42,7 +40,6 @@ public sealed class JobExecutionEngineFactory
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(handlers);
-        ArgumentNullException.ThrowIfNull(runningJobs);
         ArgumentNullException.ThrowIfNull(signal);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(instrumentation);
@@ -50,7 +47,6 @@ public sealed class JobExecutionEngineFactory
 
         _store = store;
         _handlers = handlers;
-        _runningJobs = runningJobs;
         _signal = signal;
         _timeProvider = timeProvider;
         _instrumentation = instrumentation;
@@ -68,7 +64,6 @@ public sealed class JobExecutionEngineFactory
         JobExecutionEngine.StartAsync(
             _store,
             _handlers,
-            _runningJobs,
             _signal,
             _timeProvider,
             _instrumentation,

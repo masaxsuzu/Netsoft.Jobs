@@ -167,9 +167,8 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
     /// 実行の入口から復旧へ辿れないことの証拠になる。
     /// </para>
     /// <para>
-    /// 実行は逐次に回す。1 インスタンスの同時実行数は 1 という契約で、
-    /// 並行して呼ぶと <see cref="RunningJobRegistry"/> が二重登録で例外を投げる。
-    /// ここで見たいのは復旧が呼ばれないことなので、契約の内側で足りる。
+    /// 実行は逐次に回す。1 インスタンスの同時実行数は 1 という契約（常駐ループが 1 本しか
+    /// 呼ばない）で、ここで見たいのは復旧が呼ばれないことなので、契約の内側で足りる。
     /// </para>
     /// </remarks>
     [Fact]
@@ -208,7 +207,6 @@ public sealed class JobExecutionEngineConcurrencyTests : IDisposable
         JobExecutionEngine.StartAsync(
             store,
             new JobHandlerRegistry(handlers),
-            new RunningJobRegistry(),
             new JobQueueSignal(),
             _timeProvider,
             _instrumentation,

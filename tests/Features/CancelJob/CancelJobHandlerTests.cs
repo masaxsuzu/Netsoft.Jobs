@@ -26,7 +26,6 @@ public sealed class CancelJobHandlerTests : IDisposable
     private readonly CancelJobCallLog _log = new();
     private readonly InterferingJobStore _interference;
     private readonly CallLoggingJobStore _store;
-    private readonly RecordingRunningJobRegistry _runningJobs;
     private readonly FixedTimeProvider _timeProvider = new(Requested);
     private readonly RecordingLogger<CancelJobHandler> _logger = new();
     private readonly CancelJobHandler _handler;
@@ -36,8 +35,7 @@ public sealed class CancelJobHandlerTests : IDisposable
         // 割り込みを仕掛けなければ素通しなので、競合を扱わないテストの見え方は変わらない。
         _interference = new InterferingJobStore(_jobs);
         _store = new CallLoggingJobStore(_interference, _log);
-        _runningJobs = new RecordingRunningJobRegistry(_log);
-        _handler = new CancelJobHandler(_store, _runningJobs, _timeProvider, _logger);
+        _handler = new CancelJobHandler(_store, _timeProvider, _logger);
     }
 
     public void Dispose() => _jobs.Dispose();
@@ -62,7 +60,7 @@ public sealed class CancelJobHandlerTests : IDisposable
         // 要求は必ず一度 Cancelling として保存される。この 1 回を削ると、押した事実が
         // 変更通知に流れず、画面は「押したのに何も起きていない」見え方になる。
         Assert.Equal(
-            ["update:job-1:Cancelling", "cancel:job-1", "update:job-1:Cancelled"],
+            ["update:job-1:Cancelling", "update:job-1:Cancelled"],
             _log.Entries);
 
         // 受理のログは要求の時点のもの。確定はその後なので、状態は Cancelling で記録される。
@@ -74,7 +72,7 @@ public sealed class CancelJobHandlerTests : IDisposable
     }
 
     [Fact]
-    public async Task 実行中へのキャンセルは保存してから伝えられ受理待ちになる()
+    public async Task 実行中へのキャンセルはCancellingを保存して受理待ちになる()
     {
         // ハンドラが動いているので、受理されるまでは終端に進めない。
         await AddAsync(InProgress("job-1"));
@@ -88,10 +86,9 @@ public sealed class CancelJobHandlerTests : IDisposable
         Assert.Equal(JobStatus.Cancelling, saved.Status);
         Assert.Null(saved.FinishedAt);
 
-        // 並びが肝。伝達を保存より先にすると、こちらが Cancelling を書く前に
-        // ハンドラが終端を書き込みうる。その後に届くこの更新が終端を上書きして、
-        // 終わっているのに終わっていない Job ができる。
-        Assert.Equal(["update:job-1:Cancelling", "cancel:job-1"], _log.Entries);
+        // 書き込みは 1 回だけ。保存が伝達そのものなので、ここから先に手順が無い
+        //（かつては保存の後に登録簿へ発火を頼む 2 手目があり、その並びが肝だった）。
+        Assert.Equal(["update:job-1:Cancelling"], _log.Entries);
 
         // Job 行に Cancelling の時刻列は無い。要求が受理された時刻はこのログだけが持つ。
         RecordedLog entry = Assert.Single(_logger.Entries);
@@ -102,16 +99,14 @@ public sealed class CancelJobHandlerTests : IDisposable
     }
 
     /// <summary>
-    /// TryRequestCancel の false は失敗ではない（まだ待機中、既に終わった、
-    /// 別プロセスが実行している）。これを理由に状態遷移を巻き戻すと、
-    /// 受理された事実が消えて画面と DB が食い違う。
+    /// 行き先を決めるのは「ハンドラが走っているか」だけ。走っていれば決着を書くのは
+    /// ハンドラなので Cancelling で止め、走っていなければここで Cancelled まで進める。
     /// </summary>
     [Theory]
     [InlineData(true, nameof(JobStatus.Cancelling))]
     [InlineData(false, nameof(JobStatus.Cancelled))]
-    public async Task 伝達の戻り値がfalseでも状態遷移は巻き戻らない(bool running, string expected)
+    public async Task 実行中はCancellingで止まり待機中はCancelledまで進む(bool running, string expected)
     {
-        _runningJobs.Result = false;
         await AddAsync(running ? InProgress("job-1") : Registered("job-1"));
 
         CancelJobResult result = await CancelAsync("job-1");
@@ -189,9 +184,6 @@ public sealed class CancelJobHandlerTests : IDisposable
         Job saved = await SavedAsync("job-1");
         Assert.Equal(JobStatus.Completed, saved.Status);
         Assert.Equal(Finished, saved.FinishedAt);
-
-        // 止める相手はもう居ない。伝えるのは保存できたときだけ。
-        Assert.Empty(_runningJobs.RequestedIds);
     }
 
     [Fact]
@@ -213,7 +205,6 @@ public sealed class CancelJobHandlerTests : IDisposable
         Assert.True(result.IsSuccess);
         Assert.Equal(nameof(JobStatus.Cancelling), result.Job?.Status);
         Assert.Equal(JobStatus.Cancelling, (await SavedAsync("job-1")).Status);
-        Assert.Equal([JobId.From("job-1")], _runningJobs.RequestedIds);
     }
 
     /// <summary>
