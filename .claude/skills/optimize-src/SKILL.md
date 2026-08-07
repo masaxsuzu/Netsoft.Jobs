@@ -48,6 +48,15 @@ description: src/ を 4 観点（再利用・単純化・効率・深さ）で�
 - **4 巡目**: 観測の 3 か所（メトリクスのタグ・スパン属性）を `JobStatusText.ToText` へ通す /
   `EditJobHandler` の到達不能な `parameters is null` を削除 /
   Ui の `ListSubTasksAsync` と `JobApiRoutes.SubTasksFor` を削除（画面から呼ばれない）
+- **5 巡目**（#78）: `JobExecutionEngine.StartAsync` の `ThrowIfNull` 3 行を削除
+  （次の行の `JobCrashRecovery.RunAsync` が同じ引数を同じ順で検査しており、型も
+  `ParamName` も同じ例外になる）/ `SqliteSubTaskStore.OpenAsync` の `async`/`await` の
+  包み直しを素通しに（`SqliteJobStore` 側は元から素通し）
+- **5 巡目の後**（#80、利用者の指摘から）: **`Contracts` の `Domain` 参照を切った。**
+  押せるかどうかを `JobDto` / `JobListItemDto` に載せ、述語 3 型
+  （`JobCancelability` / `JobEditability` / `JobPausability`）を削除し、`From(Job)` を
+  `Features/JobDtoExtensions` へ移した。**`Ui` からも `Domain` が消えた**
+  （`Ui.csproj` の「参照してよいのは Contracts だけ」が事実になった）
 
 ### 畳むべきでない・意図的（再提案禁止）
 
@@ -90,6 +99,20 @@ description: src/ を 4 観点（再利用・単純化・効率・深さ）で�
   食い違う経路は無い。4 巡目で計数のうえ見送り
 - **`JobBoard.CancelAsync` と `ControlAsync` の統合**（26 行・直す箇所 2）。**却下**。
   Ui は Domain の外なので、重複を畳む理由にならない（4 巡目に利用者が判断）
+
+- **`ReconcileAtBoundaryAsync` の `int target = count;`**（5 巡目で見送り）。恒等の別名で、
+  切り上げ計算を消した跡ではあるが、`target` という名前が「突き合わせる先」の意味を
+  伝えている。**消しても読みやすくならないので触らない**
+
+### 深さ: 判定済み
+
+- **`Contracts` は `Domain` を参照しない**（#80 で切った）。DTO に Domain の型を持ち込む提案、
+  述語を Contracts へ戻す提案はどちらも却下。規則は Domain の 1 か所に置き、
+  API が適用した結果を線に載せる
+- **`Ui` は `Contracts` だけを参照する**（#80 で成立）。Ui が Domain の型を使う提案は却下
+- **カバレッジ判定の「分岐なし」**（#80）。分岐ゼロのアセンブリは率で判定せず、
+  行が 1 つも通っていなければ落とす。0% として落とすと、判定を通すためだけに
+  分岐を書くことになる。**分岐が戻れば自動的に率の判定へ戻る**
 
 ### 効率: 実測・計数済み（再計測不要）
 
