@@ -26,6 +26,7 @@ namespace Netsoft.Jobs.Features.Execution;
 /// 個々の Job を追うのはスパン（属性は高カーディナリティでよい）の仕事。
 /// </para>
 /// </remarks>
+[SingleInstance]
 public sealed class JobExecutionInstrumentation : IDisposable
 {
     /// <summary>Meter と ActivitySource の名前。購読側はこの名前で購読する。</summary>

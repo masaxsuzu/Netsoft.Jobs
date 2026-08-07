@@ -21,6 +21,7 @@ namespace Netsoft.Jobs.Features.Execution;
 /// 呼ぶのはホストの常駐ループが立ち上がるときの 1 回だけなので、持つ必要もない。
 /// </para>
 /// </remarks>
+[SingleInstance]
 public sealed class JobExecutionEngineFactory
 {
     private readonly IJobStore _store;

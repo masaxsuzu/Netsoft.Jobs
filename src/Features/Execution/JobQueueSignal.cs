@@ -19,6 +19,7 @@ namespace Netsoft.Jobs.Features.Execution;
 /// 取りこぼす窓が無い。エンジンが安全網のポーリング無しで合図だけに頼れるのはこの性質による。
 /// </para>
 /// </remarks>
+[SingleInstance]
 public sealed class JobQueueSignal
 {
     private readonly Channel<byte> _signals = Channel.CreateBounded<byte>(new BoundedChannelOptions(1)

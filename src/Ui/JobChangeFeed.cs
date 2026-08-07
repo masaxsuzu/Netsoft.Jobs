@@ -19,6 +19,7 @@ namespace Netsoft.Jobs.Ui;
 /// 将来別々に育っても互いを壊さない。
 /// </para>
 /// </remarks>
+[SingleInstance]
 public sealed class JobChangeFeed
 {
     /// <summary>いずれかの Job が追加・更新された（可能性がある）。</summary>

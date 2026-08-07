@@ -9,6 +9,7 @@ namespace Netsoft.Jobs.Web;
 /// 運ぶと購読側がその形に依存して、変更の種類が増えるたびにここも直すことになる。
 /// event への購読・解除はデリゲートの差し替えなので、発火と並行しても安全。
 /// </remarks>
+[SingleInstance]
 public sealed class JobChangeFeed
 {
     /// <summary>いずれかの Job が追加・更新された。</summary>
