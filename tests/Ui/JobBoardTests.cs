@@ -133,12 +133,12 @@ public sealed class JobBoardTests : IDisposable
 
         await _board.PauseAsync(id, None);
 
-        Assert.Null(_board.Notice);
+        Assert.Null(_board.OperationError);
         Assert.Equal("Pausing", _board.Jobs.Single(job => job.Id == id).Status);
 
         await _board.ResumeAsync(id, None);
 
-        Assert.Null(_board.Notice);
+        Assert.Null(_board.OperationError);
         Assert.Equal("InProgress", _board.Jobs.Single(job => job.Id == id).Status);
     }
 
@@ -153,7 +153,7 @@ public sealed class JobBoardTests : IDisposable
 
         await _board.PauseAsync(id, None);
 
-        Assert.Equal("一時停止できませんでした。現在の状態: Cancelling", _board.Notice);
+        Assert.Equal("一時停止できませんでした。現在の状態: Cancelling", _board.OperationError);
     }
 
     [Fact]
@@ -162,13 +162,13 @@ public sealed class JobBoardTests : IDisposable
         await _board.InitializeAsync(None);
 
         await _board.PauseAsync("does-not-exist", None);
-        Assert.Equal("対象の Job が見つかりませんでした。", _board.Notice);
+        Assert.Equal("対象の Job が見つかりませんでした。", _board.OperationError);
 
         await _board.ResumeAsync("does-not-exist", None);
-        Assert.Equal("対象の Job が見つかりませんでした。", _board.Notice);
+        Assert.Equal("対象の Job が見つかりませんでした。", _board.OperationError);
 
         await _board.CancelAsync("does-not-exist", None);
-        Assert.Equal("対象の Job が見つかりませんでした。", _board.Notice);
+        Assert.Equal("対象の Job が見つかりませんでした。", _board.OperationError);
     }
 
     [Fact]
@@ -177,16 +177,122 @@ public sealed class JobBoardTests : IDisposable
         JobBoard board = BrokenBoard();
 
         await board.PauseAsync("job-1", None);
-        Assert.Contains("一時停止できませんでした", board.Notice);
+        Assert.Contains("一時停止できませんでした", board.OperationError);
 
         await board.ResumeAsync("job-1", None);
-        Assert.Contains("再開できませんでした", board.Notice);
+        Assert.Contains("再開できませんでした", board.OperationError);
 
         await board.CancelAsync("job-1", None);
-        Assert.Contains("キャンセルできませんでした", board.Notice);
+        Assert.Contains("キャンセルできませんでした", board.OperationError);
 
         await board.EditAsync("job-1", None);
-        Assert.Contains("編集できませんでした", board.Notice);
+        Assert.Contains("編集できませんでした", board.OperationError);
+    }
+
+    /// <summary>
+    /// 操作の失敗はダイアログに出し、一覧の知らせ（<see cref="JobBoard.Notice"/>）には出さない。
+    /// 画面はこの 2 つを別の要素で描くので、混ざっていないことが表示の前提になる。
+    /// </summary>
+    [Fact]
+    public async Task 操作の失敗はダイアログに出て一覧の知らせには出ない()
+    {
+        string id = await RegisterViaApiAsync("拒否される Job");
+        await CancelViaApiAsync(id);
+        await _board.InitializeAsync(None);
+        Assert.False(_board.IsOperationDialogOpen);
+
+        await _board.CancelAsync(id, None);
+
+        Assert.True(_board.IsOperationDialogOpen);
+        Assert.Equal("キャンセルできませんでした。現在の状態: Cancelled", _board.OperationError);
+        Assert.Null(_board.Notice);
+    }
+
+    /// <summary>
+    /// 背景の変更通知（SSE）は <see cref="JobBoard.ReloadAsync"/> を呼ぶだけなので、
+    /// ダイアログは開いたまま、裏の一覧だけが新しくなる。相乗りしていた頃は、
+    /// 通知が来た瞬間に「できませんでした」が読む間もなく消えていた。
+    /// </summary>
+    [Fact]
+    public async Task 背景の再読み込みはダイアログを閉じず裏の一覧だけを新しくする()
+    {
+        await _board.InitializeAsync(None);
+        await _board.CancelAsync("does-not-exist", None);
+
+        // 通知の中身に当たるもの（他の画面や実行エンジンによる変更）を作ってから取り直す。
+        await RegisterViaApiAsync("通知で現れる Job");
+        await _board.ReloadAsync(None);
+
+        Assert.True(_board.IsOperationDialogOpen);
+        Assert.Equal("対象の Job が見つかりませんでした。", _board.OperationError);
+        Assert.Contains(_board.Jobs, job => job.Name == "通知で現れる Job");
+    }
+
+    /// <summary>
+    /// 画面の状態として残り続けない。閉じるのは次の操作を始めたときで、
+    /// その操作が通ったかどうかには依らない。
+    /// </summary>
+    [Fact]
+    public async Task ダイアログは次の操作を始めると閉じる()
+    {
+        string id = await RegisterViaApiAsync("消す Job");
+        await _board.InitializeAsync(None);
+        await _board.PauseAsync("does-not-exist", None);
+        Assert.True(_board.IsOperationDialogOpen);
+
+        await _board.CancelAsync(id, None);
+        Assert.False(_board.IsOperationDialogOpen);
+        Assert.Null(_board.OperationError);
+
+        // 通らなかった操作でも、前の失敗ではなく今の失敗だけが残る。
+        await _board.PauseAsync("does-not-exist", None);
+        await _board.CancelAsync(id, None);
+        Assert.Equal("キャンセルできませんでした。現在の状態: Cancelled", _board.OperationError);
+
+        // 登録も操作のうち。別の欄（Notice / RegistrationErrors）へ出るものでも閉じる。
+        _board.Name = "登録し直す Job";
+        _board.JobType = "subtasks";
+        _board.Parameters = "2 1";
+        await _board.RegisterAsync(None);
+        Assert.False(_board.IsOperationDialogOpen);
+    }
+
+    /// <summary>
+    /// 閉じる手段が要る。非モーダルの dialog は Esc で閉じないので、
+    /// これが唯一の「読み終わったから消す」道になる。
+    /// </summary>
+    [Fact]
+    public async Task ダイアログは閉じるボタンで閉じられる()
+    {
+        await _board.InitializeAsync(None);
+        await _board.CancelAsync("does-not-exist", None);
+        Assert.True(_board.IsOperationDialogOpen);
+
+        _board.CloseOperationDialog();
+
+        Assert.False(_board.IsOperationDialogOpen);
+        Assert.Null(_board.OperationError);
+    }
+
+    /// <summary>
+    /// 拒否されても一覧は取り直す。拒否の理由は「ボタンを出した後に状態が進んだ」なので、
+    /// 取り直した行こそが見たい現在の状態になる。かつては知らせが消えるのを避けるために
+    /// 失敗時は取り直さない細工が入っていた。
+    /// </summary>
+    [Fact]
+    public async Task 拒否された操作でも一覧は取り直す()
+    {
+        string id = await RegisterViaApiAsync("外から進む Job");
+        await _board.InitializeAsync(None);
+        Assert.Equal("Registered", _board.Jobs.Single(job => job.Id == id).Status);
+
+        // 画面の知らないところで終端まで進める。ボタンはまだ押せる見た目のまま。
+        await CancelViaApiAsync(id);
+
+        await _board.CancelAsync(id, None);
+
+        Assert.Equal("キャンセルできませんでした。現在の状態: Cancelled", _board.OperationError);
+        Assert.Equal("Cancelled", _board.Jobs.Single(job => job.Id == id).Status);
     }
 
     /// <summary>
@@ -200,7 +306,7 @@ public sealed class JobBoardTests : IDisposable
 
         await board.CancelAsync("job-1", None);
 
-        Assert.Equal("キャンセルできませんでした: InvalidOperationException", board.Notice);
+        Assert.Equal("キャンセルできませんでした: InvalidOperationException", board.OperationError);
     }
 
     [Fact]
@@ -211,13 +317,13 @@ public sealed class JobBoardTests : IDisposable
 
         await _board.CancelAsync(id, None);
 
-        Assert.Null(_board.Notice);
+        Assert.Null(_board.OperationError);
         Assert.Equal("Cancelled", _board.Jobs.Single(job => job.Id == id).Status);
 
         // 2 回目は終端なので拒否され、現在の状態が知らせに載る。
         await _board.CancelAsync(id, None);
 
-        Assert.Equal("キャンセルできませんでした。現在の状態: Cancelled", _board.Notice);
+        Assert.Equal("キャンセルできませんでした。現在の状態: Cancelled", _board.OperationError);
     }
 
     [Fact]
@@ -234,7 +340,7 @@ public sealed class JobBoardTests : IDisposable
 
         await _board.EditAsync(id, None);
 
-        Assert.Null(_board.Notice);
+        Assert.Null(_board.OperationError);
         JobListItemDto saved = _board.Jobs.Single(item => item.Id == id);
         Assert.Equal("5 2", saved.Parameters);
         Assert.Equal("5 2", _board.EditValueFor(saved));
@@ -249,13 +355,13 @@ public sealed class JobBoardTests : IDisposable
         _board.SetEdit(id, "junk");
         await _board.EditAsync(id, None);
 
-        Assert.StartsWith("編集できませんでした: ", _board.Notice);
-        Assert.Contains("個数 秒数", _board.Notice);
+        Assert.StartsWith("編集できませんでした: ", _board.OperationError);
+        Assert.Contains("個数 秒数", _board.OperationError);
 
         // 空（null）を打っても同じ経路。SetEdit は null を空文字として控える。
         _board.SetEdit(id, null);
         await _board.EditAsync(id, None);
-        Assert.StartsWith("編集できませんでした: ", _board.Notice);
+        Assert.StartsWith("編集できませんでした: ", _board.OperationError);
     }
 
     [Fact]
@@ -268,7 +374,7 @@ public sealed class JobBoardTests : IDisposable
         _board.SetEdit(id, "5 2");
         await _board.EditAsync(id, None);
 
-        Assert.Equal("編集できませんでした。現在の状態: Cancelled", _board.Notice);
+        Assert.Equal("編集できませんでした。現在の状態: Cancelled", _board.OperationError);
     }
 
     [Fact]
@@ -280,7 +386,7 @@ public sealed class JobBoardTests : IDisposable
         // 検証は対象の探索より先に走るので、返るのは 404 ではなく入力エラー。
         await _board.EditAsync("does-not-exist", None);
 
-        Assert.StartsWith("編集できませんでした: ", _board.Notice);
+        Assert.StartsWith("編集できませんでした: ", _board.OperationError);
     }
 
     [Fact]
@@ -291,7 +397,7 @@ public sealed class JobBoardTests : IDisposable
         _board.SetEdit("does-not-exist", "5 2");
         await _board.EditAsync("does-not-exist", None);
 
-        Assert.Equal("対象の Job が見つかりませんでした。", _board.Notice);
+        Assert.Equal("対象の Job が見つかりませんでした。", _board.OperationError);
     }
 
     /// <summary>
@@ -313,12 +419,13 @@ public sealed class JobBoardTests : IDisposable
         await board.EditAsync("job-1", None);
         await board.RegisterAsync(None);
         Assert.Null(board.Notice);
+        Assert.Null(board.OperationError);
 
         gate.Release();
         await first;
 
         Assert.False(board.IsBusy);
-        Assert.Equal("対象の Job が見つかりませんでした。", board.Notice);
+        Assert.Equal("対象の Job が見つかりませんでした。", board.OperationError);
     }
 
     [Fact]

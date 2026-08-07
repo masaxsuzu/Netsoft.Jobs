@@ -1,3 +1,5 @@
+using System.Net.Http.Json;
+
 namespace Netsoft.Jobs.E2E.Tests;
 
 /// <summary>
@@ -112,6 +114,69 @@ public sealed class HomePageE2ETests
         await Expect(rows).ToHaveCountAsync(rowsBefore);
 
         await page.CloseAsync();
+    }
+
+    /// <summary>
+    /// 拒否された操作のダイアログは、変更通知が届いても開いたまま。裏の一覧だけが新しくなる。
+    /// </summary>
+    /// <remarks>
+    /// ここだけは実ブラウザでしか確かめられない。<c>&lt;dialog open&gt;</c> の開閉は DOM の
+    /// 属性で決まるので、「要素を作り直していないから開いたまま」は Blazor の差分適用の
+    /// 振る舞いに依存する。単体テスト（tests/Ui）で見られるのは状態が残ることまでで、
+    /// 画面が実際に開いたままかは分からない。
+    /// </remarks>
+    [Fact]
+    public async Task 操作のダイアログは変更通知が来ても開いたままで裏の一覧は更新される()
+    {
+        IPage page = await _fixture.Browser.OpenInteractiveAsync(_fixture.BaseUrl);
+        string name = UniqueJobName("dialog");
+
+        // 長く走る Job にする。ダイアログを開けている間ずっと編集できる状態でいてほしい。
+        await page.FillAsync("#job-name", name);
+        await page.SelectOptionAsync("#job-type", "subtasks");
+        await page.FillAsync("#job-parameters", "1 60");
+        await page.ClickAsync("button[type=submit]");
+
+        ILocator row = RowFor(page, name);
+        await Expect(row).ToBeVisibleAsync();
+
+        // 読めない値の保存で拒否させる。ボタンが押せる状態のまま確実に失敗する操作はこれだけ
+        // （他の操作のボタンは、押せない状態では disabled になっている）。
+        await row.Locator("input.edit-parameters").FillAsync("読めない値");
+        await row.GetByRole(AriaRole.Button, new() { Name = "保存" }).ClickAsync();
+
+        ILocator dialog = page.Locator("dialog.operation-dialog");
+        await Expect(dialog).ToBeVisibleAsync();
+
+        // 画面の外で起きた変更（他の利用者や実行エンジン）が SSE で届く状況を作る。
+        string behind = UniqueJobName("dialog-behind");
+        await RegisterViaApiAsync(behind);
+
+        await Expect(RowFor(page, behind)).ToBeVisibleAsync();
+        await Expect(dialog).ToBeVisibleAsync();
+
+        // 非モーダルなので Esc では閉じない。閉じる道はこのボタンだけ。
+        await dialog.GetByRole(AriaRole.Button, new() { Name = "閉じる" }).ClickAsync();
+        await Expect(dialog).ToBeHiddenAsync();
+
+        // 60 秒の Job を走らせたまま終わらない。テストはアプリを共有しており、
+        // 実行の口を塞いだままにすると後続のテストの Job が始まらない（実際に落とした）。
+        await row.GetByRole(AriaRole.Button, new() { Name = "キャンセル" }).ClickAsync();
+        await ExpectTerminalAsync(row, "中止済み");
+
+        await page.CloseAsync();
+    }
+
+    /// <summary>画面を通さずに Job を増やす。変更通知だけで一覧が動くことの材料。</summary>
+    /// <remarks>すぐ終わる長さにする。上と同じ理由で、実行の口を長く塞がない。</remarks>
+    private async Task RegisterViaApiAsync(string name)
+    {
+        using HttpClient client = new() { Timeout = TimeSpan.FromSeconds(5) };
+        using HttpResponseMessage response = await client.PostAsJsonAsync(
+            $"{_fixture.ApiBaseUrl}/api/jobs",
+            new { name, jobType = "subtasks", parameters = "1 1" });
+
+        response.EnsureSuccessStatusCode();
     }
 
     /// <summary>

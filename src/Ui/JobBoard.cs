@@ -43,7 +43,7 @@ public sealed class JobBoard
     /// <summary>登録で選べる種類。</summary>
     public IReadOnlyList<JobTypeDto> JobTypes { get; private set; } = [];
 
-    /// <summary>操作や再読み込みの結果として利用者に見せる知らせ。無ければ null。</summary>
+    /// <summary>一覧の再読み込みと登録の結果として利用者に見せる知らせ。無ければ null。</summary>
     public string? Notice { get; private set; }
 
     /// <summary>
@@ -51,6 +51,44 @@ public sealed class JobBoard
     /// これが「登録できない理由」であり、一覧の操作の結果で消えてはいけないため。
     /// </summary>
     public string? JobTypesNotice { get; private set; }
+
+    /// <summary>キャンセル・編集・一時停止・再開が失敗または拒否されたこと。無ければ null。</summary>
+    /// <remarks>
+    /// <para>
+    /// <b><see cref="Notice"/> に相乗りさせない。</b>相乗りしていた頃は
+    /// <see cref="ReloadAsync"/> が成功で <see cref="Notice"/> を消すため、背景の変更通知
+    /// （SSE）で走る取り直しが、出したばかりの「できませんでした」を読む間もなく消していた。
+    /// 一覧が古いという知らせと、押した操作が通らなかったという知らせは、出る条件も
+    /// 消える条件も違う。<b>取り直しはこれに触らない。</b>
+    /// </para>
+    /// <para>
+    /// <b>そのかわり永続化しない。</b>消えるのは次の操作を始めたときと、利用者が
+    /// <see cref="CloseOperationDialog"/> で閉じたときだけ。時間でも再描画でも消えない。
+    /// 押した本人が読み終わる前に消えるのを避けつつ、画面の状態として残り続けないための
+    /// 線引きがここ。次の操作の結果に古い失敗が混ざることはない。
+    /// </para>
+    /// <para>
+    /// <b>成功は入れない。</b>通った操作の結果は行そのもの（状態・パラメータ）に出るので、
+    /// ダイアログに出すと読む必要のない知らせを毎回閉じさせることになる。失敗と拒否は
+    /// 行の見た目が変わらないまま何も起きないので、出さなければ「押せていない」と
+    /// 区別が付かない。<b>出すのは、行を見ても分からないことだけ。</b>
+    /// </para>
+    /// <para>
+    /// 拒否されたときも一覧は取り直す。拒否の理由は「ボタンを出した後に状態が進んだ」なので、
+    /// 取り直した行こそが利用者の見たい現在の状態になる。かつては
+    /// <see cref="Notice"/> が消えるのを避けるために失敗時は取り直さない細工を置いていたが、
+    /// 消える理由が無くなったので外した。
+    /// </para>
+    /// </remarks>
+    public string? OperationError { get; private set; }
+
+    /// <summary>操作の結果を出すダイアログが開いているか。</summary>
+    /// <remarks>
+    /// 開いているかの判断を Razor の <c>@code</c> ではなくここに置くのは、カバレッジが
+    /// <c>**/*.razor</c> を除外していて、あちらに書いた条件には分岐の床が一切かからないため
+    /// （この型が Razor の外に居る理由そのもの。型の注記を参照）。
+    /// </remarks>
+    public bool IsOperationDialogOpen => OperationError is not null;
 
     /// <summary>登録の入力エラー。項目名 → メッセージ。</summary>
     public IDictionary<string, string[]> RegistrationErrors { get; private set; } =
@@ -109,12 +147,11 @@ public sealed class JobBoard
     /// <summary>Job を登録する。成功したら入力欄を空にする。</summary>
     public async Task RegisterAsync(CancellationToken cancellationToken)
     {
-        if (IsBusy)
+        if (!TryBeginOperation())
         {
             return;
         }
 
-        IsBusy = true;
         try
         {
             RegisterJobResponse result = await _api.RegisterJobAsync(
@@ -159,28 +196,27 @@ public sealed class JobBoard
     /// </remarks>
     public async Task CancelAsync(string id, CancellationToken cancellationToken)
     {
-        if (IsBusy)
+        if (!TryBeginOperation())
         {
             return;
         }
 
-        IsBusy = true;
         try
         {
             CancelJobResponse result = await _api.CancelJobAsync(id, cancellationToken);
 
-            Notice = result switch
+            OperationError = result switch
             {
                 { Job: null } => "対象の Job が見つかりませんでした。",
                 { IsSuccess: false } => $"キャンセルできませんでした。現在の状態: {result.Job.Status}",
                 _ => null,
             };
 
-            await ReloadIfSucceededAsync(result.IsSuccess, cancellationToken);
+            await ReloadAsync(cancellationToken);
         }
         catch (Exception exception)
         {
-            Notice = $"キャンセルできませんでした: {Describe(exception)}";
+            OperationError = $"キャンセルできませんでした: {Describe(exception)}";
         }
         finally
         {
@@ -191,12 +227,11 @@ public sealed class JobBoard
     /// <summary>編集中のパラメータを保存する。</summary>
     public async Task EditAsync(string id, CancellationToken cancellationToken)
     {
-        if (IsBusy)
+        if (!TryBeginOperation())
         {
             return;
         }
 
-        IsBusy = true;
         try
         {
             // 打っていなければ欄にはサーバ値が出ているので、それをそのまま送る（実質の無変更）。
@@ -206,7 +241,7 @@ public sealed class JobBoard
 
             EditJobResponse result = await _api.EditJobParametersAsync(id, parameters, cancellationToken);
 
-            Notice = result switch
+            OperationError = result switch
             {
                 { IsSuccess: true } => null,
                 { Errors.Count: > 0 } => $"編集できませんでした: {result.Errors.Values.SelectMany(m => m).FirstOrDefault()}",
@@ -220,11 +255,11 @@ public sealed class JobBoard
                 _edits.Remove(id);
             }
 
-            await ReloadIfSucceededAsync(result.IsSuccess, cancellationToken);
+            await ReloadAsync(cancellationToken);
         }
         catch (Exception exception)
         {
-            Notice = $"編集できませんでした: {Describe(exception)}";
+            OperationError = $"編集できませんでした: {Describe(exception)}";
         }
         finally
         {
@@ -242,6 +277,15 @@ public sealed class JobBoard
 
     /// <summary>編集欄に打たれた値を控える。</summary>
     public void SetEdit(string id, string? value) => _edits[id] = value ?? string.Empty;
+
+    /// <summary>操作の結果のダイアログを閉じる。</summary>
+    /// <remarks>
+    /// 閉じる手段を画面側の <c>@code</c> のフラグにしない。フラグを別に持つと
+    /// 「閉じたが <see cref="OperationError"/> は残っている」状態ができ、次の失敗が
+    /// 同じ文言だったときに開き直せない（属性は変わらないので DOM も動かない）。
+    /// 閉じることと知らせを捨てることを同じ 1 つの状態にしておく。
+    /// </remarks>
+    public void CloseOperationDialog() => OperationError = null;
 
     /// <summary>登録の入力エラーのうち、指定した項目のもの。</summary>
     public IEnumerable<string> ErrorsFor(string field) =>
@@ -282,28 +326,27 @@ public sealed class JobBoard
     private async Task ControlAsync(
         string operation, Func<Task<JobControlResponse>> request, CancellationToken cancellationToken)
     {
-        if (IsBusy)
+        if (!TryBeginOperation())
         {
             return;
         }
 
-        IsBusy = true;
         try
         {
             JobControlResponse result = await request();
 
-            Notice = result switch
+            OperationError = result switch
             {
                 { Job: null } => "対象の Job が見つかりませんでした。",
                 { IsSuccess: false } => $"{operation}できませんでした。現在の状態: {result.Job.Status}",
                 _ => null,
             };
 
-            await ReloadIfSucceededAsync(result.IsSuccess, cancellationToken);
+            await ReloadAsync(cancellationToken);
         }
         catch (Exception exception)
         {
-            Notice = $"{operation}できませんでした: {Describe(exception)}";
+            OperationError = $"{operation}できませんでした: {Describe(exception)}";
         }
         finally
         {
@@ -311,21 +354,23 @@ public sealed class JobBoard
         }
     }
 
-    /// <summary>
-    /// 操作が通ったときだけ一覧を取り直す。
-    /// </summary>
+    /// <summary>操作を始められるなら始める。走っている最中なら false を返す。</summary>
     /// <remarks>
-    /// 失敗したときに取り直さないのは、<see cref="ReloadAsync"/> が成功で
-    /// <see cref="Notice"/> を消すため。せっかく出した「できませんでした」が
-    /// 直後の再読み込みで消えてしまう。失敗しても行は変わっていないので、
-    /// 取り直さなくても表示は正しい。
+    /// 前の <see cref="OperationError"/> を消すのをここ 1 か所にまとめてある。操作ごとに
+    /// 書くと、足した操作で消し忘れて古い失敗が次の結果に混ざる（消える条件は
+    /// <see cref="OperationError"/> の注記のとおり「次の操作を始めたとき」だけなので、
+    /// 消し忘れは画面に残り続ける形で出る）。
     /// </remarks>
-    private async Task ReloadIfSucceededAsync(bool succeeded, CancellationToken cancellationToken)
+    private bool TryBeginOperation()
     {
-        if (succeeded)
+        if (IsBusy)
         {
-            await ReloadAsync(cancellationToken);
+            return false;
         }
+
+        IsBusy = true;
+        OperationError = null;
+        return true;
     }
 
     // 例外の型は利用者に見せない。打つ手が変わらないので、伝えるのは中身だけでよい。

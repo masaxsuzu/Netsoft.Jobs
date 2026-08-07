@@ -48,6 +48,28 @@
             color: #b00020;
         }
 
+        /* 操作の失敗・拒否を出すダイアログ。非モーダル（open 属性だけで開く）の dialog は
+           既定で一覧の上に重なって置かれるので、位置を右上へ寄せて行を隠さないようにする。
+           裏の一覧は開いたまま更新され続けるため、隠すと更新が見えない。
+           display は触らない ── 閉じているときに隠すのは dialog:not([open]) の既定で、
+           ここで display を書くと閉じても消えなくなる。 */
+        .operation-dialog {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            left: auto;
+            margin: 0;
+            max-width: 24rem;
+            color: #b00020;
+            border: 1px solid #b00020;
+            background: #fff4f4;
+            padding: 0.7rem 1rem;
+        }
+
+        .operation-dialog p {
+            margin: 0 0 0.6rem 0;
+        }
+
         /* 回路（WebSocket）が死んだときに Blazor がこの要素を表示する。無いと
            何も出ず、画面は無言で凍る（操作しても反応しないだけになる）。
            表示のさせ方は Blazor の JS が id で見つけて display を切り替える仕組み。 */
