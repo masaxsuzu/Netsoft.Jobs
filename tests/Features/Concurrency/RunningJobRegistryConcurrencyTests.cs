@@ -140,7 +140,7 @@ public sealed class RunningJobRegistryConcurrencyTests
     {
         RunningJobRegistry registry = new();
 
-        using IDisposable registration = Track(registry, JobId.From("job-1"));
+        using JobCancellation registration = Track(registry, JobId.From("job-1"));
 
         Assert.Throws<InvalidOperationException>(() =>
         {
@@ -148,11 +148,58 @@ public sealed class RunningJobRegistryConcurrencyTests
         });
     }
 
-    private static IDisposable Track(RunningJobRegistry registry, JobId id)
+    /// <summary>
+    /// 退場した受け口は <see cref="CancellationTokenSource"/> を破棄すること。
+    /// </summary>
+    /// <remarks>
+    /// 破棄したかは外から直接は見えないので、破棄後にしか起きないこと
+    /// （<see cref="CancellationTokenSource.Token"/> が落ちる）で確かめる。
+    /// ここが通らないと、実行 1 回につき 1 つ捨て損ねが積み上がる。
+    /// </remarks>
+    [Fact]
+    public void 退場した受け口は破棄される()
+    {
+        RunningJobRegistry registry = new();
+        JobCancellation cancellation = Track(registry, JobId.From("job-1"));
+
+        cancellation.Dispose();
+
+        Assert.Throws<ObjectDisposedException>(() => cancellation.Token);
+    }
+
+    /// <summary>
+    /// キャンセルを伝えている最中に退場しても、伝え終わるまで破棄されないこと。
+    /// </summary>
+    /// <remarks>
+    /// 借りている者が残っている間は破棄しない、という取り決めそのもの。
+    /// 破って先に破棄すると、伝える側が <see cref="ObjectDisposedException"/> で落ちる
+    /// ── それは利用者のキャンセル操作が 500 になるということ。
+    /// </remarks>
+    [Fact]
+    public void 伝えたあとに退場しても破棄は一度だけ()
+    {
+        RunningJobRegistry registry = new();
+        JobCancellation cancellation = Track(registry, JobId.From("job-1"));
+
+        Assert.True(registry.TryRequestCancel(JobId.From("job-1")));
+
+        // 伝え終わった時点ではまだ借り手が居ない状態に戻っただけで、破棄はされていない。
+        Assert.True(cancellation.Token.IsCancellationRequested);
+
+        cancellation.Dispose();
+        cancellation.Dispose();
+
+        Assert.Throws<ObjectDisposedException>(() => cancellation.Token);
+
+        // 退場後は誰にも届かない。
+        Assert.False(registry.TryRequestCancel(JobId.From("job-1")));
+    }
+
+    private static JobCancellation Track(RunningJobRegistry registry, JobId id)
     {
         try
         {
-            return (IDisposable)TrackMethod.Invoke(registry, [id])!;
+            return (JobCancellation)TrackMethod.Invoke(registry, [id])!;
         }
         catch (TargetInvocationException exception) when (exception.InnerException is not null)
         {

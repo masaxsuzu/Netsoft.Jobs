@@ -50,8 +50,14 @@ public interface IRunningJobRegistry
 /// <para>
 /// かつては <c>lock</c> で守っていた。理由は「掴んだ直後にエンジンが実行を終えて
 /// <see cref="CancellationTokenSource"/> を破棄すると <see cref="ObjectDisposedException"/> に
-/// なりうる」で、これは正しい。<b>ただし守るべき窓は、破棄をやめれば消える</b>
-/// （<see cref="JobCancellation"/> の注記）。窓を閉じるのではなく、窓の理由を無くしてある。
+/// なりうる」で、これは正しい。<b>破棄する者を「最後に手を離した者」に変えると、その窓は
+/// 存在しなくなる</b>（<see cref="JobCancellation"/> の注記）。
+/// 窓を閉じるのではなく、窓の理由を無くしてある。
+/// </para>
+/// <para>
+/// 外した受け口への参照はここに残らない。<see cref="Untrack"/> が
+/// <c>_current</c> を null に戻すので、エンジンの <c>using</c> を抜けた時点で
+/// どこからも辿れなくなる（<see cref="TryRequestCancel"/> が掴む参照は呼び出しの間だけ）。
 /// </para>
 /// </remarks>
 public sealed class RunningJobRegistry : IRunningJobRegistry
@@ -72,6 +78,10 @@ public sealed class RunningJobRegistry : IRunningJobRegistry
 
         if (Interlocked.CompareExchange(ref _current, cancellation, null) is { } running)
         {
+            // 載せられなかったものは呼び出し側へ渡らない（＝誰も破棄しない）ので、
+            // ここで捨ててから投げる。using へ入る前に投げる唯一の経路がここ。
+            cancellation.Dispose();
+
             // 同時実行数 1 の前提が破れている。黙って上書きすると
             // 先に動いている Job へキャンセルが届かなくなるので、ここで気づけるようにする。
             throw new InvalidOperationException(

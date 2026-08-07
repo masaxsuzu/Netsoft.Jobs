@@ -8,16 +8,23 @@ namespace Netsoft.Jobs.Features.Execution;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b><see cref="CancellationTokenSource"/> を破棄しない。</b>これがこの型の要である。
-/// 破棄する者が居ると、掴んだ側が <see cref="CancellationTokenSource.Cancel()"/> を
-/// 呼ぶまでの間に破棄が割り込んで <see cref="ObjectDisposedException"/> になりうるので、
-/// 掴みと破棄を排他で隔てるしかなくなる。破棄しなければその窓は<b>存在しない</b>。
+/// <b>破棄の時点を、持ち主の数で決める。</b>この受け口は 2 人が同時に触りうる
+/// ── 実行を終えて退場するエンジンと、キャンセルを伝えにくる HTTP のスレッド。
+/// 素直に「退場する側が破棄する」と決めると、掴んだ側が
+/// <see cref="CancellationTokenSource.Cancel()"/> を呼ぶまでの間に破棄が割り込んで
+/// <see cref="ObjectDisposedException"/> になりうるので、掴みと破棄を排他で隔てるしかない。
 /// </para>
 /// <para>
-/// 払うものはほぼ無い。この受け口が抱える資源は待ち受けの登録だけで
+/// <b>最後に手を離した者が破棄する</b>形にすると、その窓が消える。数はエンジンの登録が
+/// 持つ 1 から始まり、伝えにくる側は伝えている間だけ 1 つ借りる。0 にした者だけが破棄するので、
+/// 誰かが触っている最中に消えることも、誰も破棄しないまま残ることもない。
+/// </para>
+/// <para>
+/// <b>破棄しない形も検討したが採らなかった。</b>この受け口が抱える資源は待ち受けの登録だけで
 /// （時計も待機ハンドルも持たない ── <see cref="CancellationToken.WaitHandle"/> を
-/// 触っていないので確保もされない）、実行が終われば登録も残らず、あとは GC が回収する。
-/// <b>破棄で解放されるものが無い側と、破棄のために排他が要る側を比べた結果</b>である。
+/// 触っていないので確保もされない）、GC に任せても実害は無い。ただし「実害が無いから
+/// 放置してよい」は、資源が増えた日に黙って崩れる約束になる。数で決める形なら、
+/// 排他を使わずに破棄を保証できるので、放置する理由が無くなった。
 /// </para>
 /// <para>
 /// 状態を 3 つ持つのは、「届いた」と「もう走っていない」を呼び出し側へ正しく返すため。
@@ -35,6 +42,10 @@ public sealed class JobCancellation : IDisposable
     private readonly CancellationTokenSource _cancellation = new();
 
     private int _state;
+
+    // 触っている者の数。1 はエンジンの登録が持っていて Dispose で返す。
+    // 0 にした者が破棄する。0 を見た者はもう借りられない（＝破棄済み）。
+    private int _users = 1;
 
     internal JobCancellation(RunningJobRegistry owner, JobId id)
     {
@@ -62,30 +73,83 @@ public sealed class JobCancellation : IDisposable
     /// 退場済みなら false。退場と競っても、状態の差し替えに勝った側だけが
     /// <see cref="CancellationTokenSource.Cancel()"/> へ進むので、答えが二重にならない。
     /// <para>
-    /// 勝った直後に退場が起きても <c>Cancel()</c> は安全に走り切る。破棄する者が居ないので、
-    /// この受け口は退場しても生きたまま残る。
+    /// 伝えている間は 1 つ借りるので、その最中に破棄されることはない。勝った直後に退場が
+    /// 起きても <c>Cancel()</c> は走り切り、破棄は手を離した後にこちらが行う。
     /// </para>
     /// </remarks>
     internal bool TryCancel()
     {
-        int previous = Interlocked.CompareExchange(ref _state, Cancelled, Live);
-        if (previous == Live)
+        if (!TryUse())
         {
-            _cancellation.Cancel();
-            return true;
+            // 借りられない＝破棄済み＝この受け口はもう走っていない。
+            return false;
         }
 
-        // 既に伝えてある。2 度目の要求も「届いている」が正しい答えになる。
-        return previous == Cancelled;
+        try
+        {
+            int previous = Interlocked.CompareExchange(ref _state, Cancelled, Live);
+            if (previous == Live)
+            {
+                _cancellation.Cancel();
+                return true;
+            }
+
+            // 既に伝えてある。2 度目の要求も「届いている」が正しい答えになる。
+            return previous == Cancelled;
+        }
+        finally
+        {
+            Release();
+        }
     }
 
     /// <summary>登録を外す。以後この受け口にキャンセルは届かない。</summary>
+    /// <remarks>
+    /// 2 度目は何もしない。手を離すのを 2 回数えると、まだ誰かが触っている最中に
+    /// 破棄が起きる。
+    /// </remarks>
     public void Dispose()
     {
         // 条件を付けずに退場させる。Cancelled から Retired への移りは
         // 「伝えたが、もう走っていない」で、次の要求に false を返すのが正しい。
-        Volatile.Write(ref _state, Retired);
+        if (Interlocked.Exchange(ref _state, Retired) == Retired)
+        {
+            return;
+        }
 
         _owner.Untrack(this);
+        Release();
+    }
+
+    /// <summary>
+    /// 触る権利を 1 つ借りる。破棄済み（0）なら借りられない。
+    /// </summary>
+    /// <remarks>
+    /// 増やすだけでは足りない。0 を見てから増やすまでの間に破棄が挟まると、
+    /// 破棄済みの物を借りたことになる。0 でないことを確かめた値ごと差し替える。
+    /// </remarks>
+    private bool TryUse()
+    {
+        while (true)
+        {
+            int users = Volatile.Read(ref _users);
+            if (users == 0)
+            {
+                return false;
+            }
+
+            if (Interlocked.CompareExchange(ref _users, users + 1, users) == users)
+            {
+                return true;
+            }
+        }
+    }
+
+    private void Release()
+    {
+        if (Interlocked.Decrement(ref _users) == 0)
+        {
+            _cancellation.Dispose();
+        }
     }
 }

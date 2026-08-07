@@ -13,8 +13,23 @@ namespace Netsoft.Jobs.Analyzers;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 規則そのものは CLAUDE.md「やらないこと」にある。ここはその機械的な検査で、
-/// 規則を読まなくても破れないようにするために置いている。
+/// <b>禁止の理由。</b>排他は「重なったら待たせる」ことで正しさを作るので、正しさの根拠が
+/// 実行の時間軸に乗る。重ならなければ正しい、という形は、重なり方が変わった日に黙って壊れる。
+/// 版や不可分な差し替えで表せば、何本重なっても、どの順で終わっても結果が変わらない。
+/// </para>
+/// <para>
+/// 規則を先に決めて当てはめたのではない。#83 と #84 で一覧の取り直しを 2 通りに直して、
+/// <b>後から片方が要らなくなった</b>ので規則にしている。#83 は取り直しを直列化して症状を消し、
+/// #84 は行に版を載せて到着順を無意味にした。#84 の後、#83 の門は何も守っていなかった。
+/// </para>
+/// <para>
+/// <b>掛かるのは src/ だけ</b>（src/Directory.Build.props が参照している）。tests/ の
+/// 並行ハーネスは重なりを故意に作る道具で、そこの排他は検証の一部だから禁じる相手ではない。
+/// </para>
+/// <para>
+/// <b>例外は置いていない。</b>置きたくなったら、それは排他が要る設計を選んだということなので、
+/// 設計の方を先に疑う。<c>RunningJobRegistry</c> には「ここだけは排他が要る」と書いてあったが、
+/// 破棄する者を「最後に手を離した者」に変えたら要らなくなった。
 /// </para>
 /// <para>
 /// <b>BannedApiAnalyzers では足りない。</b>あちらは記号（型やメソッド）の参照しか見ないので、
@@ -25,6 +40,7 @@ namespace Netsoft.Jobs.Analyzers;
 /// <para>
 /// <c>Interlocked</c> と <c>Volatile</c> は禁じない。あれは相互排他ではなく読み書きの
 /// 順序と不可分性の指定で、待たせるものが無い。禁じたいのは「他人を待たせて守る」形の方。
+/// ここを塞ぐと、排他を消した先の書き方まで無くなる。
 /// </para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
@@ -36,7 +52,7 @@ public sealed class ExclusionAnalyzer : DiagnosticAnalyzer
     private static readonly DiagnosticDescriptor Rule = new(
         DiagnosticId,
         title: "排他で守らない",
-        messageFormat: "{0} は使えません。待たせて守るのではなく、順序に依らない形にしてください（CLAUDE.md「やらないこと」）",
+        messageFormat: "{0} は使えません。待たせて守るのではなく、順序に依らない形にしてください（理由は tools/analyzers の ExclusionAnalyzer に）",
         category: "Design",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
