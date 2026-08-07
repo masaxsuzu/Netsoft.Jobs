@@ -116,37 +116,6 @@ public sealed class ExclusionAnalyzerTests
         Assert.Empty(reported);
     }
 
-    private static async Task<string[]> AnalyzeAsync(string source)
-    {
-        // 小さな断片しか食わせないので、参照は runtime の中核だけで足りる。
-        string runtime = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
-        MetadataReference[] references =
-        [
-            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-            MetadataReference.CreateFromFile(Path.Combine(runtime, "System.Runtime.dll")),
-            MetadataReference.CreateFromFile(Path.Combine(runtime, "System.Threading.dll")),
-        ];
-
-        CSharpCompilation compilation = CSharpCompilation.Create(
-            "Probe",
-            [CSharpSyntaxTree.ParseText(source)],
-            references,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-
-        // 原文の誤りを検査の結果と取り違えないよう、先に組み立てが通ることを確かめる。
-        Assert.DoesNotContain(
-            compilation.GetDiagnostics(),
-            diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
-
-        ImmutableArray<Diagnostic> diagnostics = await compilation
-            .WithAnalyzers([new ExclusionAnalyzer()])
-            .GetAnalyzerDiagnosticsAsync(CancellationToken.None);
-
-        return
-        [
-            .. diagnostics
-                .OrderBy(diagnostic => diagnostic.Location.SourceSpan.Start)
-                .Select(diagnostic => diagnostic.Id)
-        ];
-    }
+    private static Task<string[]> AnalyzeAsync(string source) =>
+        AnalyzerProbe.RunAsync(new ExclusionAnalyzer(), source);
 }

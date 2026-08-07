@@ -7,6 +7,7 @@ namespace Netsoft.Jobs.Features.Execution;
 /// 大小を区別しないで引くのは、JobType が利用者の入力そのものだから。
 /// "Demo" と "demo" で解決できたりできなかったりするのは説明のつかない挙動になる。
 /// </remarks>
+[SingleInstance]
 public sealed class JobHandlerRegistry
 {
     private readonly IReadOnlyDictionary<string, IJobHandler> _handlers;
