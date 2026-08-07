@@ -153,8 +153,10 @@ public sealed class SubTaskJobHandlerTests : IDisposable
         await AddRunningJobAsync("3 5");
         await RequestCancelAsync();
 
+        // 期限を付ける。観測しなくなる壊し方をすると、例外が出ないまま待ちに入って
+        // 針を進める者が居ないので、素で書くと落ちずに固まる。
         await Assert.ThrowsAsync<JobCancelledException>(
-            () => _handler.ExecuteAsync(Job1, "3 5"));
+            () => _handler.ExecuteAsync(Job1, "3 5").WaitAsync(WaitLimit));
 
         Assert.Empty(await _store.ListByJobAsync(Job1, CancellationToken.None));
     }
@@ -231,7 +233,7 @@ public sealed class SubTaskJobHandlerTests : IDisposable
         await ApplyAsync(rows[0], SubTaskTrigger.Complete);
 
         await Assert.ThrowsAsync<JobCancelledException>(
-            () => _handler.ExecuteAsync(Job1, "2 1"));
+            () => _handler.ExecuteAsync(Job1, "2 1").WaitAsync(WaitLimit));
 
         Assert.Equal([SubTaskStatus.Completed, SubTaskStatus.Cancelled], await StatusesAsync());
     }
