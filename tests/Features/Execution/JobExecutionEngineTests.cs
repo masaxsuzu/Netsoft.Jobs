@@ -21,7 +21,6 @@ public sealed class JobExecutionEngineTests : IDisposable
 
     private readonly TemporaryJobStore _store = new();
     private readonly FixedTimeProvider _timeProvider = new(Now);
-    private readonly RunningJobRegistry _runningJobs = new();
 
     // 本番ではホストの結線（store の書き込み → Set）が鳴らすが、ここでは
     // テスト自身が Set を呼んで「書き込みの合図」を演じる。
@@ -119,24 +118,24 @@ public sealed class JobExecutionEngineTests : IDisposable
     }
 
     [Fact]
-    public async Task キャンセルを伝えるとハンドラのトークンが発火してCancelledになる()
+    public async Task Cancellingを書くとハンドラが観測してCancelledになる()
     {
-        ControllableJobHandler handler = new(HandledJobType);
+        ControllableJobHandler handler = new(HandledJobType, _store);
         await AddRegisteredAsync("job-1");
         JobExecutionEngine engine = await CreateEngineAsync(handler);
 
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
         await handler.Entered;
 
-        // キャンセル機能（コマンド側）がやることと同じ順序で行う。
-        // 状態を Cancelling へ進めてから、実行中のハンドラへ伝える。
+        // キャンセル機能（コマンド側）がやることはこれだけ。行に Cancelling と書く。
+        // 走っているハンドラを突く手順は無い。
         Job job = await FindAsync("job-1");
         Assert.True(job.Apply(JobTrigger.RequestCancel, Now).IsAllowed);
         Assert.True(await _store.UpdateAsync(job, CancellationToken.None));
 
-        Assert.True(_runningJobs.TryRequestCancel(JobId.From("job-1")));
-
-        // Release を呼んでいないので、ここで終わるのはトークンが発火したから。
+        // ハンドラを観測点まで進める。ここで行を読んで、自分から抜ける。
+        // 観測しなければ普通に終わって Completed になるので、下の判定が両者を分ける。
+        handler.Release();
         Assert.True(await running);
         Assert.True(handler.CancellationObserved);
         Assert.Equal(JobStatus.Cancelled, (await FindAsync("job-1")).Status);
@@ -162,14 +161,6 @@ public sealed class JobExecutionEngineTests : IDisposable
 
         // 実際に起きたことを記録する。状態機械の判断に従う。
         Assert.Equal(JobStatus.Completed, (await FindAsync("job-1")).Status);
-    }
-
-    [Fact]
-    public async Task 実行中でないJobへのキャンセル要求は伝わらない()
-    {
-        await AddRegisteredAsync("job-1");
-
-        Assert.False(_runningJobs.TryRequestCancel(JobId.From("job-1")));
     }
 
     [Fact]
@@ -545,7 +536,6 @@ public sealed class JobExecutionEngineTests : IDisposable
         JobExecutionEngine.StartAsync(
             _engineStore,
             new JobHandlerRegistry(handlers),
-            _runningJobs,
             _signal,
             _timeProvider,
             _instrumentation,

@@ -57,17 +57,6 @@ public sealed class JobExecutionServiceCollectionExtensionsTests : IDisposable
     }
 
     [Fact]
-    public void キャンセルの口はエンジンが使う実体と同じインスタンスになる()
-    {
-        // 別インスタンスだと、キャンセル要求が実行中のハンドラに届かず何も起きない。
-        using ServiceProvider provider = BuildProvider();
-
-        Assert.Same(
-            provider.GetRequiredService<RunningJobRegistry>(),
-            provider.GetRequiredService<IRunningJobRegistry>());
-    }
-
-    [Fact]
     public void 計装をDIから解決できる()
     {
         using ServiceProvider provider = BuildProvider();

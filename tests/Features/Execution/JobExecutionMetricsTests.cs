@@ -22,7 +22,6 @@ public sealed class JobExecutionMetricsTests : IDisposable
 
     private readonly TemporaryJobStore _store = new();
     private readonly FixedTimeProvider _timeProvider = new(Now);
-    private readonly RunningJobRegistry _runningJobs = new();
     private readonly JobQueueSignal _signal = new();
     private readonly TestMeterFactory _meterFactory = new();
     private readonly JobExecutionInstrumentation _instrumentation;
@@ -96,7 +95,7 @@ public sealed class JobExecutionMetricsTests : IDisposable
     {
         using MetricCollector<long> finished = CreateCollector<long>("netsoft.jobs.finished");
 
-        ControllableJobHandler handler = new(HandledJobType);
+        ControllableJobHandler handler = new(HandledJobType, _store);
         await AddRegisteredAsync("job-1");
         JobExecutionEngine engine = await CreateEngineAsync(handler);
 
@@ -107,7 +106,7 @@ public sealed class JobExecutionMetricsTests : IDisposable
         Job job = await FindAsync("job-1");
         Assert.True(job.Apply(JobTrigger.RequestCancel, Now).IsAllowed);
         Assert.True(await _store.UpdateAsync(job, CancellationToken.None));
-        Assert.True(_runningJobs.TryRequestCancel(JobId.From("job-1")));
+        handler.Release();
         Assert.True(await running);
 
         CollectedMeasurement<long> count = Assert.Single(finished.GetMeasurementSnapshot());
@@ -147,7 +146,6 @@ public sealed class JobExecutionMetricsTests : IDisposable
         JobExecutionEngine.StartAsync(
             _store,
             new JobHandlerRegistry(handlers),
-            _runningJobs,
             _signal,
             _timeProvider,
             _instrumentation,

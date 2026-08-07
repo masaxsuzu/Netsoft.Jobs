@@ -31,7 +31,6 @@ public sealed class PauseResumeExecutionTests : IDisposable
     private readonly PauseJobHandler _pause;
     private readonly ResumeJobHandler _resume;
     private readonly CancelJobHandler _cancel;
-    private readonly RunningJobRegistry _runningJobs = new();
 
     public PauseResumeExecutionTests()
     {
@@ -40,7 +39,7 @@ public sealed class PauseResumeExecutionTests : IDisposable
             NullLogger<JobExecutionInstrumentation>.Instance);
         _pause = new PauseJobHandler(_jobs, _time, NullLogger<PauseJobHandler>.Instance);
         _resume = new ResumeJobHandler(_jobs, _time, NullLogger<ResumeJobHandler>.Instance);
-        _cancel = new CancelJobHandler(_jobs, _runningJobs, _time, NullLogger<CancelJobHandler>.Instance);
+        _cancel = new CancelJobHandler(_jobs, _time, NullLogger<CancelJobHandler>.Instance);
     }
 
     public void Dispose()
@@ -218,7 +217,6 @@ public sealed class PauseResumeExecutionTests : IDisposable
         await JobExecutionEngine.StartAsync(
             engineStore,
             new JobHandlerRegistry([new SubTaskJobHandler(_subTasks, _jobs, _time)]),
-            _runningJobs,
             new JobQueueSignal(),
             _time,
             _instrumentation,

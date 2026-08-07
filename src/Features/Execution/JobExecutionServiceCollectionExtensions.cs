@@ -14,8 +14,7 @@ public static class JobExecutionServiceCollectionExtensions
     /// <remarks>
     /// <para>
     /// すべて Singleton にする。エンジンは起動時復旧を済ませたかどうかを、
-    /// <see cref="RunningJobRegistry"/> は実行中の Job をプロセス全体で 1 つ持つ必要があるため。
-    /// スコープごとに作られると、キャンセル要求が別のインスタンスに届いて何も起きない。
+    /// <see cref="JobQueueSignal"/> は待つ側と鳴らす側で同じ 1 つである必要があるため。
     /// </para>
     /// <para>
     /// このため <see cref="Domain.IJobStore"/> も Singleton で登録すること
@@ -45,12 +44,10 @@ public static class JobExecutionServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IJobHandler, SubTaskJobHandler>());
 
         services.TryAddSingleton<JobHandlerRegistry>();
-        services.TryAddSingleton<RunningJobRegistry>();
 
         // 合図はエンジンが待つものと書き込み側（ホストの結線）が鳴らすものが
         // 同じ 1 つでなければ意味を成さないので、これも Singleton。
         services.TryAddSingleton<JobQueueSignal>();
-        services.TryAddSingleton<IRunningJobRegistry>(provider => provider.GetRequiredService<RunningJobRegistry>());
         // エンジンそのものは登録しない。生成に await（起動時復旧）が要るのに対して
         // GetRequiredService は同期なので、サービスにできるのはファクトリまで。
         services.TryAddSingleton<JobExecutionEngineFactory>();

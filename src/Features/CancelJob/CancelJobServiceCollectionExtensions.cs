@@ -11,10 +11,10 @@ public static class CancelJobServiceCollectionExtensions
     /// キャンセル機能に必要なサービスを登録する。
     /// </summary>
     /// <remarks>
-    /// <see cref="Execution.IRunningJobRegistry"/> はここでは登録しない。実体は実行エンジンが
-    /// 持っているもので、<see cref="Execution.JobExecutionServiceCollectionExtensions.AddJobExecution"/>
-    /// が入れる同じインスタンスでなければキャンセルがハンドラに届かないため。
-    /// ここで別に登録すると、取り違えても解決だけは成功してしまう。
+    /// 要るのは <see cref="Domain.IJobStore"/> だけ。かつては実行中の Job の登録簿も要求しており、
+    /// 実行エンジンが入れたのと<b>同じインスタンス</b>でなければキャンセルがハンドラに届かなかった
+    /// ── 取り違えても解決だけは成功するので、登録の順序に正しさが乗っていた。
+    /// 要求を store に書くだけになったので、その依存ごと無くなっている。
     /// </remarks>
     public static IServiceCollection AddCancelJob(this IServiceCollection services)
     {

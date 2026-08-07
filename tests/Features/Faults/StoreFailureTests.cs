@@ -30,7 +30,6 @@ public sealed class StoreFailureTests : IDisposable
     private readonly TemporaryJobStore _store = new();
     private readonly FailingJobStore _failing;
     private readonly FixedTimeProvider _timeProvider = new(Now);
-    private readonly RunningJobRegistry _runningJobs = new();
     private readonly JobQueueSignal _signal = new();
     private readonly TestMeterFactory _meterFactory = new();
     private readonly JobExecutionInstrumentation _instrumentation;
@@ -181,7 +180,6 @@ public sealed class StoreFailureTests : IDisposable
         JobExecutionEngine.StartAsync(
             _failing,
             new JobHandlerRegistry(handlers),
-            _runningJobs,
             _signal,
             _timeProvider,
             _instrumentation,

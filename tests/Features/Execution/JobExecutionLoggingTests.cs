@@ -23,7 +23,6 @@ public sealed class JobExecutionLoggingTests : IDisposable
 
     private readonly TemporaryJobStore _store = new();
     private readonly FixedTimeProvider _timeProvider = new(Now);
-    private readonly RunningJobRegistry _runningJobs = new();
     private readonly JobQueueSignal _signal = new();
     private readonly RecordingLogger<JobExecutionEngine> _logger = new();
 
@@ -119,15 +118,10 @@ public sealed class JobExecutionLoggingTests : IDisposable
         JobExecutionEngine engine = await CreateEngineAsync(handler);
         await AddRegisteredAsync("job-1");
 
-        // 伝達は記録用に差し替える。本物の registry に伝えるとトークンが発火してハンドラが
-        // 止まり、「完走が勝つ」状況を作れない。別プロセスで走っている Job への要求
-        // （トークンが届かないまま完走する）と同じ形になる。
+        // 走っているハンドラは中断を観測しない作り（store を渡していない）なので、
+        // Cancelling が書かれても最後まで走り切る。「完走が勝つ」はこの形でしか作れない。
         RecordingLogger<CancelJobHandler> cancelLogger = new();
-        CancelJobHandler cancelHandler = new(
-            _store,
-            new RecordingRunningJobRegistry(new CancelJobCallLog()),
-            _timeProvider,
-            cancelLogger);
+        CancelJobHandler cancelHandler = new(_store, _timeProvider, cancelLogger);
 
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
         await handler.Entered;
@@ -158,7 +152,6 @@ public sealed class JobExecutionLoggingTests : IDisposable
         JobExecutionEngine.StartAsync(
             _store,
             new JobHandlerRegistry(handlers),
-            _runningJobs,
             _signal,
             _timeProvider,
             _instrumentation,

@@ -17,23 +17,19 @@ namespace Netsoft.Jobs.Features.CancelJob;
 public sealed class CancelJobHandler
 {
     private readonly IJobStore _store;
-    private readonly IRunningJobRegistry _runningJobs;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<CancelJobHandler> _logger;
 
     public CancelJobHandler(
         IJobStore store,
-        IRunningJobRegistry runningJobs,
         TimeProvider timeProvider,
         ILogger<CancelJobHandler> logger)
     {
         ArgumentNullException.ThrowIfNull(store);
-        ArgumentNullException.ThrowIfNull(runningJobs);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
 
         _store = store;
-        _runningJobs = runningJobs;
         _timeProvider = timeProvider;
         _logger = logger;
     }
@@ -91,13 +87,9 @@ public sealed class CancelJobHandler
                 return CancelJobResult.Rejected(job.ToDto(), rejection);
             }
 
-            // 保存が先。実行中のハンドラのトークンを先に発火させると、こちらが Cancelling を
-            // 書き終える前にハンドラが終端（Cancelled や Completed）を書き込みうる。
-            // そうなると後から書くこの更新が終端を Cancelling で上書きして、
-            // 終わっているのに終わっていない Job ができる。
-            // 条件付き更新にしたことで、その追い越しが起きても上書きは成立しなくなった。
-            // 順序自体は保つ。伝達を先にすると、上書きこそ防げても
-            // 「まだ Cancelling を書けていない Job にキャンセルが届く」ことになる。
+            // 保存が伝達そのもの。ハンドラは Cancelling を読んで抜けるので、書けた時点で
+            // 要求は届いている（書く前に届く順序が存在しない）。かつては保存と発火が
+            // 2 手に分かれており、どちらを先にするかに正しさが乗っていた。
             if (!await _store.UpdateAsync(job, cancellationToken))
             {
                 // 読み出しから保存までの間に他所が状態を進めた。前提が崩れただけなので、
@@ -106,11 +98,9 @@ public sealed class CancelJobHandler
                 continue;
             }
 
-            // 保存が済んでから伝える。戻り値は見ない。false は「このプロセスで実行中ではない」
-            // （待機中だった、既に終わった、別プロセス）というだけで失敗ではないので、
-            // これを理由に状態遷移を巻き戻さない。待機中の Job は必ず false になるが、
-            // その場合は下の確定がそのまま終端まで進めるので、止める相手がいなくても閉じる。
-            _runningJobs.TryRequestCancel(job.Id);
+            // 保存した時点で伝達は済んでいる。走っているハンドラは自分の行を読みに来るので、
+            // ここから誰かを突く手順は無い（かつては実行中の Job の登録簿へトークンの発火を
+            // 頼んでいた）。待機中で誰も走っていない場合は、下の確定がそのまま終端まで進める。
 
             // Job 行に Cancelling の時刻列は無いので、要求が受理された時刻はこのログだけが持つ。
             _logger.LogInformation(

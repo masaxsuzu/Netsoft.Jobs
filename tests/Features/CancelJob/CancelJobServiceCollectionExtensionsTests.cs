@@ -20,13 +20,12 @@ public sealed class CancelJobServiceCollectionExtensionsTests
         ServiceCollection services = new();
 
         // Web 側がやることと同じ。IJobStore の実装を選ぶのは Features の関心ではない。
-        // TimeProvider と IRunningJobRegistry は機能をまたいで共有するもので、
-        // AddCancelJob は自分のハンドラしか登録しない（登録は AddJobFeatures がまとめて行う）。
+        // TimeProvider は機能をまたいで共有するもので、AddCancelJob は自分のハンドラしか
+        // 登録しない（登録は AddJobFeatures がまとめて行う）。
         // logging も同じ扱い。ホストが既定で入れるものなので、ここではテストが入れる。
         services.AddLogging();
         services.AddSingleton<IJobStore>(store);
         services.AddSingleton(TimeProvider.System);
-        services.AddSingleton<IRunningJobRegistry>(new RecordingRunningJobRegistry(new CancelJobCallLog()));
         services.AddCancelJob();
 
         using ServiceProvider provider = services.BuildServiceProvider(new ServiceProviderOptions

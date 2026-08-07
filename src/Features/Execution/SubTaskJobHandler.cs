@@ -12,10 +12,11 @@ namespace Netsoft.Jobs.Features.Execution;
 /// 残っていれば、それが中断点の記録になる（<see cref="SubTaskStatus"/> の注記を参照）。
 /// </para>
 /// <para>
-/// キャンセルの観測点は待ちの側にある（1 サブタスクにつき m 回）。要求を観測したら、
-/// 実行中のサブタスクと未着手のサブタスクを Cancelled に畳んでから
-/// <see cref="OperationCanceledException"/> を投げ直し、Job 自体は既存の経路で
-/// Cancelled として記録される。
+/// <b>中断は誰にも突かれず、自分で見つける。</b>要求は Job の行に Cancelling / Pausing として
+/// 書かれるだけなので、読みに来ない handler は止まらない。
+/// キャンセルの観測点は待ちの側（1 サブタスクにつき m 回）。観測したら実行中と未着手を
+/// Cancelled に畳んでから <see cref="JobCancelledException"/> を投げ、Job 自体の結末は
+/// エンジンが記録する。
 /// </para>
 /// <para>
 /// 一時停止の観測と編集（N と m）の反映は、どちらもサブタスクの<b>境界</b>で行う。
@@ -50,9 +51,8 @@ public sealed class SubTaskJobHandler : IJobHandler
     /// 依存を受けて生成する。
     /// </summary>
     /// <remarks>
-    /// <c>jobs</c> は境界で自分の Job を読み直すための口（一時停止の観測と、編集された
-    /// parameters の採り直し）。即時の伝達は要らず、読み直しで足りる。
-    /// 書くことは無い（結末を書くのはエンジンの仕事）。
+    /// <c>jobs</c> は自分の Job を読み直すための口。中断（キャンセル・一時停止）の観測と、
+    /// 編集された parameters の採り直しに使う。書くことは無い（結末を書くのはエンジンの仕事）。
     /// </remarks>
     public SubTaskJobHandler(ISubTaskStore subTasks, IJobStore jobs, TimeProvider timeProvider)
     {
@@ -72,35 +72,34 @@ public sealed class SubTaskJobHandler : IJobHandler
     /// <paramref name="parameters"/> を「個数 秒数」として解釈し、サブタスクを順に実行する。
     /// </summary>
     /// <exception cref="FormatException">「個数 秒数」として読めない場合。</exception>
-    public async Task ExecuteAsync(JobId jobId, string parameters, CancellationToken cancellationToken)
+    public async Task ExecuteAsync(JobId jobId, string parameters)
     {
         (int count, int waits) = SubTaskParameters.Parse(parameters);
 
         // 行が既にあるなら、それは前回の実行の続き（一時停止からの再開、または
         // 受理前に取り消された停止からの走り直し）。済んだものを飛ばして続きから走る。
         //
-        // この読みにはトークンを渡さない。何が残っているかを知るまでは畳めないので、
-        // ここで中断すると**再開した Job のキャンセルで行が Pending のまま取り残される**
-        //（書き込みにトークンを渡さない RecordAsync と同じ理由）。読みは短く、
-        // 中断の観測点はこの直後と待ちの側にあるので、待たせる害も無い。
+        // 中断の観測より先に読む。何が残っているかを知るまでは畳めないので、
+        // ここより前で抜けると**再開した Job のキャンセルで行が Pending のまま取り残される**。
         List<SubTask> subTasks = [.. await _subTasks.ListByJobAsync(jobId, CancellationToken.None)];
         if (subTasks.Count == 0)
         {
-            // 行を作る前のキャンセル観測点。キャンセルの受け口は InProgress を書き戻すより
-            // 前に用意されている（JobExecutionEngine の注記）ので、要求が claim とほぼ同時に
-            // 届くとハンドラは「もう要らない」と分かった状態で始まる。ここで先に抜ければ、
-            // サブタスクの行を 1 つも作らずに済む ── 走る前に消された Job に、
-            // 走った形跡（Cancelled の行が N 個）を残さない。
+            // 行を作る前のキャンセル観測点。要求が claim とほぼ同時に届くと、ハンドラは
+            // 行に「もう要らない」と書かれた状態で始まる。ここで先に抜ければサブタスクの行を
+            // 1 つも作らずに済む ── 走る前に消された Job に、走った形跡
+            //（Cancelled の行が N 個）を残さない。
             //
             // 畳むものがまだ無いので try の外で構わない。**行が既にある場合はここを通さない**
             // ── 通すと、再開した Job のキャンセルが try の外で抜けて、残っている行が
             // 畳まれないまま Job だけ Cancelled になる。その観測はループの中に置いてある。
-            cancellationToken.ThrowIfCancellationRequested();
+            if (await IsCancellingAsync(jobId))
+            {
+                throw new JobCancelledException(jobId);
+            }
 
             SubTask[] created = [.. Enumerable.Range(0, count).Select(index => SubTask.Create(jobId, index))];
 
-            // ここで中断されても AddRange は全件か 0 件かなので、中途半端な行は残らない。
-            await _subTasks.AddRangeAsync(created, cancellationToken);
+            await _subTasks.AddRangeAsync(created, CancellationToken.None);
             subTasks = [.. created];
         }
 
@@ -111,7 +110,7 @@ public sealed class SubTaskJobHandler : IJobHandler
                 // 境界。まず編集を行へ反映してから、残りがあるかを見る。
                 // 最後のサブタスクの完了後には境界が無いので、走り切ったら結末が勝つ
                 //（状態機械の Pausing + Complete → Completed と同じ判断）。
-                (waits, bool pauseRequested) = await ReconcileAtBoundaryAsync(jobId, subTasks, waits);
+                (waits, JobStatus? interruption) = await ReconcileAtBoundaryAsync(jobId, subTasks, waits);
 
                 SubTask? next = subTasks.FirstOrDefault(subTask => !subTask.Status.IsTerminal());
                 if (next is null)
@@ -123,28 +122,32 @@ public sealed class SubTaskJobHandler : IJobHandler
                 // 最後のサブタスクを終えた直後に届いた要求で、**走り切った Job が
                 // Paused / Cancelled として記録される**。編集の反映がこれより前なのは、
                 // N を増やす編集が「残りがある」を作りうるため（増えた分は走らせる）。
-                if (pauseRequested)
-                {
-                    throw new JobPausedException(jobId);
-                }
-
-                cancellationToken.ThrowIfCancellationRequested();
+                Interrupt(jobId, interruption);
 
                 await RecordAsync(next, SubTaskTrigger.Start);
 
                 for (int i = 0; i < waits; i++)
                 {
-                    // 待機に必ずトークンを渡す。ここが協調的キャンセルの観測点で、
-                    // 1 サブタスクにつき m 回ある。
-                    await Task.Delay(Step, _timeProvider, cancellationToken);
+                    await Task.Delay(Step, _timeProvider);
+
+                    // 待ちの側の観測点。1 サブタスクにつき m 回ある。
+                    // **ここで効くのはキャンセルだけで、一時停止は見ない。**
+                    // 一時停止は区切りで止まる約束で、待ちの途中で抜けると行が Running のまま残り、
+                    // 再開はその 1 個を先頭からやり直すことになる（経過した秒数はどこにも無い）。
+                    // キャンセルは残りを畳んで捨ててよいので、やり直す話が最初から起きない。
+                    if (await IsCancellingAsync(jobId))
+                    {
+                        throw new JobCancelledException(jobId);
+                    }
                 }
 
                 await RecordAsync(next, SubTaskTrigger.Complete);
             }
         }
-        catch (OperationCanceledException)
+        catch (JobCancelledException)
         {
             // 実行中と未着手を畳んでから、Job の結末（Cancelled）は既存の経路に委ねる。
+            // 一時停止（JobPausedException）はここを通さない ── 行を畳まずに残すのが再開の前提。
             await CancelRemainingAsync(subTasks);
             throw;
         }
@@ -152,15 +155,15 @@ public sealed class SubTaskJobHandler : IJobHandler
 
     /// <summary>
     /// 境界の読み直し。parameters が編集されていれば行を突き合わせ、次のサブタスクで使う m と、
-    /// 一時停止が要求されているかを返す。
+    /// 中断が要求されていれば<b>その状態</b>（Pausing / Cancelling）を返す。
     /// </summary>
     /// <remarks>
     /// <para>
     /// <b>観測するだけで、抜ける判断はしない。</b>一時停止で抜けてよいかは「まだ残りがあるか」に
     /// よるが、それが決まるのは行を突き合わせた後（N を増やす編集が残りを作りうる）なので、
-    /// 判断は呼び出し側に置いてある。受理（Paused）を書くのはエンジン（OCE → Cancelled と
-    /// 同じ分担）。ここで書くと結末の書き手が 2 人になる。Job が読めなかった場合は
-    /// 手元の値のまま進む（不在はエンジン側の結末記録が拾う）。
+    /// 判断は呼び出し側に置いてある。結末（Paused / Cancelled）を書くのはエンジンで、
+    /// ここで書くと書き手が 2 人になる。Job が読めなかった場合は手元の値のまま進む
+    /// （不在はエンジン側の結末記録が拾う）。
     /// </para>
     /// <para>
     /// N の突き合わせ: 増えていれば未着手の行を足し、減っていれば N を超える未着手の行を
@@ -173,14 +176,13 @@ public sealed class SubTaskJobHandler : IJobHandler
     /// （m を読むのは境界だけで、待ちのループは手元の値で回り切る）。
     /// </para>
     /// <para>
-    /// <b>トークンを取らない</b>（<see cref="RecordAsync"/> と同じ）。ここを中断させると
-    /// 2 つ壊れる ── 読みで抜けると「残りがあるか」を決める前に脱出するので走り切った Job が
-    /// Cancelled として記録され、行の追加で抜けると DB にだけ行があってメモリの一覧に無い
-    /// 行ができて、畳み（<see cref="CancelRemainingAsync"/>）から漏れる。
-    /// 中断の観測はこの直後の 1 か所と、待ちの側（1 サブタスクにつき m 回）にある。
+    /// <b>ここでは抜けない</b>（<see cref="RecordAsync"/> と同じ）。途中で脱出すると 2 つ壊れる
+    /// ── 読みの直後に抜けると「残りがあるか」を決める前に出るので走り切った Job が
+    /// Cancelled として記録され、行の追加の途中で抜けると DB にだけ行があってメモリの一覧に
+    /// 無い行ができ、畳み（<see cref="CancelRemainingAsync"/>）から漏れる。
     /// </para>
     /// </remarks>
-    private async Task<(int Waits, bool PauseRequested)> ReconcileAtBoundaryAsync(
+    private async Task<(int Waits, JobStatus? Interruption)> ReconcileAtBoundaryAsync(
         JobId jobId,
         List<SubTask> subTasks,
         int waits)
@@ -188,17 +190,21 @@ public sealed class SubTaskJobHandler : IJobHandler
         Job? job = await _jobs.FindAsync(jobId, CancellationToken.None);
         if (job is null)
         {
-            return (waits, false);
+            return (waits, null);
         }
 
-        bool pauseRequested = job.Status == JobStatus.Pausing;
+        // 1 回の読みで 2 つ問う。境界では一時停止もキャンセルも同じ資格で効くので、
+        // 別々に読みに行く理由が無い。
+        JobStatus? interruption = job.Status is JobStatus.Pausing or JobStatus.Cancelling
+            ? job.Status
+            : null;
 
         // 編集後の parameters が読めない形なら、手元の値のまま進む。編集 API が検証して
         // いるので通常は起きない。ここで Job を落とすと、書式の事故ひとつで走っている
         // 実行まで巻き添えになる。
         if (!SubTaskParameters.TryParse(job.Parameters, out int count, out int editedWaits))
         {
-            return (waits, pauseRequested);
+            return (waits, interruption);
         }
 
         int target = count;
@@ -216,19 +222,51 @@ public sealed class SubTaskJobHandler : IJobHandler
             subTasks.RemoveAll(subTask => subTask.Index >= target && subTask.Status == SubTaskStatus.Pending);
         }
 
-        return (editedWaits, pauseRequested);
+        return (editedWaits, interruption);
     }
+
+    /// <summary>
+    /// 境界で観測した中断を、対応する例外にして投げる。何も要求されていなければ何もしない。
+    /// </summary>
+    /// <remarks>
+    /// どちらの例外もエンジンが結末に写す。ここで store を書かないのは、
+    /// 結末の書き手をエンジン 1 人に保つため（<see cref="RecordAsync"/> と同じ分担）。
+    /// </remarks>
+    private static void Interrupt(JobId jobId, JobStatus? interruption)
+    {
+        if (interruption == JobStatus.Pausing)
+        {
+            throw new JobPausedException(jobId);
+        }
+
+        if (interruption == JobStatus.Cancelling)
+        {
+            throw new JobCancelledException(jobId);
+        }
+    }
+
+    /// <summary>
+    /// キャンセルが要求されているか、自分の行を読んで確かめる。
+    /// </summary>
+    /// <remarks>
+    /// <b>伝えるのは伝言板（store）で、誰かに突かれるのではない。</b>キャンセルの要求は
+    /// API が Cancelling を書くところまでで完結していて、走っている側はそれを見つけに来る。
+    /// この形なので、実行中の Job を指す共有の入れ物がプロセス内に要らない。
+    /// <para>
+    /// 読めなかった（Job が消えた）ときは false。不在はエンジン側の結末記録が拾う。
+    /// </para>
+    /// </remarks>
+    private async Task<bool> IsCancellingAsync(JobId jobId) =>
+        await _jobs.FindAsync(jobId, CancellationToken.None) is { Status: JobStatus.Cancelling };
 
     /// <summary>
     /// 遷移を適用して書き戻す。
     /// </summary>
     /// <remarks>
     /// <para>
-    /// トークンを取らない（常に中断なしで書く）。書き込みの途中で切ると、メモリと DB の
-    /// 状態が食い違い、次の遷移やキャンセル時の期待値が決められなくなる。
-    /// 中断の観測点は待ちの側にあり、書き込みは短いので待たせる害も無い。
-    /// キャンセル後の畳み込みも同じ理由でここを通る（発火済みのトークンで書くと
-    /// 畳んだ事実が残らない）。
+    /// 書き込みは中断しない。途中で切るとメモリと DB の状態が食い違い、次の遷移や
+    /// キャンセル時の期待値が決められなくなる。中断の観測点は待ちの側にあり、
+    /// 書き込みは短いので待たせる害も無い。キャンセル後の畳み込みも同じ理由でここを通る。
     /// </para>
     /// <para>
     /// Apply の拒否は確かめない。遷移は Pending → Running → 終端の一本道をこのメソッドの
