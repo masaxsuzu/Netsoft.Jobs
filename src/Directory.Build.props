@@ -34,4 +34,21 @@
     <NoWarn>$(NoWarn);1591</NoWarn>
   </PropertyGroup>
 
+  <!--
+    自前のアナライザー。今は「排他を使わない」(NJ0001) の 1 本だけで、
+    親の TreatWarningsAsErrors によりビルドを落とす。
+
+    掛けるのは src/ だけ。tests/ の並行ハーネスは重なりを故意に作る道具で、
+    そこの排他は検証の一部なので禁じる相手ではない。
+
+    ReferenceOutputAssembly=false が要る。付けないと Roslyn への入力としてだけでなく
+    参照アセンブリとしても混ざり、src/ が netstandard2.0 のこれを抱えることになる。
+  -->
+  <ItemGroup>
+    <ProjectReference
+      Include="$(MSBuildThisFileDirectory)../tools/analyzers/Analyzers/Analyzers.csproj"
+      OutputItemType="Analyzer"
+      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
 </Project>

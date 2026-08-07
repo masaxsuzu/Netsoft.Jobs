@@ -30,9 +30,11 @@ public sealed class RunningJobRegistryConcurrencyTests
     /// 登録と解除を繰り返している最中にキャンセルを浴びせても、例外が漏れないこと。
     /// </summary>
     /// <remarks>
-    /// 特に見たいのは <see cref="ObjectDisposedException"/> である。解除の直後に
-    /// <see cref="CancellationTokenSource"/> を破棄するので、掴んだ後に破棄されると
+    /// 特に見たいのは <see cref="ObjectDisposedException"/> である。掴んでから
+    /// <see cref="CancellationTokenSource.Cancel()"/> を呼ぶまでの間に受け口が破棄されると、
     /// キャンセル要求（＝利用者の操作）が例外で落ちる。
+    /// <see cref="JobCancellation"/> が破棄しない作りになっている今は構造的に起こらないが、
+    /// <b>起こらない理由が壊れたら落ちる</b>試験としてここに残している。
     /// </remarks>
     [Fact]
     public async Task 登録と解除の最中にキャンセルを浴びせても例外が漏れない()
@@ -91,9 +93,8 @@ public sealed class RunningJobRegistryConcurrencyTests
                 round < MaxRounds && (round < Rounds || Volatile.Read(ref cancelled) == 0);
                 round++)
             {
-                // エンジンと同じ形で書く。登録を外してから CTS を捨てる。
-                using CancellationTokenSource cancellation = new();
-                using (Track(registry, id, cancellation))
+                // エンジンと同じ形で書く。受け口は登録簿が作り、破棄で登録が外れる。
+                using (Track(registry, id))
                 {
                     await Task.Yield();
                 }
@@ -118,11 +119,10 @@ public sealed class RunningJobRegistryConcurrencyTests
     public void 登録されていないJobへのキャンセルは届かない()
     {
         RunningJobRegistry registry = new();
-        using CancellationTokenSource cancellation = new();
 
         Assert.False(registry.TryRequestCancel(JobId.From("job-1")));
 
-        using (Track(registry, JobId.From("job-1"), cancellation))
+        using (Track(registry, JobId.From("job-1")))
         {
             Assert.False(registry.TryRequestCancel(JobId.From("job-2")));
             Assert.True(registry.TryRequestCancel(JobId.From("job-1")));
@@ -139,22 +139,67 @@ public sealed class RunningJobRegistryConcurrencyTests
     public void 二重に登録しようとすると落ちる()
     {
         RunningJobRegistry registry = new();
-        using CancellationTokenSource first = new();
-        using CancellationTokenSource second = new();
 
-        using IDisposable registration = Track(registry, JobId.From("job-1"), first);
+        using JobCancellation registration = Track(registry, JobId.From("job-1"));
 
         Assert.Throws<InvalidOperationException>(() =>
         {
-            Track(registry, JobId.From("job-2"), second);
+            Track(registry, JobId.From("job-2"));
         });
     }
 
-    private static IDisposable Track(RunningJobRegistry registry, JobId id, CancellationTokenSource cancellation)
+    /// <summary>
+    /// 退場した受け口は <see cref="CancellationTokenSource"/> を破棄すること。
+    /// </summary>
+    /// <remarks>
+    /// 破棄したかは外から直接は見えないので、破棄後にしか起きないこと
+    /// （<see cref="CancellationTokenSource.Token"/> が落ちる）で確かめる。
+    /// ここが通らないと、実行 1 回につき 1 つ捨て損ねが積み上がる。
+    /// </remarks>
+    [Fact]
+    public void 退場した受け口は破棄される()
+    {
+        RunningJobRegistry registry = new();
+        JobCancellation cancellation = Track(registry, JobId.From("job-1"));
+
+        cancellation.Dispose();
+
+        Assert.Throws<ObjectDisposedException>(() => cancellation.Token);
+    }
+
+    /// <summary>
+    /// キャンセルを伝えている最中に退場しても、伝え終わるまで破棄されないこと。
+    /// </summary>
+    /// <remarks>
+    /// 借りている者が残っている間は破棄しない、という取り決めそのもの。
+    /// 破って先に破棄すると、伝える側が <see cref="ObjectDisposedException"/> で落ちる
+    /// ── それは利用者のキャンセル操作が 500 になるということ。
+    /// </remarks>
+    [Fact]
+    public void 伝えたあとに退場しても破棄は一度だけ()
+    {
+        RunningJobRegistry registry = new();
+        JobCancellation cancellation = Track(registry, JobId.From("job-1"));
+
+        Assert.True(registry.TryRequestCancel(JobId.From("job-1")));
+
+        // 伝え終わった時点ではまだ借り手が居ない状態に戻っただけで、破棄はされていない。
+        Assert.True(cancellation.Token.IsCancellationRequested);
+
+        cancellation.Dispose();
+        cancellation.Dispose();
+
+        Assert.Throws<ObjectDisposedException>(() => cancellation.Token);
+
+        // 退場後は誰にも届かない。
+        Assert.False(registry.TryRequestCancel(JobId.From("job-1")));
+    }
+
+    private static JobCancellation Track(RunningJobRegistry registry, JobId id)
     {
         try
         {
-            return (IDisposable)TrackMethod.Invoke(registry, [id, cancellation])!;
+            return (JobCancellation)TrackMethod.Invoke(registry, [id])!;
         }
         catch (TargetInvocationException exception) when (exception.InnerException is not null)
         {

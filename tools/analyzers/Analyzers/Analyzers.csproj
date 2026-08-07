@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    アナライザーは Roslyn が読み込む側なので、製品コードとは別の土俵になる。
+    netstandard2.0 なのは Roslyn がその形しか読まないため（ルートの net10.0 を上書きする）。
+    src/ の下に置かないのは、ここが製品ではなくビルドの道具だから
+    ── 置くと tools/coverage-check.py が「src のプロジェクト」として数え、
+    テストの通らないアセンブリが計測なしで落ちる。
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>Netsoft.Jobs.Analyzers</AssemblyName>
+    <RootNamespace>Netsoft.Jobs.Analyzers</RootNamespace>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!--
+      RS2008（リリース追跡の表を持て）は落とさない。あれは NuGet で配って
+      利用者が規則の増減を追えるようにするためのもので、このアナライザーは
+      このリポジトリの src/ にしか掛からず、増減は git の履歴が持っている。
+    -->
+    <!--
+      RS1033（説明は句読点で終われ）は、終止符が ASCII のものしか句読点と見なさない。
+      日本語で書いている以上「。」で終わるのが正しく、規則に合わせて「.」を足すと
+      文の方が壊れる。
+    -->
+    <NoWarn>$(NoWarn);RS2008;RS1033</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

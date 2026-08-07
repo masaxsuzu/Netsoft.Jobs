@@ -30,8 +30,10 @@ public sealed class JobBoard
     // 一覧の差し替えと種まきの間に描画が走った瞬間に取りこぼす（描画は await のたびに割り込める）。
     private readonly Dictionary<string, string> _edits = [];
 
-    // 一覧の読み替えを不可分にする（理由は Merge の注記）。
-    private readonly Lock _gate = new();
+    // 取り直しは重なるので、一覧は読んで畳んで差し替えるまでを不可分にする
+    //（理由は ReloadAsync と Merge の注記）。差し替えの単位が参照 1 本で済むよう、
+    // 一覧は常に作り直して入れ替える（要素を足し引きしない）。
+    private IReadOnlyList<JobListItemDto> _jobs = [];
 
     public JobBoard(JobsApiClient api)
     {
@@ -41,7 +43,7 @@ public sealed class JobBoard
     }
 
     /// <summary>一覧に出す Job。</summary>
-    public IReadOnlyList<JobListItemDto> Jobs { get; private set; } = [];
+    public IReadOnlyList<JobListItemDto> Jobs => Volatile.Read(ref _jobs);
 
     /// <summary>登録で選べる種類。</summary>
     public IReadOnlyList<JobTypeDto> JobTypes { get; private set; } = [];
@@ -153,9 +155,17 @@ public sealed class JobBoard
         {
             IReadOnlyList<JobListItemDto> fetched = await _api.ListJobsAsync(cancellationToken);
 
-            lock (_gate)
+            // 読んでから差し替えるまでに他の取り直しが差し替えていたら、その結果を踏んで
+            // 畳み直す。負けた側が捨てられるのではなく、勝った側の上に載り直すので、
+            // どちらの応答も落ちない。周回できるのは他の取り直しが着地した回数まで。
+            while (true)
             {
-                Jobs = Merge(Jobs, fetched);
+                IReadOnlyList<JobListItemDto> held = Volatile.Read(ref _jobs);
+                if (ReferenceEquals(
+                    Interlocked.CompareExchange(ref _jobs, Merge(held, fetched), held), held))
+                {
+                    break;
+                }
             }
 
             // 復旧したのに赤字が残り続けないようにする。行は最新なのに
