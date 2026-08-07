@@ -190,8 +190,7 @@ public sealed class JobExecutionEngine
             //
             // このトークンはループの停止トークンとは繋がない。上の RunAsync の注記のとおり、
             // プロセス停止はキャンセル要求ではない。ここが発火するのは利用者のキャンセルだけ。
-            using CancellationTokenSource cancellation = new();
-            using (_runningJobs.Track(job.Id, cancellation))
+            using (JobCancellation cancellation = _runningJobs.Track(job.Id))
             {
                 // ここで書き戻せた 1 つだけがこの Job を実行する。
                 // 負けた場合は using が登録を外すので、他が実行する Job に
@@ -282,11 +281,11 @@ public sealed class JobExecutionEngine
     /// </summary>
     /// <param name="job">InProgress を書き戻せた Job。</param>
     /// <param name="cancellation">
-    /// キャンセル要求の受け口。呼び出し側が InProgress を書き戻す<b>前</b>に作って
-    /// <see cref="RunningJobRegistry"/> へ登録済みのもの（理由は <see cref="RunOnceAsync"/> に）。
+    /// キャンセル要求の受け口。呼び出し側が InProgress を書き戻す<b>前</b>に
+    /// <see cref="RunningJobRegistry"/> から取ったもの（理由は <see cref="RunOnceAsync"/> に）。
     /// 登録の解除も呼び出し側が持つので、結末を書き終えるまで受け口は生きている。
     /// </param>
-    private async Task RunHandlerAsync(Job job, CancellationTokenSource cancellation)
+    private async Task RunHandlerAsync(Job job, JobCancellation cancellation)
     {
         // ハンドラへ Job 全体は渡さない（識別子と parameters だけ）。渡すと状態を
         // 触れてしまい、結末の書き手がエンジンだけという分担が崩れる。
