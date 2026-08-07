@@ -209,6 +209,6 @@ public sealed class SqliteSubTaskStore : ISubTaskStore
         return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is not null;
     }
 
-    private async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken) =>
-        await SqliteConnections.OpenAsync(_connectionString, cancellationToken).ConfigureAwait(false);
+    private Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken) =>
+        SqliteConnections.OpenAsync(_connectionString, cancellationToken);
 }

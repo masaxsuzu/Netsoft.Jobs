@@ -107,9 +107,10 @@ public sealed class JobExecutionEngine
         ILogger<JobExecutionEngine> logger,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(store);
-        ArgumentNullException.ThrowIfNull(timeProvider);
-        ArgumentNullException.ThrowIfNull(logger);
+        // null 検査はここに写さない。この 3 つを要求するのは次の行の
+        // JobCrashRecovery.RunAsync で、あちらが同じ引数を同じ順で検査している
+        // （型も ParamName も同じ例外になる）。残り 4 つはコンストラクタが受け持つ。
+        // 写すと「なぜこの 3 つだけ先に見るのか」という無い理由を読み手に探させる。
 
         // 復旧そのものは JobCrashRecovery が持つ。ここに残しているのは呼ぶ順序
         // ── 「復旧を終えてからでないとインスタンスを作らない」── の方で、
