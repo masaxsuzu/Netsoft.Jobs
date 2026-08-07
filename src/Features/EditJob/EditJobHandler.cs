@@ -76,7 +76,7 @@ public sealed class EditJobHandler
                     rejection,
                     job.Status);
 
-                return EditJobResult.Rejected(JobDto.From(job), rejection);
+                return EditJobResult.Rejected(job.ToDto(), rejection);
             }
 
             // 着手済み（Pending でない行）は編集で消せない。定義の変更であって履歴の書き換えではない。
@@ -105,7 +105,7 @@ public sealed class EditJobHandler
                 jobId.Value,
                 parameters);
 
-            return EditJobResult.Accepted(JobDto.From(job));
+            return EditJobResult.Accepted(job.ToDto());
         }
     }
 }

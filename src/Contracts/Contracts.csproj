@@ -2,12 +2,15 @@
 
   <!--
     UI プロセスと API プロセスの両方が参照する、プロセスをまたぐ契約層。
-    依存は Domain だけに保つ。ASP.NET Core の FrameworkReference も持たせない。
+    依存を持たない。ASP.NET Core の FrameworkReference も、Domain への参照も持たせない。
     ここが重くなると、UI を別プロセスへ分離しても両方が同じ重い依存を抱えることになり、
-    分離の意味が薄れる。契約に必要なのは型の形だけで、実行基盤は要らない。
+    分離の意味が薄れる。契約に必要なのは型の形だけで、実行基盤も状態機械も要らない。
+
+    かつては Domain を参照していた。DTO の組み立て（Job → JobDto）と、
+    画面のボタンの可否判定をここに置いていたため。どちらも Domain の型を引数に取るので
+    参照が要り、その結果 UI ホストが推移参照で Domain へ手が届いていた
+    （Ui.csproj は「参照してよいのは Contracts だけ」と書いてあるのに）。
+    組み立ては元から Domain を参照している src/Features へ移し、可否は DTO の項目にした。
   -->
-  <ItemGroup>
-    <ProjectReference Include="..\Domain\Domain.csproj" />
-  </ItemGroup>
 
 </Project>

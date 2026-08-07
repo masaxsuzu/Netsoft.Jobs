@@ -59,7 +59,7 @@ public sealed class ResumeJobHandler
                     rejection,
                     job.Status);
 
-                return JobControlResult.Rejected(JobDto.From(job), rejection);
+                return JobControlResult.Rejected(job.ToDto(), rejection);
             }
 
             if (!await _store.UpdateAsync(job, cancellationToken))
@@ -77,7 +77,7 @@ public sealed class ResumeJobHandler
                 ? job
                 : await SettleAsync(job, cancellationToken);
 
-            return JobControlResult.Accepted(JobDto.From(settled));
+            return JobControlResult.Accepted(settled.ToDto());
         }
     }
 

@@ -64,8 +64,7 @@ public sealed class QueryJobsHandler
         // 行が無い Job は集計に現れない。まだ分割されていないだけなので None を当てる。
         return
         [
-            .. jobs.Select(job => JobListItemDto.From(
-                job,
+            .. jobs.Select(job => job.ToListItemDto(
                 progress.TryGetValue(job.Id, out SubTaskProgress found) ? found : SubTaskProgress.None)),
         ];
     }
@@ -84,6 +83,6 @@ public sealed class QueryJobsHandler
 
         Job? job = await _store.FindAsync(jobId, cancellationToken);
 
-        return job is null ? null : JobDto.From(job);
+        return job is null ? null : job.ToDto();
     }
 }

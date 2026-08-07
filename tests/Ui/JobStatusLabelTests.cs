@@ -8,6 +8,9 @@ namespace Netsoft.Jobs.Ui.Tests;
 /// <remarks>
 /// API の <c>Status</c> は enum の名前のままなので、画面に出る語が変わるのはここだけ。
 /// 写し忘れると利用者には enum の名前がそのまま出る。
+/// 写像は文字列で引くが（画面のプロセスは Domain を参照しない）、期待値の側は
+/// <see cref="JobStatus"/> から作る。テストだけが両方を知っていれば、状態を足したときに
+/// 文言の足し忘れをここで捕まえられる。
 /// </remarks>
 public sealed class JobStatusLabelTests
 {
@@ -24,7 +27,6 @@ public sealed class JobStatusLabelTests
     [InlineData(JobStatus.Failed, "失敗")]
     public void 状態ごとに文言が決まっている(JobStatus status, string expected)
     {
-        Assert.Equal(expected, JobStatusLabel.From(status));
         Assert.Equal(expected, JobStatusLabel.From(JobStatusText.ToText(status)));
     }
 
@@ -40,11 +42,12 @@ public sealed class JobStatusLabelTests
     {
         foreach (JobStatus status in Enum.GetValues<JobStatus>())
         {
-            Assert.NotEqual(JobStatusText.ToText(status), JobStatusLabel.From(status));
+            string text = JobStatusText.ToText(status);
+            Assert.NotEqual(text, JobStatusLabel.From(text));
         }
     }
 
-    /// <summary>読み戻せない値は畳まずそのまま出す。何が起きているか分からなくなるため。</summary>
+    /// <summary>写像に無い値は畳まずそのまま出す。何が起きているか分からなくなるため。</summary>
     [Theory]
     [InlineData("")]
     [InlineData("Unknown")]

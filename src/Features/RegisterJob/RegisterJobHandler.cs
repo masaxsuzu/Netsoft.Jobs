@@ -93,7 +93,7 @@ public sealed class RegisterJobHandler
             }
         }
 
-        return Result<JobDto>.Success(JobDto.From(job));
+        return Result<JobDto>.Success(job.ToDto());
     }
 
     /// <summary>

@@ -458,8 +458,11 @@ public sealed class JobBoardTests : IDisposable
         Assert.Equal("登録できる Job の種類がありません。", board.JobTypesNotice);
     }
 
+    // 進捗の表示だけを見る行。可否は Registered の Job が持つ値
+    // （どれを入れても表示は変わらないが、ありえない組み合わせを置かない）。
     private static JobListItemDto Row(int completed, int total) =>
-        new("job-1", "行", "subtasks", "3 1", "Registered", DateTimeOffset.UtcNow, null, null, null, completed, total);
+        new("job-1", "行", "subtasks", "3 1", "Registered", DateTimeOffset.UtcNow, null, null, null, completed, total,
+            CanCancel: true, CanRequestPause: true, CanRequestResume: false, CanEdit: true);
 
     private static JobBoard BrokenBoard(Exception? failure = null) =>
         new(new JobsApiClient(new HttpClient(new ThrowingHandler(failure))
