@@ -30,6 +30,9 @@ public sealed class JobBoard
     // 一覧の差し替えと種まきの間に描画が走った瞬間に取りこぼす（描画は await のたびに割り込める）。
     private readonly Dictionary<string, string> _edits = [];
 
+    // 取り直しを 1 本ずつに直列化する門（理由は ReloadAsync の注記）。
+    private readonly SemaphoreSlim _reloading = new(1, 1);
+
     public JobBoard(JobsApiClient api)
     {
         ArgumentNullException.ThrowIfNull(api);
@@ -128,8 +131,29 @@ public sealed class JobBoard
     }
 
     /// <summary>一覧を取り直す。成功したら失敗の知らせを消す。</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>1 本ずつ走らせる。</b>重ねると、<b>先に始めた古い読み出しが後から返って新しい一覧を
+    /// 上書きする</b>。HTTP の応答が投げた順に返る保証はない。上書きが起きると画面はそこで
+    /// 止まる ── 終端まで進んだ Job にはもう書き込みが無く、変更通知も二度と来ないので、
+    /// 次の取り直しの契機が無い。復帰はフォールバックポーリング（30 秒）まで待つことになる。
+    /// </para>
+    /// <para>
+    /// 重なるのは例外的な状況ではない。<c>Home.razor</c> の変更通知は
+    /// <c>InvokeAsync</c> に投げっぱなしで、await に達した時点で次の通知が走り出せる。
+    /// キャンセル 1 回で API 側の書き込みは 3 回（Cancelling・サブタスクの畳み込み・Cancelled）
+    /// 起き、押した本人の取り直しもそこへ重なる。
+    /// </para>
+    /// <para>
+    /// <b>世代番号で古い応答を捨てる形は採らなかった。</b>捨てる形だと「最後に始めた 1 本」しか
+    /// 一覧を書けず、それが失敗した回は、成功していた古い応答も捨てた後なので一覧が
+    /// 据え置きのまま残る。直列化なら、読み出しの順序と書き込みの順序が同じになることが
+    /// 構造から言えて、どの通知の後にも「その通知より後に読んだ一覧」が必ず 1 つ来る。
+    /// </para>
+    /// </remarks>
     public async Task ReloadAsync(CancellationToken cancellationToken)
     {
+        await _reloading.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             Jobs = await _api.ListJobsAsync(cancellationToken);
@@ -141,6 +165,10 @@ public sealed class JobBoard
         catch (Exception exception)
         {
             Notice = $"一覧の更新に失敗しました: {Describe(exception)}";
+        }
+        finally
+        {
+            _reloading.Release();
         }
     }
 
