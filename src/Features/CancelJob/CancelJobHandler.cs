@@ -88,7 +88,7 @@ public sealed class CancelJobHandler
                     rejection,
                     job.Status);
 
-                return CancelJobResult.Rejected(JobDto.From(job), rejection);
+                return CancelJobResult.Rejected(job.ToDto(), rejection);
             }
 
             // 保存が先。実行中のハンドラのトークンを先に発火させると、こちらが Cancelling を
@@ -122,7 +122,7 @@ public sealed class CancelJobHandler
                 ? job
                 : await SettleAsync(job, cancellationToken);
 
-            return CancelJobResult.Accepted(JobDto.From(settled));
+            return CancelJobResult.Accepted(settled.ToDto());
         }
     }
 

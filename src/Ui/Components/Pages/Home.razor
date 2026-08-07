@@ -114,31 +114,34 @@
                                いつでも走るので、ここで例外を出す式を書くと回路ごと死ぬ
                                （画面全体が二度と操作できなくなる）。get は常に値を返す形にする。 *@
                             <input class="edit-parameters"
-                                   disabled="@(!_interactive || !JobEditability.CanEdit(job.Status) || Board.IsBusy)"
+                                   disabled="@(!_interactive || !job.CanEdit || Board.IsBusy)"
                                    @bind:get="Board.EditValueFor(job)"
                                    @bind:set="value => Board.SetEdit(job.Id, value)" />
                             <button type="button"
-                                    disabled="@(!_interactive || !JobEditability.CanEdit(job.Status) || Board.IsBusy)"
+                                    disabled="@(!_interactive || !job.CanEdit || Board.IsBusy)"
                                     @onclick="() => Board.EditAsync(job.Id, CancellationToken.None)">
                                 保存
                             </button>
                         </td>
                         <td>
-                            @* 押せるかどうかは Domain の状態機械に聞く。ここで状態名を並べて
-                               判定すると、状態が増えたときに直し忘れたボタンができる。
+                            @* 押せるかどうかはサーバが行に載せてくる。ここで状態名を並べて
+                               判定すると、状態が増えたときに直し忘れたボタンができるし、
+                               判定に要る規則は Domain のもので、画面は Domain を参照しない。
+                               載っているのは行を受け取った瞬間の可否なので、押した先で状態が
+                               進んでいれば拒否されうる（そのときは応答が現在の Job を返す）。
                                回路が繋がる前はそれ以前の問題として全部押せない（上の説明を参照）。 *@
                             <button type="button"
-                                    disabled="@(!_interactive || !JobPausability.CanRequestPause(job.Status) || Board.IsBusy)"
+                                    disabled="@(!_interactive || !job.CanRequestPause || Board.IsBusy)"
                                     @onclick="() => Board.PauseAsync(job.Id, CancellationToken.None)">
                                 一時停止
                             </button>
                             <button type="button"
-                                    disabled="@(!_interactive || !JobPausability.CanRequestResume(job.Status) || Board.IsBusy)"
+                                    disabled="@(!_interactive || !job.CanRequestResume || Board.IsBusy)"
                                     @onclick="() => Board.ResumeAsync(job.Id, CancellationToken.None)">
                                 再開
                             </button>
                             <button type="button"
-                                    disabled="@(!_interactive || !JobCancelability.CanRequestCancel(job.Status) || Board.IsBusy)"
+                                    disabled="@(!_interactive || !job.CanCancel || Board.IsBusy)"
                                     @onclick="() => Board.CancelAsync(job.Id, CancellationToken.None)">
                                 キャンセル
                             </button>
