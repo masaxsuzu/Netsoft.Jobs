@@ -150,6 +150,19 @@
     }
 </section>
 
+@* 押した操作が通らなかったことをここに出す。一覧の更新失敗（notice）と混ぜないのは、
+   背景の変更通知で走る取り直しが成功した瞬間に消えてしまうため（JobBoard の注記を参照）。
+
+   要素は開いていなくても DOM に置いたままにし、開閉は open 属性だけで切り替える。
+   @if で囲うと、変更通知のたびに要素が作り直されて開き直しになる。
+   showModal() を使わないのは JS interop を持ち込まないため（この repo にはまだ 1 つも無い）。
+   モーダルにできない副作用として Esc では閉じないので、閉じる手段はボタンに置く。
+   非モーダルであること自体は都合がよく、開いたまま裏の一覧が更新されていくのが見える。 *@
+<dialog class="operation-dialog" open="@Board.IsOperationDialogOpen">
+    <p>@Board.OperationError</p>
+    <button type="button" @onclick="Board.CloseOperationDialog">閉じる</button>
+</dialog>
+
 @code {
     // 回路が繋がって操作がサーバに届くようになったか。プリレンダリング中は false のまま
     // 描画されるので、フォームは見えても disabled で押せない。

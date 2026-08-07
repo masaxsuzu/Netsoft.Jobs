@@ -69,6 +69,24 @@ public sealed class HomePageTests : IDisposable
     }
 
     /// <summary>
+    /// 操作の結果を出すダイアログは、閉じているときも要素として置いておく。
+    /// <c>@if</c> で囲って要素ごと消すと、背景の変更通知で走る再描画のたびに作り直され、
+    /// 開いたそばから開き直しになる（裏で一覧が更新されても開いたまま、が成り立たない）。
+    /// 出せるのは静的な出力だけなので、ここで見るのは「閉じた状態で存在すること」。
+    /// </summary>
+    [Fact]
+    public async Task ダイアログは閉じていても出力に含まれる()
+    {
+        using HttpClient client = _factory.CreateClient();
+
+        string html = await client.GetStringAsync("/");
+
+        string dialog = TagContaining(html, "class=\"operation-dialog\"");
+        Assert.StartsWith("<dialog", dialog);
+        Assert.DoesNotContain("open", dialog);
+    }
+
+    /// <summary>
     /// 目印の属性を含むタグの開始タグ部分（&lt; から &gt; まで）を取り出す。
     /// 属性の順序や他の属性の有無に依存しないための最小限の切り出し。
     /// </summary>
