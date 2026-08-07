@@ -462,7 +462,7 @@ public sealed class JobBoardTests : IDisposable
     // （どれを入れても表示は変わらないが、ありえない組み合わせを置かない）。
     private static JobListItemDto Row(int completed, int total) =>
         new("job-1", "行", "subtasks", "3 1", "Registered", DateTimeOffset.UtcNow, null, null, null, completed, total,
-            CanCancel: true, CanRequestPause: true, CanRequestResume: false, CanEdit: true);
+            CanCancel: true, CanRequestPause: true, CanRequestResume: false, CanEdit: true, Version: 1);
 
     private static JobBoard BrokenBoard(Exception? failure = null) =>
         new(new JobsApiClient(new HttpClient(new ThrowingHandler(failure))

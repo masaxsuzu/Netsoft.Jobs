@@ -17,6 +17,21 @@ namespace Netsoft.Jobs.Contracts;
 /// <para>
 /// 可否の項目を持つ理由と、それが「作った瞬間の値」であることは <see cref="JobDto"/> の注記に。
 /// </para>
+/// <para>
+/// <b><c>Version</c> は受け取った側が新旧を判定するために載せている。</b>一覧は複数の
+/// 取り直しが同時に飛びうる（変更通知と利用者の操作が重なる）。HTTP の応答が投げた順に返る
+/// 保証は無いので、<b>到着順は新しさの根拠にならない</b>。版が行そのものに載っていれば、
+/// どの順で届いても古い行だと分かって捨てられる。単体取得の <see cref="JobDto"/> には
+/// 載せていない ── あちらは 1 件を今の姿として返すだけで、受け取る側が複数の応答を
+/// 突き合わせる場面が無い。
+/// </para>
+/// <para>
+/// <b>進捗（<c>CompletedSubTasks</c> / <c>TotalSubTasks</c>）はこの版に含まれない。</b>
+/// サブタスクの書き込みは Job 行を書かないので版が動かない。版が同じ 2 つの応答は進捗だけが
+/// 違うことがあり、そこでは新旧を決められない。実害が無いのは、進捗が動いている間は次の
+/// 書き込みと通知が必ず続くからで、止まるのは終端まで進んだときだけ ── そこへは必ず版を
+/// 上げる書き込みで到達する。
+/// </para>
 /// </remarks>
 public sealed record JobListItemDto(
     string Id,
@@ -33,4 +48,5 @@ public sealed record JobListItemDto(
     bool CanCancel,
     bool CanRequestPause,
     bool CanRequestResume,
-    bool CanEdit);
+    bool CanEdit,
+    long Version);

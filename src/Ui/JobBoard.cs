@@ -30,8 +30,8 @@ public sealed class JobBoard
     // 一覧の差し替えと種まきの間に描画が走った瞬間に取りこぼす（描画は await のたびに割り込める）。
     private readonly Dictionary<string, string> _edits = [];
 
-    // 取り直しを 1 本ずつに直列化する門（理由は ReloadAsync の注記）。
-    private readonly SemaphoreSlim _reloading = new(1, 1);
+    // 一覧の読み替えを不可分にする（理由は Merge の注記）。
+    private readonly Lock _gate = new();
 
     public JobBoard(JobsApiClient api)
     {
@@ -133,30 +133,30 @@ public sealed class JobBoard
     /// <summary>一覧を取り直す。成功したら失敗の知らせを消す。</summary>
     /// <remarks>
     /// <para>
-    /// <b>1 本ずつ走らせる。</b>重ねると、<b>先に始めた古い読み出しが後から返って新しい一覧を
-    /// 上書きする</b>。HTTP の応答が投げた順に返る保証はない。上書きが起きると画面はそこで
-    /// 止まる ── 終端まで進んだ Job にはもう書き込みが無く、変更通知も二度と来ないので、
-    /// 次の取り直しの契機が無い。復帰はフォールバックポーリング（30 秒）まで待つことになる。
+    /// 取り直しは重なる。<c>Home.razor</c> の変更通知は <c>InvokeAsync</c> に投げっぱなしで、
+    /// await に達した時点で次の通知が走り出せる。キャンセル 1 回で API 側の書き込みは 3 回
+    /// （Cancelling・サブタスクの畳み込み・Cancelled）起き、押した本人の取り直しもそこへ重なる。
+    /// <b>重なること自体は止めない。</b>新旧は行が載せている版で決まるので、到着順は問わない
+    /// （<see cref="Merge"/>）。
     /// </para>
     /// <para>
-    /// 重なるのは例外的な状況ではない。<c>Home.razor</c> の変更通知は
-    /// <c>InvokeAsync</c> に投げっぱなしで、await に達した時点で次の通知が走り出せる。
-    /// キャンセル 1 回で API 側の書き込みは 3 回（Cancelling・サブタスクの畳み込み・Cancelled）
-    /// 起き、押した本人の取り直しもそこへ重なる。
-    /// </para>
-    /// <para>
-    /// <b>世代番号で古い応答を捨てる形は採らなかった。</b>捨てる形だと「最後に始めた 1 本」しか
-    /// 一覧を書けず、それが失敗した回は、成功していた古い応答も捨てた後なので一覧が
-    /// 据え置きのまま残る。直列化なら、読み出しの順序と書き込みの順序が同じになることが
-    /// 構造から言えて、どの通知の後にも「その通知より後に読んだ一覧」が必ず 1 つ来る。
+    /// <b>取り直しを直列化する形は一度入れて外した</b>（#83 → #84）。直列化でも順序は直るが、
+    /// 直るのは「読み出しの順序と書き込みの順序が同じになるから」で、
+    /// <b>新しさの根拠を時間に置いたまま</b>だった。通知が続く間その数だけ順番に GET が走り、
+    /// API が遅い回はそこで詰まる。版なら根拠がデータ自身にあるので、
+    /// 何本同時に飛ばしても、どの順で返っても結果が変わらない。
     /// </para>
     /// </remarks>
     public async Task ReloadAsync(CancellationToken cancellationToken)
     {
-        await _reloading.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            Jobs = await _api.ListJobsAsync(cancellationToken);
+            IReadOnlyList<JobListItemDto> fetched = await _api.ListJobsAsync(cancellationToken);
+
+            lock (_gate)
+            {
+                Jobs = Merge(Jobs, fetched);
+            }
 
             // 復旧したのに赤字が残り続けないようにする。行は最新なのに
             // 「更新に失敗しました」だけが居座るのは、事実と食い違う。
@@ -165,10 +165,6 @@ public sealed class JobBoard
         catch (Exception exception)
         {
             Notice = $"一覧の更新に失敗しました: {Describe(exception)}";
-        }
-        finally
-        {
-            _reloading.Release();
         }
     }
 
@@ -333,6 +329,55 @@ public sealed class JobBoard
     /// <summary>時刻の表示。持っていなければ「-」。</summary>
     public static string Format(DateTimeOffset? value) =>
         value is { } present ? present.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") : "-";
+
+    /// <summary>
+    /// 手元の一覧に取り直した一覧を重ね、行ごとに版の新しい方を残す。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>古い応答が新しい行を上書きしないことが、この関数の目的そのもの。</b>
+    /// 上書きが起きると画面はそこで止まる ── 終端まで進んだ Job にはもう書き込みが無いので
+    /// 変更通知は二度と来ず、次の取り直しの契機が無い。フォールバックポーリングも救わない
+    /// （サーバの keep-alive がポーリングの間隔より短いので、接続が健在な限り発火しない）。
+    /// この経路には順序の正しさ以外の安全網が無い。
+    /// </para>
+    /// <para>
+    /// <b>手元にしか無い行は残す。</b>古い応答には、その後に登録された Job が入っていない。
+    /// 落とすと、登録した本人の画面から行が一度消えて次の通知で戻る。Job は消えない
+    /// （削除の口が無い）ので、残して困ることはない。
+    /// </para>
+    /// <para>
+    /// <b>版が同じなら取り直した方を採る。</b>そこで違うのは進捗だけで
+    /// （サブタスクの書き込みは Job 行を書かないので版が動かない）、どちらが新しいかは
+    /// 決められない。採らない形にすると、版が動かない間ずっと進捗が止まって見える。
+    /// 進捗が動いている間は次の書き込みと通知が必ず続くので、逆転しても次で直る。
+    /// </para>
+    /// <para>
+    /// 並べ直すのは、行の集合が取り直した一覧そのままではなくなるから。
+    /// 並びはサーバの <c>ORDER BY CreatedAt DESC, Id DESC</c> と同じにする。
+    /// どちらも Job の一生を通じて変わらない値なので、突き合わせで並びが揺れない。
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<JobListItemDto> Merge(
+        IReadOnlyList<JobListItemDto> held, IReadOnlyList<JobListItemDto> fetched)
+    {
+        Dictionary<string, JobListItemDto> merged = held.ToDictionary(job => job.Id, StringComparer.Ordinal);
+
+        foreach (JobListItemDto job in fetched)
+        {
+            if (!merged.TryGetValue(job.Id, out JobListItemDto? mine) || job.Version >= mine.Version)
+            {
+                merged[job.Id] = job;
+            }
+        }
+
+        return
+        [
+            .. merged.Values
+                .OrderByDescending(job => job.CreatedAt)
+                .ThenByDescending(job => job.Id, StringComparer.Ordinal)
+        ];
+    }
 
     private async Task LoadJobTypesAsync(CancellationToken cancellationToken)
     {

@@ -1,91 +1,174 @@
 using System.Net;
 using System.Text;
 
+using Netsoft.Jobs.Contracts;
+
 namespace Netsoft.Jobs.Ui.Tests;
 
 /// <summary>
-/// 一覧の取り直しが重なったときの順序。
+/// 取り直しが重なったときに、どの行が残るか。
 /// </summary>
 /// <remarks>
 /// <para>
-/// E2E の「キャンセルすると中止済みになる」が CI でだけ落ちていた件の回帰。画面が
-/// 中止要求中のまま止まり、同時に API から見た状態は Cancelled になっている、という形で出る。
+/// E2E の「実行中の Job をキャンセルすると中止済みになる」が CI でだけ落ちていた件の回帰。
+/// 画面が中止要求中のまま止まり、同時に API から見た状態は Cancelled になっている、
+/// という形で出る（#83 で実測）。
 /// </para>
 /// <para>
 /// <b>実ブラウザでは狙って起こせない。</b>要るのは「先に投げた読み出しが後から返る」という
 /// HTTP の応答順の入れ替わりで、起きるかどうかは運になる。ここでは応答を握るハンドラで
-/// その入れ替わりを常に起こし、重なり自体が生じないことを固定する。
+/// その入れ替わりを常に起こす。
 /// </para>
 /// </remarks>
 public sealed class JobBoardReloadOrderTests
 {
     private static readonly CancellationToken None = CancellationToken.None;
 
+    /// <summary>
+    /// 版が新しい行は、古い応答が後から返っても戻らない。
+    /// </summary>
     [Fact]
-    public async Task 取り直しが重なっても新しい一覧を古い一覧で上書きしない()
+    public async Task 古い応答が後から返っても新しい版の行を上書きしない()
     {
-        OverlapDetectingHandler handler = new();
-        JobBoard board = new(new JobsApiClient(
-            new HttpClient(handler) { BaseAddress = new Uri("http://api.test") }));
+        HeldListHandler handler = new();
+        JobBoard board = Board(handler);
 
         // 1 本目はキャンセル要求の直後に押した本人が走らせる取り直し（まだ Cancelling が見える）。
         // 2 本目はエンジンが Cancelled を書いたことによる変更通知の取り直し。
-        // await せずに 2 本続けて始めるのは Home.razor の変更通知と同じ形
+        // await せずに続けて始めるのは Home.razor の変更通知と同じ形
         //（InvokeAsync に投げっぱなしで、await に達した時点で次が走り出せる）。
         Task first = board.ReloadAsync(None);
+        await handler.WaitForRequestsAsync(1);
+
         Task second = board.ReloadAsync(None);
+        await handler.WaitForRequestsAsync(2);
 
-        await Task.WhenAll(first, second);
+        // 後から始めた方が先に返る。
+        handler.Respond(index: 1, status: "Cancelled", version: 4);
+        await second;
 
-        // 重なれば、どちらが先に返るかは HTTP 次第になる。重ならないことが、
-        // 読み出しの順序と一覧への書き込みの順序が同じであることの根拠。
-        Assert.False(handler.Overlapped, "取り直しが重なった");
+        handler.Respond(index: 0, status: "Cancelling", version: 3);
+        await first;
 
-        // 後から始めた方（新しい状態を読んだ方）が最後に残る。
-        Assert.Equal("Cancelled", board.Jobs[0].Status);
+        Assert.Equal("Cancelled", Assert.Single(board.Jobs).Status);
     }
 
     /// <summary>
-    /// 応答を少し遅らせ、その間に別の要求が飛んできたかを記録する。
+    /// 版が同じなら取り直した方を採る。そこで違うのは進捗だけで、採らないと止まって見える。
     /// </summary>
-    /// <remarks>
-    /// 遅延の長さは検証に効かない。重ねられる作りなら 2 本目はこの窓に必ず入り、
-    /// 直列化されていれば窓の長さによらず入れない。長さが決めるのは所要時間だけ。
-    /// </remarks>
-    private sealed class OverlapDetectingHandler : HttpMessageHandler
+    [Fact]
+    public async Task 版が同じなら取り直した方の進捗を採る()
     {
-        private int _inFlight;
-        private int _served;
+        HeldListHandler handler = new();
+        JobBoard board = Board(handler);
 
-        public bool Overlapped { get; private set; }
+        Task first = board.ReloadAsync(None);
+        await handler.WaitForRequestsAsync(1);
+        handler.Respond(index: 0, status: "InProgress", version: 2, completed: 1);
+        await first;
+
+        Task second = board.ReloadAsync(None);
+        await handler.WaitForRequestsAsync(2);
+        handler.Respond(index: 1, status: "InProgress", version: 2, completed: 2);
+        await second;
+
+        Assert.Equal(2, Assert.Single(board.Jobs).CompletedSubTasks);
+    }
+
+    /// <summary>
+    /// 古い応答に入っていない行は落とさない。落とすと、登録した本人の画面から
+    /// 行が一度消えて次の通知で戻る。
+    /// </summary>
+    [Fact]
+    public async Task 取り直した一覧に無い行は残す()
+    {
+        HeldListHandler handler = new();
+        JobBoard board = Board(handler);
+
+        Task first = board.ReloadAsync(None);
+        await handler.WaitForRequestsAsync(1);
+        handler.Respond(index: 0, status: "InProgress", version: 2);
+        await first;
+
+        // 2 本目は自分より前に読まれた応答で、この Job をまだ知らない。
+        Task second = board.ReloadAsync(None);
+        await handler.WaitForRequestsAsync(2);
+        handler.RespondEmpty(index: 1);
+        await second;
+
+        Assert.Equal("job-1", Assert.Single(board.Jobs).Id);
+    }
+
+    private static JobBoard Board(HttpMessageHandler handler) =>
+        new(new JobsApiClient(new HttpClient(handler) { BaseAddress = new Uri("http://api.test") }));
+
+    /// <summary>
+    /// 到着順に応答を握り、指名した順で返す。重なった取り直しの順序を決定的に作る。
+    /// </summary>
+    private sealed class HeldListHandler : HttpMessageHandler
+    {
+        private readonly List<TaskCompletionSource<string>> _pending = [];
+        private readonly Lock _gate = new();
+
+        public void Respond(int index, string status, long version, int completed = 0) =>
+            Pending(index).SetResult(Body(
+                new JobListItemDto(
+                    "job-1", "n", "subtasks", "1 60", status,
+                    new DateTimeOffset(2026, 8, 7, 0, 0, 0, TimeSpan.Zero), null, null, null,
+                    completed, 1,
+                    CanCancel: false, CanRequestPause: false, CanRequestResume: false, CanEdit: false,
+                    Version: version)));
+
+        public void RespondEmpty(int index) => Pending(index).SetResult("[]");
+
+        /// <summary>要求が届くまで待つ。届いた数で「何本飛んでいるか」を決定的に見る。</summary>
+        public async Task WaitForRequestsAsync(int count)
+        {
+            while (Count() < count)
+            {
+                await Task.Delay(1);
+            }
+        }
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            if (Interlocked.Increment(ref _inFlight) > 1)
+            TaskCompletionSource<string> pending = new();
+            lock (_gate)
             {
-                Overlapped = true;
+                _pending.Add(pending);
             }
-
-            await Task.Delay(50, cancellationToken);
-
-            Interlocked.Decrement(ref _inFlight);
-
-            // 到着が遅い方ほど新しい状態を読んでいる、という実物の並びを写す。
-            string status = Interlocked.Increment(ref _served) == 1 ? "Cancelling" : "Cancelled";
 
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent(
-                    $$"""
-                    [{"id":"job-1","name":"n","jobType":"subtasks","parameters":"1 60","status":"{{status}}",
-                      "createdAt":"2026-08-07T00:00:00+00:00","startedAt":null,"finishedAt":null,
-                      "failureMessage":null,"completedSubTasks":0,"totalSubTasks":1,
-                      "canCancel":false,"canRequestPause":false,"canRequestResume":false,"canEdit":false}]
-                    """,
-                    Encoding.UTF8,
-                    "application/json"),
+                Content = new StringContent(await pending.Task, Encoding.UTF8, "application/json"),
             };
+        }
+
+        private static string Body(JobListItemDto job) =>
+            $$"""
+            [{"id":"{{job.Id}}","name":"{{job.Name}}","jobType":"{{job.JobType}}",
+              "parameters":"{{job.Parameters}}","status":"{{job.Status}}",
+              "createdAt":"{{job.CreatedAt:O}}","startedAt":null,"finishedAt":null,
+              "failureMessage":null,"completedSubTasks":{{job.CompletedSubTasks}},
+              "totalSubTasks":{{job.TotalSubTasks}},"canCancel":false,"canRequestPause":false,
+              "canRequestResume":false,"canEdit":false,"version":{{job.Version}}}]
+            """;
+
+        private int Count()
+        {
+            lock (_gate)
+            {
+                return _pending.Count;
+            }
+        }
+
+        private TaskCompletionSource<string> Pending(int index)
+        {
+            lock (_gate)
+            {
+                return _pending[index];
+            }
         }
     }
 }
