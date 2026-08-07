@@ -64,7 +64,8 @@ public static class JobDtoExtensions
             dto.CanCancel,
             dto.CanRequestPause,
             dto.CanRequestResume,
-            dto.CanEdit);
+            dto.CanEdit,
+            job.Version);
     }
 
     /// <summary>
