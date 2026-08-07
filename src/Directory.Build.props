@@ -11,4 +11,27 @@
     <RootNamespace>Netsoft.Jobs.$(MSBuildProjectName)</RootNamespace>
   </PropertyGroup>
 
+  <!--
+    doc コメントを検査対象にする。src には <see cref="..."/> が 246 個あり、
+    これを立てるまでは**全部が「壊れても誰も気付かない参照」**だった。
+    親の TreatWarningsAsErrors により CS1574（解決できない cref）と
+    CS1573（param の付け漏れ）がビルドを落とす。
+
+    実際に腐っていた。#80 で Contracts から Domain 参照を切ったとき、
+    Ui の <see cref="Domain.Job.Parameters"/> は指す先を失ったのに build も test も通っていた。
+    コメントだけがゲートの外にあり、このリポジトリで唯一「機械が見ていない成果物」だった。
+
+    1591（public に doc が無い）は落とさない。doc を義務にすると、
+    識別子を言い換えるだけの <summary> が増える ── docs/conventions.md が
+    禁じている「How をなぞるコメント」そのものを、量産する圧力になる。
+    **書くかどうかは書き手が決め、書いたものは機械が検査する**、という線を引いている。
+
+    tests 側には入れていない。検査したいのは src の設計ログで、
+    テストの What はテスト名が担っている。
+  -->
+  <PropertyGroup>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+
 </Project>

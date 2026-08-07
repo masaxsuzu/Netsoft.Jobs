@@ -46,15 +46,17 @@ internal static class JobCrashRecovery
     /// <summary>
     /// やり残された Job をすべて Failed で閉じる。
     /// </summary>
-    /// <param name="logger">
-    /// エンジンのロガーをそのまま受ける（型引数を取らない <see cref="ILogger"/>）。
-    /// 復旧はエンジンの起動の一部なので、専用の分類を作らずエンジンの分類に出す方が、
-    /// ログを追う側から見て一続きになる。
-    /// </param>
     /// <remarks>
+    /// <para>
     /// 例外はそのまま外へ出す。<see cref="JobExecutionEngine.StartAsync"/> が
     /// インスタンスを返さないので、復旧しそこねたまま実行が始まることはない。
     /// 呼び出し側は作り直せばやり直せる。
+    /// </para>
+    /// <para>
+    /// <c>logger</c> はエンジンのロガーをそのまま受ける（型引数を取らない <see cref="ILogger"/>）。
+    /// 復旧はエンジンの起動の一部なので、専用の分類を作らずエンジンの分類に出す方が、
+    /// ログを追う側から見て一続きになる。
+    /// </para>
     /// </remarks>
     public static async Task RunAsync(
         IJobStore store,

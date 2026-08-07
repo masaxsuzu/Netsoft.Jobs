@@ -11,7 +11,7 @@ namespace Netsoft.Jobs.Ui;
 /// 文言を直すたびに API の応答が変わる。
 /// </para>
 /// <para>
-/// <see cref="Domain.Job.Parameters"/> は不透明な文字列 1 本のままなので、ここが返すのは
+/// <see cref="Contracts.JobDto.Parameters"/> は不透明な文字列 1 本のままなので、ここが返すのは
 /// 入力欄のプレースホルダに使う 1 行だけ。項目の並びや型を表す仕組みではない。
 /// </para>
 /// </remarks>
