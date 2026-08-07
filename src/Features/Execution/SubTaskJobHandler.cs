@@ -46,11 +46,14 @@ public sealed class SubTaskJobHandler : IJobHandler
     private readonly IJobStore _jobs;
     private readonly TimeProvider _timeProvider;
 
-    /// <param name="jobs">
-    /// 境界で自分の Job を読み直すための口（一時停止の観測と、編集された parameters の
-    /// 採り直し）。即時の伝達は要らず、読み直しで足りる。
+    /// <summary>
+    /// 依存を受けて生成する。
+    /// </summary>
+    /// <remarks>
+    /// <c>jobs</c> は境界で自分の Job を読み直すための口（一時停止の観測と、編集された
+    /// parameters の採り直し）。即時の伝達は要らず、読み直しで足りる。
     /// 書くことは無い（結末を書くのはエンジンの仕事）。
-    /// </param>
+    /// </remarks>
     public SubTaskJobHandler(ISubTaskStore subTasks, IJobStore jobs, TimeProvider timeProvider)
     {
         ArgumentNullException.ThrowIfNull(subTasks);

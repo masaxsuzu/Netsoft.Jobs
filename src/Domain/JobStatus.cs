@@ -14,7 +14,7 @@ namespace Netsoft.Jobs.Domain;
 /// ── <see cref="Registered"/> <see cref="Resumed"/> <see cref="Paused"/> と 3 つの終端。
 /// <b>確定待ち（ing）</b>は要求を受け付けて確定を待っている状態
 /// ── <see cref="Pausing"/> <see cref="Cancelling"/> <see cref="Resuming"/>
-/// （<see cref="IsSettling"/>）。<see cref="InProgress"/> はハンドラが実際に働いている唯一の状態で、
+/// （<see cref="JobStatusExtensions.IsSettling"/>）。<see cref="InProgress"/> はハンドラが実際に働いている唯一の状態で、
 /// 落ち先が 2 つ（<see cref="Completed"/> / <see cref="Failed"/>）あることだけが他の ing と違う。
 /// </para>
 /// </remarks>
