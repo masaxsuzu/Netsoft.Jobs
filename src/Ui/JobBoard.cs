@@ -321,14 +321,14 @@ public sealed class JobBoard
     /// </remarks>
     public void CloseOperationDialog() => OperationError = null;
 
-    /// <summary>いま指している失敗理由の全文。指していなければ null。</summary>
+    /// <summary>開いている失敗理由の全文。開いていなければ null。</summary>
     /// <remarks>
     /// <para>
-    /// 一覧の失敗理由の列は幅を固定して切る（例外の <c>Message</c> がそのまま入るので、
-    /// 長さに上限が無い）。切った先を読む手段がこれ。
+    /// 一覧の失敗理由の列は絵柄 1 つしか置かない（例外の <c>Message</c> は長さに上限が無く、
+    /// 表の中に本文として置ける形をしていない）。中身を読む手段がこれ。
     /// </para>
     /// <para>
-    /// <b>Job の参照ではなく、指した瞬間の文字列を控える。</b>参照を持つと、背景の
+    /// <b>Job の参照ではなく、押した瞬間の文字列を控える。</b>参照を持つと、背景の
     /// 取り直しが行を差し替えた（<see cref="Merge"/> は行ごと作り直す）あとも古い
     /// インスタンスを掴んだままになる。失敗理由は終端で確定してもう動かないので、
     /// 文字列を控えても古くならない。<see cref="OperationError"/> と別に持つのは、
@@ -337,13 +337,13 @@ public sealed class JobBoard
     /// </remarks>
     public string? FailureDetail { get; private set; }
 
-    /// <summary>いま指している失敗理由が、どの Job のものか。指していなければ null。</summary>
+    /// <summary>開いている失敗理由が、どの Job のものか。開いていなければ null。</summary>
     public string? FailureDetailName { get; private set; }
 
-    /// <summary>失敗理由の全文が出ているか。</summary>
-    public bool IsFailureDetailOpen => FailureDetail is not null;
+    /// <summary>失敗理由のダイアログが開いているか。</summary>
+    public bool IsFailureDialogOpen => FailureDetail is not null;
 
-    /// <summary>失敗理由の全文を出す。指した（hover / focus）ときに呼ぶ。</summary>
+    /// <summary>失敗理由の全文を開く。</summary>
     public void ShowFailure(JobListItemDto job)
     {
         ArgumentNullException.ThrowIfNull(job);
@@ -352,29 +352,22 @@ public sealed class JobBoard
         FailureDetail = job.FailureMessage;
     }
 
-    /// <summary>失敗理由の全文を消す。離れた（leave / blur）ときに呼ぶ。</summary>
+    /// <summary>失敗理由のダイアログを閉じる。</summary>
     /// <remarks>
-    /// <para>
-    /// 2 つまとめて消す。<see cref="FailureDetailName"/> だけ残ると、次に出したときの
+    /// 2 つまとめて消す。<see cref="FailureDetailName"/> だけ残ると、次に開いたときの
     /// 見出しが前の Job の名前のまま出る瞬間ができる。
-    /// </para>
-    /// <para>
-    /// <b>「どの行から離れたか」は見ない。</b>行 A から行 B へマウスが移ると
-    /// B の enter と A の leave がこの順で届くとは限らず、順序に頼ると B を出した直後に
-    /// A の leave が消してしまう。……が、実際には Blazor Server の 1 回路では
-    /// イベントが到着順に直列化されるので、enter が後なら後勝ちになる。
-    /// 逆順（leave が後）で消えるのは、行の外へ出たときだけ。
-    /// </para>
+    /// 閉じることと中身を捨てることを 1 つの状態にしておく理由は
+    /// <see cref="CloseOperationDialog"/> と同じ。
     /// </remarks>
-    public void HideFailure()
+    public void CloseFailureDialog()
     {
         FailureDetail = null;
         FailureDetailName = null;
     }
 
-    /// <summary>失敗理由を持っているか（＝指せる中身があるか）。</summary>
+    /// <summary>失敗理由を持っているか（＝絵柄を出すか）。</summary>
     /// <remarks>
-    /// 空白だけの理由も「無い」と見なす。指せる見た目で空の吹き出しが出るより、
+    /// 空白だけの理由も「無い」と見なす。押せる絵柄を出して空のダイアログが開くより、
     /// 何も出ないほうが読み手を騙さない。判定を <c>.razor</c> に書かないのは
     /// <see cref="JobStatusLabel.ClassFor"/> と同じ理由。
     /// </remarks>

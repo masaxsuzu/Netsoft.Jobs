@@ -124,20 +124,20 @@
                                 </span>
                             }
                         </td>
-                        @* 幅は CSS で固定して切る（例外の Message がそのまま入るので長さの上限が無い）。
-                           切った先は指すと出る（下の failure-detail）。閉じる操作は要らない
-                           ── 離れれば消えるので、読み終わったことを利用者に宣言させない。
-                           span ではなく button なのは、キーボードでも辿れるようにするため。
-                           focus / blur を hover と同じ経路に繋いであるので、Tab でも同じ全文が出る。 *@
+                        @* 本文は置かず、絵柄 1 つにする。例外の Message は長さに上限が無く、
+                           表の中に本文として置ける形をしていない（切って出しても、切った分は
+                           結局どこかで開くことになる）。押すと全文がダイアログに出る。
+                           読み上げ名は「失敗理由を見る」── ここに Message そのものを載せると、
+                           一覧を読み流している最中に例外の全文を読み上げてしまう。 *@
                         <td class="col-failure">
                             @if (JobBoard.HasFailure(job))
                             {
-                                <button type="button" class="failure-link"
+                                <button type="button" class="icon failure danger"
+                                        title="失敗理由を見る" aria-label="失敗理由を見る"
                                         disabled="@(!_interactive)"
-                                        @onmouseover="() => Board.ShowFailure(job)"
-                                        @onmouseout="Board.HideFailure"
-                                        @onfocus="() => Board.ShowFailure(job)"
-                                        @onblur="Board.HideFailure">@job.FailureMessage</button>
+                                        @onclick="() => Board.ShowFailure(job)">
+                                    <svg class="glyph" aria-hidden="true" focusable="false"><use href="#glyph-failure" /></svg>
+                                </button>
                             }
                         </td>
                         @* 年は title に逃がす。3 列を 1 行に収めるために表示からは落としている。 *@
@@ -207,22 +207,19 @@
     <button type="button" @onclick="Board.CloseOperationDialog">閉じる</button>
 </dialog>
 
-@* 切った失敗理由の全文。指している間だけ出る。
-   dialog にしないのは、閉じる操作を持たないため ── dialog は「開いたら閉じる」ものとして
-   読まれるので、閉じ方の無い dialog は約束を破る。
-
-   置き場所が行の隣ではなく画面の左下なのは、表が横スクロールの器（.table-scroll）に
-   入っているから。overflow-x: auto は overflow-y も auto に計算されるので、行の中に
-   絶対配置で出すと下の行では吹き出しが切れる。器の外へ出すには座標が要り、座標は
-   JS 無しでは取れない（この repo にはまだ JS が 1 つも無い）。左下なら、右上の操作
-   ダイアログとも登録欄とも重ならない。
-
-   aria-hidden にしてある。ボタンの読み上げ名は切る前の全文（切っているのは CSS だけ）
-   なので、読み上げには元から全部届いている。ここは目で読む人のための写しでしかない。 *@
-<div class="failure-detail" aria-hidden="true" hidden="@(!Board.IsFailureDetailOpen)">
+@* 失敗理由の全文。開き方は操作ダイアログと同じ（DOM に置いたまま open だけ切り替える）。
+   別の要素にしてあるのは、出る条件も消える条件も違うため ── こちらは行の中身を読むための
+   ものなので、次の操作を始めても閉じない。位置は画面の中央寄せにして、右上の操作ダイアログと
+   重ならないようにする（失敗した Job をキャンセルしようとして両方出る場面がある）。 *@
+<dialog class="detail-dialog" open="@Board.IsFailureDialogOpen">
     <h2>失敗理由 — @Board.FailureDetailName</h2>
     <p>@Board.FailureDetail</p>
-</div>
+    @* 閉じるは右下。本文を上から読み終えた先に置く ── 左上に置くと、読み終える前に
+       視線が戻る位置に「やめる手」が居ることになる。 *@
+    <div class="detail-actions">
+        <button type="button" @onclick="Board.CloseFailureDialog">閉じる</button>
+    </div>
+</dialog>
 
 @code {
     // 回路が繋がって操作がサーバに届くようになったか。プリレンダリング中は false のまま

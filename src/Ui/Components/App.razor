@@ -126,35 +126,15 @@
         .col-name { font-weight: 600; }
         .col-type { color: var(--sub); }
 
-        /* 失敗理由だけは長さの上限を持たない（例外の Message がそのまま入る）。
-           max-width ではなく width で固定するのは、失敗が 1 件も無いときに列が
-           潰れないようにするため ── 幅が動くと、失敗が出た瞬間に表全体の列がずれる。 */
-        .col-failure { width: 9rem; }
+        /* 失敗理由の列は絵柄 1 つぶん。幅を書いておくのは、失敗が 1 件も無いときに
+           列が見出しだけの幅へ縮まないようにするため ── 幅が動くと、失敗が出た瞬間に
+           表全体の列がずれる。 */
+        .col-failure { width: 4.5rem; }
 
-        /* 中身は押せるので button。見た目は本文の続きにする（枠と背景を消す）。
-           block にしないと ellipsis が効かない ── inline のボタンは中身の幅に広がる。
-           幅は max-width ではなく width で持つ。table-layout は auto なので、
-           セル側の width は当てにできず（中身が長ければ列がそのぶん広がる）、
-           実際に列を押し広げていた。切る幅は中の要素が決める。 */
-        .failure-link {
-            display: block;
-            width: 9rem;
-            padding: 0;
-            border: none;
-            background: none;
-            color: var(--danger);
-            font-size: .78rem;
-            text-align: left;
-            text-decoration: underline dotted;
-            overflow: hidden;
-            text-overflow: ellipsis;
-
-            /* 押すものではなく指すもの。button の既定（pointer）のままだと、
-               クリックで何かが起きると読ませてしまう。 */
-            cursor: help;
-        }
-
-        .failure-link:hover:not(:disabled) { text-decoration: underline; }
+        /* 失敗理由の絵柄だけは、押せなくても（終端の行でも）薄くしない。
+           他の操作と違って、これは「できること」ではなく「起きたこと」の印。 */
+        .icon.failure { border-color: transparent; background: none; }
+        .icon.failure:hover:not(:disabled) { border-color: var(--danger); }
 
         /* 帯の列も幅を固定する。中身（帯）は固定幅だが、見出しの「進捗」のほうが広いので
            指定が無いと列が見出しの幅になり、隣の列を押し出す。 */
@@ -222,37 +202,33 @@
 
         .operation-dialog p { margin: 0 0 .5rem; color: var(--danger); font-size: .85rem; }
 
-        /* 切った失敗理由の全文。指している間だけ出る。左下に固定する理由は Home.razor の注記。
+        /* 失敗理由の全文。操作ダイアログ（右上）と重ならないよう中央に置く。
            全文を読ませるのが目的なので、幅を広く取り、折り返しを許す
            （表の中の nowrap をそのまま持ち込むと、読むために横スクロールさせることになる）。 */
-        .failure-detail {
+        .detail-dialog {
             position: fixed;
-            bottom: 1rem;
-            left: 1rem;
-            width: min(38rem, calc(100vw - 2rem));
-            max-height: 40vh;
+            top: 20vh;
+            left: 50%;
+            transform: translateX(-50%);
+            margin: 0;
+            width: min(40rem, calc(100vw - 4rem));
+            max-height: 60vh;
             overflow-y: auto;
             background: #fff;
             border: 1px solid var(--line);
             border-left: 4px solid var(--danger);
             border-radius: 6px;
-            padding: .75rem 1rem;
+            padding: 1rem 1.25rem;
             box-shadow: 0 12px 32px rgba(16, 24, 40, .18);
         }
 
-        /* 指すたびに出入りするので、出方に間を持たせる。即座に現れると、
-           表の上をマウスが通り過ぎるだけでちらつく。消えるのは即座でよい。 */
-        .failure-detail { animation: failure-detail-in .12s ease-out; }
-
-        @@keyframes failure-detail-in { from { opacity: 0; } to { opacity: 1; } }
-
         /* 見出しに Job の名前が入るので、h2 の既定の大文字化を解く。
            掛かったままだと利用者が付けた名前が勝手に別の綴りになる（JOBX と出ていた）。 */
-        .failure-detail h2 { margin: 0 0 .35rem; text-transform: none; }
+        .detail-dialog h2 { margin: 0 0 .5rem; text-transform: none; }
 
         /* 例外の Message は改行を持つことがある。pre-wrap にしないと 1 行に潰れて、
            スタックの区切りが読めなくなる。 */
-        .failure-detail p {
+        .detail-dialog p {
             margin: 0;
             color: var(--ink);
             font-family: ui-monospace, Menlo, Consolas, monospace;
@@ -260,6 +236,8 @@
             white-space: pre-wrap;
             word-break: break-word;
         }
+
+        .detail-actions { margin-top: .9rem; text-align: right; }
 
         /* 回路（WebSocket）が死んだときに Blazor がこの要素を表示する。無いと
            何も出ず、画面は無言で凍る（操作しても反応しないだけになる）。
@@ -302,6 +280,11 @@
            行内編集の確定に使われている形に合わせる。 *@
         <symbol id="glyph-save" viewBox="0 0 24 24">
             <path d="M9.6 16.2 5.4 12 4 13.4l5.6 5.6L20 8.6 18.6 7.2z" />
+        </symbol>
+        @* 失敗理由は三角の警告。丸い i（情報）にしない ── ここに出るのは補足ではなく、
+           Job が終われなかった理由そのもので、読まずに済ませてよいものではない。 *@
+        <symbol id="glyph-failure" viewBox="0 0 24 24">
+            <path d="M12 2.8a1.6 1.6 0 0 1 1.39.81l8.4 15.1A1.6 1.6 0 0 1 20.4 21.1H3.6a1.6 1.6 0 0 1-1.39-2.39l8.4-15.1A1.6 1.6 0 0 1 12 2.8zm-1.1 5.6v6h2.2v-6zm0 7.6v2.2h2.2v-2.2z" />
         </symbol>
     </svg>
 
