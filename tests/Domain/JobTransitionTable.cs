@@ -32,12 +32,10 @@ internal static class JobTransitionTable
             // 中止は停止より強い意図（捨てる）ので、停止の要求中でも上書きできる。
             [(JobStatus.Pausing, JobTrigger.RequestCancel)] = JobStatus.Cancelling,
 
-            // 保留の要求。「消す（キャンセル）」は終端で、「いま走らせない」とは別の意図なので、
-            // 走る前でも止められる必要がある。Paused には行が無い（既に効いている）。
-            [(JobStatus.Registered, JobTrigger.RequestPause)] = JobStatus.Pausing,
-            [(JobStatus.Resumed, JobTrigger.RequestPause)] = JobStatus.Pausing,
+            // 保留の要求。走っているものにしか掛からないので、行はこの 1 本だけ。
+            // 待ち行列（Registered / Resumed / Resuming）はまだ始まっていないので止める対象が無く、
+            // 待ち行列から降ろす手段はキャンセルに寄せてある。Paused は既に効いている。
             [(JobStatus.InProgress, JobTrigger.RequestPause)] = JobStatus.Pausing,
-            [(JobStatus.Resuming, JobTrigger.RequestPause)] = JobStatus.Pausing,
 
             // 再開の要求。行き先が Resuming なのは、Paused → Resumed が 1 手で足りるからではなく、
             // 要求を受け付けた事実を他の 2 つと同じ形で残すため。

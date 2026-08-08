@@ -47,8 +47,17 @@ public static class JobStateMachine
                 JobTrigger.RequestCancel) =>
                 JobTransitionResult.Allowed(current, JobStatus.Cancelling),
 
-            (JobStatus.Registered or JobStatus.Resumed or JobStatus.InProgress or JobStatus.Resuming,
-                JobTrigger.RequestPause) =>
+            // 一時停止は走っているものにしか掛からない。待ち行列に居る Job（Registered /
+            // Resumed / Resuming）は「まだ始まっていない」ので、止める対象が無い。
+            // かつては待ち行列からも掛かり、待ち行列から降ろす操作を兼ねていたが、
+            // それをやめて降ろす手段はキャンセルだけにした（利用者の決定）。
+            //
+            // この制限で 1 つ歪みが消えている。Pausing の入口が InProgress だけになったので、
+            // Pausing → Resume → InProgress が常に「元居た場所へ戻る」になった。
+            // 以前は Registered からも Pausing に入れたため、そこから再開すると
+            // 走っていない Job が InProgress へ出てしまい、戻り先が Paused 1 つしか無いことと
+            // 合わせて「Registered だけ往復で戻らない」非対称を抱えていた。
+            (JobStatus.InProgress, JobTrigger.RequestPause) =>
                 JobTransitionResult.Allowed(current, JobStatus.Pausing),
 
             (JobStatus.Paused, JobTrigger.Resume) => JobTransitionResult.Allowed(current, JobStatus.Resuming),

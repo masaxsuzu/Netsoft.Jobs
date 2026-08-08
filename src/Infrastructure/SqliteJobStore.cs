@@ -211,15 +211,21 @@ public sealed class SqliteJobStore : IJobStore
         // スキーマを足す仕組み（migration）も無い。列を足す判断のほうが、
         // 順番の決め方より大きい決定なので、頼まれていないここでは踏み込まない。
         // 代償は、登録が途切れない限り再開した Job が動き出さないこと。
+        // NOT EXISTS が「保留中が 1 件でもあれば、次は無い」。待ち行列に居る Job は
+        // そのまま待ち、保留中が再開（またはキャンセル）で居なくなってから動き出す。
+        // 1 本の SELECT に畳んであるのは、別々に問い合わせると
+        // 「保留中を数える → 0 だった → その隙に誰かが止めた → 候補を返す」が起きるため。
         command.CommandText =
             $"""
             SELECT {Columns} FROM Jobs
             WHERE Status IN ($registered, $resumed)
+              AND NOT EXISTS (SELECT 1 FROM Jobs WHERE Status = $paused)
             ORDER BY CASE Status WHEN $registered THEN 0 ELSE 1 END, CreatedAt ASC, Id ASC
             LIMIT 1;
             """;
         command.Parameters.AddWithValue("$registered", JobStatusText.ToText(JobStatus.Registered));
         command.Parameters.AddWithValue("$resumed", JobStatusText.ToText(JobStatus.Resumed));
+        command.Parameters.AddWithValue("$paused", JobStatusText.ToText(JobStatus.Paused));
 
         return await ReadOneAsync(command, cancellationToken).ConfigureAwait(false);
     }

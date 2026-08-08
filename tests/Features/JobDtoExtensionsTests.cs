@@ -23,15 +23,19 @@ public sealed class JobDtoExtensionsTests
     /// 状態を足したら行も足す（<see cref="表はすべての状態を網羅している"/> が足し忘れを捕まえる）。
     /// 終端が全部不可なのは状態機械が最初に落とすため。Cancelling だけは終端ではないのに
     /// 全部不可 ── 捨てると決まった Job には、もう要求することが無い。
+    /// <para>
+    /// <b>一時停止が可なのは InProgress だけ。</b>待ち行列（Registered / Resumed / Resuming）は
+    /// まだ始まっていないので止める対象が無く、降ろす手段はキャンセルに寄せてある。
+    /// </para>
     /// </remarks>
     public static TheoryData<JobStatus, bool, bool, bool, bool> Expectations => new()
     {
-        { JobStatus.Registered, true, true, false, true },
-        { JobStatus.Resumed, true, true, false, true },
+        { JobStatus.Registered, true, false, false, true },
+        { JobStatus.Resumed, true, false, false, true },
         { JobStatus.InProgress, true, true, false, true },
         { JobStatus.Pausing, true, false, true, true },
         { JobStatus.Paused, true, false, true, true },
-        { JobStatus.Resuming, true, true, false, true },
+        { JobStatus.Resuming, true, false, false, true },
         { JobStatus.Cancelling, false, false, false, false },
         { JobStatus.Completed, false, false, false, false },
         { JobStatus.Failed, false, false, false, false },
