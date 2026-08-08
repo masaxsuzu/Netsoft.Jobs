@@ -174,17 +174,18 @@ public sealed class SqliteJobStoreTests
     }
 
     /// <summary>
-    /// 再開した Job は列の最後尾。登録の古い順だけで選ぶと必ず先頭に来てしまう
-    /// ── 停止と再開では CreatedAt が動かないので、待ち行列に戻った時点で、
-    /// その間ずっと待っていた Job より古いことになるため。
+    /// 再開した Job は登録順の元の位置に戻る。後から登録された Job に抜かれない。
     /// </summary>
+    /// <remarks>
+    /// 一度これの逆（Registered をすべて先に出す）を入れて外している。
+    /// 状態を第 1 キーにすると、登録が途切れない限り再開した Job が動き出さない。
+    /// </remarks>
     [Fact]
-    public async Task FindOldestWaitingAsyncは再開したJobより後から登録したJobを先に返す()
+    public async Task FindOldestWaitingAsyncは再開したJobを後から登録したJobより先に返す()
     {
         using TemporaryDatabase database = new();
         SqliteJobStore store = await database.OpenStoreAsync();
 
-        // 再開した側が「一番古い」。CreatedAt だけで並べるとこれが選ばれる。
         await store.AddAsync(
             Job.Rehydrate(
                 JobId.From("resumed-最古"),
@@ -202,12 +203,40 @@ public sealed class SqliteJobStoreTests
 
         Job? next = await store.FindOldestWaitingAsync(None);
 
-        Assert.Equal("registered-新", next?.Id.Value);
+        Assert.Equal("resumed-最古", next?.Id.Value);
     }
 
     /// <summary>
-    /// 追い越されるのは待っている相手が居る間だけ。Registered が捌けたら、
-    /// 再開した Job がそのまま次になる（順番を落とすのではなく、後ろへ回すだけ）。
+    /// 元の位置に戻るだけなので、先に登録されていた Job を追い越しもしない。
+    /// </summary>
+    [Fact]
+    public async Task FindOldestWaitingAsyncは再開したJobより先に登録したJobを先に返す()
+    {
+        using TemporaryDatabase database = new();
+        SqliteJobStore store = await database.OpenStoreAsync();
+
+        await store.AddAsync(JobAt("registered-古", BaseTime), None);
+
+        await store.AddAsync(
+            Job.Rehydrate(
+                JobId.From("resumed-新"),
+                "止めて再開した Job",
+                "Demo",
+                string.Empty,
+                JobStatus.Resumed,
+                BaseTime.AddHours(1),
+                startedAt: BaseTime.AddHours(1).AddMinutes(1),
+                finishedAt: null,
+                failureMessage: null),
+            None);
+
+        Job? next = await store.FindOldestWaitingAsync(None);
+
+        Assert.Equal("registered-古", next?.Id.Value);
+    }
+
+    /// <summary>
+    /// 実行中は待ち行列に居ないので、待機中が再開した Job だけならそれが次になる。
     /// </summary>
     [Fact]
     public async Task FindOldestWaitingAsyncは再開したJobしか無ければそれを返す()
