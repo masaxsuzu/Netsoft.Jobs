@@ -201,16 +201,16 @@ public sealed class SqliteJobStore : IJobStore
         // 書き写しが IsWaiting とずれると Job が黙って滞留する（エラーはどこにも出ない）ので、
         // ずれを SqliteJobStoreTests の「IsWaiting が true の状態をすべて拾う」が捕まえる。
         //
-        // 並びの第 1 キーが CreatedAt ではなく状態なのが肝。再開した Job は登録時刻を
-        // 持ったまま待ち行列へ戻るので、CreatedAt だけで並べると必ず先頭に来て、
-        // その間ずっと待っていた Job を追い越す。順番待ちの列に戻るときは最後尾へ、が
-        // 利用者の決めたところ。
+        // 並びは CreatedAt だけで決まる。CreatedAt は登録時に決まって二度と動かないので、
+        // これがそのまま「列の中の位置」になる ── 停止して再開した Job は、自分が居た場所へ
+        // 戻る。先に登録された Job を追い越すことも、後から登録された Job に抜かれることも無い。
         //
-        // 追い越さないことは「Registered をすべて先に出す」で表す。再開した時刻を
-        // 持てば列の途中へ入れられるが、それを持つ列が Jobs に無く、この repo には
-        // スキーマを足す仕組み（migration）も無い。列を足す判断のほうが、
-        // 順番の決め方より大きい決定なので、頼まれていないここでは踏み込まない。
-        // 代償は、登録が途切れない限り再開した Job が動き出さないこと。
+        // 一度「Registered をすべて先に出す」（状態を第 1 キーにする）を入れて外した。
+        // 再開したものを次に走らせない、という意図だったが、代償が 2 つあった。
+        // 登録が途切れない限り再開した Job が動き出さないことと、下の NOT EXISTS と
+        // 重なって「止めた本人が、止めていた間に溜まった列に抜かれる」ことになったこと。
+        // どちらも指示のどこにも書かれていない副作用で、利用者の判断で戻している。
+        //
         // NOT EXISTS が「保留中が 1 件でもあれば、次は無い」。待ち行列に居る Job は
         // そのまま待ち、保留中が再開（またはキャンセル）で居なくなってから動き出す。
         // 1 本の SELECT に畳んであるのは、別々に問い合わせると
@@ -220,7 +220,7 @@ public sealed class SqliteJobStore : IJobStore
             SELECT {Columns} FROM Jobs
             WHERE Status IN ($registered, $resumed)
               AND NOT EXISTS (SELECT 1 FROM Jobs WHERE Status = $paused)
-            ORDER BY CASE Status WHEN $registered THEN 0 ELSE 1 END, CreatedAt ASC, Id ASC
+            ORDER BY CreatedAt ASC, Id ASC
             LIMIT 1;
             """;
         command.Parameters.AddWithValue("$registered", JobStatusText.ToText(JobStatus.Registered));
