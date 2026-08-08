@@ -18,8 +18,9 @@ namespace Netsoft.Jobs.Web.Tests;
 /// 書かれるかはエンドポイントの結線に乗っている。件数を数えるのはこの層の仕事。
 /// </para>
 /// <para>
-/// エンジンは止まっているので、ここに出てくる監査ログはすべて利用者の操作の分。
-/// システムのアクションが混ざらないぶん、件数が読みやすい。
+/// エンジンは止めてあるので、ここに出てくるシステム名義の分は<b>コマンドの中で確定する
+/// 経路だけ</b>（待ち行列の Job のキャンセル、停止中の Job の再開）。実行の開始・完了や
+/// 起動時復旧は Features の結合テストの領分。
 /// </para>
 /// </remarks>
 public sealed class AuditLogApiTests : IDisposable
@@ -47,22 +48,66 @@ public sealed class AuditLogApiTests : IDisposable
     /// <c>Error</c> 列であって、件数ではない。
     /// </remarks>
     [Fact]
-    public async Task 操作1回につき監査ログが1件増える()
+    public async Task 操作1回につき利用者名義の監査ログが1件増える()
     {
         JobDto job = await RegisterAsync();
 
         // 登録そのものが 1 件目。
-        Assert.Single(await LogsForAsync(job.Id));
+        Assert.Single(await UserLogsForAsync(job.Id));
 
         // 待ち行列の Job は一時停止できない（拒否）。それでも 1 件増える。
         await _client.PostAsync($"/api/jobs/{job.Id}/pause", content: null);
-        Assert.Equal(2, (await LogsForAsync(job.Id)).Count);
+        Assert.Equal(2, (await UserLogsForAsync(job.Id)).Count);
 
         await _client.PutAsJsonAsync($"/api/jobs/{job.Id}/parameters", new { parameters = "5 2" });
-        Assert.Equal(3, (await LogsForAsync(job.Id)).Count);
+        Assert.Equal(3, (await UserLogsForAsync(job.Id)).Count);
 
         await _client.PostAsync($"/api/jobs/{job.Id}/cancel", content: null);
-        Assert.Equal(4, (await LogsForAsync(job.Id)).Count);
+        Assert.Equal(4, (await UserLogsForAsync(job.Id)).Count);
+    }
+
+    /// <summary>
+    /// <b>要求と確定は別の実施。</b>待ち行列の Job のキャンセルは 1 回の操作だが、
+    /// 利用者の要求とシステムの確定で 2 件になる。
+    /// </summary>
+    /// <remarks>
+    /// 畳むと「誰が押したか」と「いつ実際に決着したか」のどちらも読めなくなる。
+    /// このコマンドでは実施者だけが違って時刻は同じになるが、走っている Job を
+    /// キャンセルすると時刻も離れる（確定はハンドラが抜けたとき）。
+    /// 分ける理由は経路によらず同じなので、ここでも分ける。
+    /// </remarks>
+    [Fact]
+    public async Task 待ち行列のJobのキャンセルは要求と確定の2件になる()
+    {
+        JobDto job = await RegisterAsync();
+
+        await _client.PostAsync($"/api/jobs/{job.Id}/cancel", content: null);
+
+        IReadOnlyList<AuditLogDto> logs = await LogsForAsync(job.Id);
+
+        Assert.Equal(
+            [("User", "Job を登録した（名前=監査される Job, 種類=subtasks, パラメータ=3 1）"),
+             ("User", "キャンセルを要求した"),
+             ("System", "キャンセルを確定した")],
+            logs.Select(log => (log.Actor, log.Content)));
+    }
+
+    /// <summary>
+    /// 停止中の Job の再開も同じ形。要求（Resuming）と確定（Resumed）で 2 件。
+    /// </summary>
+    [Fact]
+    public async Task 停止中のJobの再開は要求と確定の2件になる()
+    {
+        JobDto job = await RegisterAsync();
+        await AdvanceAsync(job.Id, JobTrigger.Start, JobTrigger.RequestPause, JobTrigger.ConfirmPaused);
+
+        await _client.PostAsync($"/api/jobs/{job.Id}/resume", content: null);
+
+        IReadOnlyList<AuditLogDto> logs = await LogsForAsync(job.Id);
+
+        Assert.Equal(
+            [("User", "再開を要求した"), ("System", "再開を確定し、待ち行列へ戻した")],
+            logs.Skip(1).Select(log => (log.Actor, log.Content)));
     }
 
     /// <summary>
@@ -103,7 +148,10 @@ public sealed class AuditLogApiTests : IDisposable
 
         IReadOnlyList<AuditLogDto> logs = await LogsForAsync(job.Id);
 
-        Assert.Equal(["Job を登録した（名前=監査される Job, 種類=subtasks, パラメータ=3 1）", "キャンセルを要求した"],
+        Assert.Equal(
+            ["Job を登録した（名前=監査される Job, 種類=subtasks, パラメータ=3 1）",
+             "キャンセルを要求した",
+             "キャンセルを確定した"],
             logs.Select(log => log.Content));
     }
 
@@ -118,7 +166,9 @@ public sealed class AuditLogApiTests : IDisposable
 
         IReadOnlyList<AuditLogDto> logs = await AllLogsAsync();
 
-        Assert.Equal("キャンセルを要求した", logs[0].Content);
+        // いちばん新しいのは確定の側（要求のあとに書かれる）。
+        Assert.Equal("キャンセルを確定した", logs[0].Content);
+        Assert.Equal("キャンセルを要求した", logs[1].Content);
     }
 
     /// <summary>
@@ -206,6 +256,27 @@ public sealed class AuditLogApiTests : IDisposable
 
         return await response.Content.ReadFromJsonAsync<JobDto>()
             ?? throw new InvalidOperationException("登録の応答が空でした。");
+    }
+
+    /// <summary>利用者名義の分だけ。件数を数えるときはシステムの確定を混ぜない。</summary>
+    private async Task<IReadOnlyList<AuditLogDto>> UserLogsForAsync(string id) =>
+        [.. (await LogsForAsync(id)).Where(log => log.Actor == "User")];
+
+    /// <summary>
+    /// 状態を直接進める。エンジンは止まっているので、実行中や停止中はこれでしか作れない。
+    /// </summary>
+    private async Task AdvanceAsync(string id, params JobTrigger[] triggers)
+    {
+        IJobStore store = _factory.Services.GetRequiredService<IJobStore>();
+
+        foreach (JobTrigger trigger in triggers)
+        {
+            Job job = await store.FindAsync(JobId.From(id), CancellationToken.None)
+                ?? throw new InvalidOperationException($"Job {id} が保存されていません。");
+
+            Assert.True(job.Apply(trigger, DateTimeOffset.UtcNow).IsAllowed);
+            Assert.True(await store.UpdateAsync(job, CancellationToken.None));
+        }
     }
 
     private async Task<IReadOnlyList<AuditLogDto>> LogsForAsync(string id) =>

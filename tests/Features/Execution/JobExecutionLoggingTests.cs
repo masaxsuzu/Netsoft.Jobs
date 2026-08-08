@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Netsoft.Jobs.Domain;
+using Netsoft.Jobs.Features.Audit;
 using Netsoft.Jobs.Features.CancelJob;
 using Netsoft.Jobs.Features.Execution;
 using Netsoft.Jobs.Features.Tests.CancelJob;
@@ -155,6 +156,7 @@ public sealed class JobExecutionLoggingTests : IDisposable
             _signal,
             _timeProvider,
             _instrumentation,
+            new AuditRecorder(new RecordingAuditLogStore(), NullLogger<AuditRecorder>.Instance),
             _logger,
             CancellationToken.None);
 

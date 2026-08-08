@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Netsoft.Jobs.Domain;
+using Netsoft.Jobs.Features.Audit;
 using Netsoft.Jobs.Features.CancelJob;
 using Netsoft.Jobs.Features.EditJob;
 using Netsoft.Jobs.Features.Execution;
@@ -72,6 +73,7 @@ public sealed class JobLifecycleStressTests : IDisposable
                 new JobQueueSignal(),
                 timeProvider,
                 instrumentation,
+                new AuditRecorder(new RecordingAuditLogStore(), NullLogger<AuditRecorder>.Instance),
                 NullLogger<JobExecutionEngine>.Instance,
                 CancellationToken.None)));
 

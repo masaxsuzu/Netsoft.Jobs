@@ -35,9 +35,11 @@ public sealed class ResumeJobHandler
 
     /// <summary>再開を要求する。拒否された場合は保存しない。</summary>
     /// <remarks>
-    /// <b>監査ログは 1 件。</b>停止中からの再開は Job 行を 2 回書く（Resuming と Resumed）が、
-    /// 利用者がしたのは「再開を押した」1 回なので、記録も 1 件にする
-    /// （<see cref="AuditLog"/> の注記）。
+    /// <b>停止中からの再開は監査ログが 2 件になる。</b>利用者が押したのは 1 回だが、
+    /// このコマンドは要求（Resuming）を書いたあと確定（Resumed）まで自分で済ませる。
+    /// 要求と確定は別の出来事なので分けて記録する ── 畳むと「誰が押したか」と
+    /// 「いつ待ち行列へ戻ったか」のどちらも読めなくなる。
+    /// 受理前の揺り戻し（Pausing → InProgress）は確定を伴わないので 1 件。
     /// </remarks>
     public async Task<Audited<JobControlResult>> HandleAsync(string id, CancellationToken cancellationToken)
     {
@@ -90,13 +92,30 @@ public sealed class ResumeJobHandler
                 jobId.Value,
                 job.Status);
 
-            Job settled = transition.Previous.IsHandlerActive()
-                ? job
-                : await SettleAsync(job, cancellationToken);
+            AuditLog requested = new(AuditActor.User, at, Content, jobId, Error: null);
+
+            // 受理前の揺り戻し（Pausing → InProgress）は確定を伴わない。走っているハンドラの
+            // ところへ戻すだけなので、記録するのは要求 1 件。
+            if (transition.Previous.IsHandlerActive())
+            {
+                return new Audited<JobControlResult>(JobControlResult.Accepted(job.ToDto()), requested);
+            }
+
+            Job settled = await SettleAsync(job, cancellationToken);
 
             return new Audited<JobControlResult>(
                 JobControlResult.Accepted(settled.ToDto()),
-                new AuditLog(AuditActor.User, at, Content, jobId, Error: null));
+                [
+                    requested,
+                    new AuditLog(
+                        AuditActor.System,
+                        _timeProvider.GetUtcNow(),
+                        $"再開を{(settled.Status == JobStatus.Resumed ? "確定し、待ち行列へ戻した" : "確定できなかった")}",
+                        jobId,
+                        settled.Status == JobStatus.Resumed
+                            ? null
+                            : $"確定しようとしたときには状態が {settled.Status} になっていました。"),
+                ]);
         }
     }
 

@@ -122,13 +122,30 @@ public sealed class CancelJobHandler
                 jobId.Value,
                 job.Status);
 
-            Job settled = transition.Previous.IsHandlerActive()
-                ? job
-                : await SettleAsync(job, cancellationToken);
+            AuditLog requested = new(AuditActor.User, at, Content, jobId, Error: null);
+
+            // ハンドラが居れば確定を書くのは実行エンジン。居なければここで閉じるので、
+            // その確定はシステムの実施として 1 件足す（要求と別の出来事）。
+            if (transition.Previous.IsHandlerActive())
+            {
+                return new Audited<CancelJobResult>(CancelJobResult.Accepted(job.ToDto()), requested);
+            }
+
+            Job settled = await SettleAsync(job, cancellationToken);
 
             return new Audited<CancelJobResult>(
                 CancelJobResult.Accepted(settled.ToDto()),
-                new AuditLog(AuditActor.User, at, Content, jobId, Error: null));
+                [
+                    requested,
+                    new AuditLog(
+                        AuditActor.System,
+                        _timeProvider.GetUtcNow(),
+                        $"キャンセルを{(settled.Status == JobStatus.Cancelled ? "確定した" : "確定できなかった")}",
+                        jobId,
+                        settled.Status == JobStatus.Cancelled
+                            ? null
+                            : $"確定しようとしたときには状態が {settled.Status} になっていました。"),
+                ]);
         }
     }
 

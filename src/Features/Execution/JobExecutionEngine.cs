@@ -3,6 +3,7 @@ using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 
 using Netsoft.Jobs.Domain;
+using Netsoft.Jobs.Features.Audit;
 
 namespace Netsoft.Jobs.Features.Execution;
 
@@ -50,6 +51,7 @@ public sealed class JobExecutionEngine
     private readonly JobQueueSignal _signal;
     private readonly TimeProvider _timeProvider;
     private readonly JobExecutionInstrumentation _instrumentation;
+    private readonly AuditRecorder _audit;
     private readonly ILogger<JobExecutionEngine> _logger;
 
     // 復旧が済んだかを表すフラグは持たない。このインスタンスが在ること自体が
@@ -60,6 +62,7 @@ public sealed class JobExecutionEngine
         JobQueueSignal signal,
         TimeProvider timeProvider,
         JobExecutionInstrumentation instrumentation,
+        AuditRecorder audit,
         ILogger<JobExecutionEngine> logger)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -67,6 +70,7 @@ public sealed class JobExecutionEngine
         ArgumentNullException.ThrowIfNull(signal);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(instrumentation);
+        ArgumentNullException.ThrowIfNull(audit);
         ArgumentNullException.ThrowIfNull(logger);
 
         _store = store;
@@ -74,6 +78,7 @@ public sealed class JobExecutionEngine
         _signal = signal;
         _timeProvider = timeProvider;
         _instrumentation = instrumentation;
+        _audit = audit;
         _logger = logger;
     }
 
@@ -105,6 +110,7 @@ public sealed class JobExecutionEngine
         JobQueueSignal signal,
         TimeProvider timeProvider,
         JobExecutionInstrumentation instrumentation,
+        AuditRecorder audit,
         ILogger<JobExecutionEngine> logger,
         CancellationToken cancellationToken)
     {
@@ -116,10 +122,10 @@ public sealed class JobExecutionEngine
         // 復旧そのものは JobCrashRecovery が持つ。ここに残しているのは呼ぶ順序
         // ── 「復旧を終えてからでないとインスタンスを作らない」── の方で、
         // それがこのメソッドの存在理由だから。
-        await JobCrashRecovery.RunAsync(store, timeProvider, logger, cancellationToken);
+        await JobCrashRecovery.RunAsync(store, timeProvider, audit, logger, cancellationToken);
 
         return new JobExecutionEngine(
-            store, handlers, signal, timeProvider, instrumentation, logger);
+            store, handlers, signal, timeProvider, instrumentation, audit, logger);
     }
 
     /// <summary>
@@ -200,6 +206,17 @@ public sealed class JobExecutionEngine
             {
                 _instrumentation.RecordStarted(job);
             }
+
+            // システムの実施 1 件。利用者は開始を要求していない（実行の順番は基盤が決める）ので、
+            // ここには対になる利用者側の記録が無い。
+            await _audit.WriteAsync(
+                new AuditLog(
+                    AuditActor.System,
+                    _timeProvider.GetUtcNow(),
+                    $"実行を開始した（パラメータ={job.Parameters}）",
+                    job.Id,
+                    Error: null),
+                CancellationToken.None);
 
             await RunHandlerAsync(job);
             return true;
@@ -417,6 +434,18 @@ public sealed class JobExecutionEngine
 
             if (await _store.UpdateAsync(job, CancellationToken.None))
             {
+                // 利用者の「一時停止を要求した」と対になるシステム側の 1 件。
+                // 実施者も時刻も違う（要求は API のスレッド、確定はハンドラが境界へ来たとき）ので、
+                // 畳まずに別の実施として残す。
+                await _audit.WriteAsync(
+                    new AuditLog(
+                        AuditActor.System,
+                        _timeProvider.GetUtcNow(),
+                        "一時停止を確定した",
+                        id,
+                        Error: null),
+                    CancellationToken.None);
+
                 // Paused の時刻列は無い。受理の事実と時刻はこのログだけが持つ。
                 _logger.LogInformation("Job {JobId} は一時停止しました。", id.Value);
                 return (Rerun: false, Settled: job.Status);
@@ -482,6 +511,15 @@ public sealed class JobExecutionEngine
             // 下で読む result.Previous はどちらの経路でも「読み出したときの状態」を指す。
             if (await _store.UpdateAsync(job, CancellationToken.None))
             {
+                await _audit.WriteAsync(
+                    new AuditLog(
+                        AuditActor.System,
+                        now,
+                        Describe(trigger, job.Status),
+                        id,
+                        job.FailureMessage),
+                    CancellationToken.None);
+
                 // 結末の確定＝終端の書き戻しに成功した点。所要時間と終端到達数はここで確定する。
                 // 起動時復旧（StartAsync）が閉じる残骸はここを通らないので数えない。
                 // 残骸の FinishedAt - StartedAt は前回プロセスの停止時間を含み、所要時間として
@@ -522,6 +560,33 @@ public sealed class JobExecutionEngine
     /// 型名を添えるのは、Message が空の例外でも何が起きたか分かるようにするため。
     /// スタックトレースは利用者に見せる情報ではないので含めない。
     /// </remarks>
+    /// <summary>
+    /// 結末を監査ログの文言にする。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 契機ではなく<b>行き先の状態</b>で書き分ける。契機と結末は一致しないことがある
+    /// ── キャンセルを要求された Job が完走すると、契機は Complete で状態は Completed だが、
+    /// Cancelling から来ているので「要求より完走が勝った」ことが起きている。
+    /// 監査に残すのは起きたこと（Completed になった）で、そちらは状態が持っている。
+    /// </para>
+    /// <para>
+    /// サブタスクの進み具合は入れない。入れるにはエンジンが <c>ISubTaskStore</c> を
+    /// 持つ必要があり、監査の文言 1 つのために依存を増やす釣り合いが取れない。
+    /// 進捗は Job の行と画面が持っている。
+    /// </para>
+    /// </remarks>
+    private static string Describe(JobTrigger trigger, JobStatus status) => status switch
+    {
+        JobStatus.Completed => "実行を完了した",
+        JobStatus.Failed => "実行に失敗した",
+        JobStatus.Cancelled => "キャンセルを確定した",
+
+        // 終端へ行けなかった。FinishAsync が Fail を再適用しても届かない状態
+        //（他所が先に終端を書いた、など）で、起きたことをそのまま書く。
+        _ => $"実行の結末（{trigger}）を記録した",
+    };
+
     private static string Describe(Exception exception) =>
         string.IsNullOrWhiteSpace(exception.Message)
             ? exception.GetType().Name

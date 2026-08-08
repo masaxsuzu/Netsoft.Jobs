@@ -46,7 +46,12 @@ public sealed class AuditRecorder
     {
         ArgumentNullException.ThrowIfNull(audited);
 
-        await WriteAsync(audited.Log, cancellationToken);
+        // 順に書く。並びの第 2 キーは書いた順なので、ここの順序がそのまま
+        // 「要求 → 確定」の読み順になる（同じ時刻に並ぶ 2 件を区別できるのはこれだけ）。
+        foreach (AuditLog log in audited.Logs)
+        {
+            await WriteAsync(log, cancellationToken);
+        }
 
         return audited.Value;
     }

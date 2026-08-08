@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 
 using Netsoft.Jobs.Domain;
+using Netsoft.Jobs.Features.Audit;
 
 namespace Netsoft.Jobs.Features.Execution;
 
@@ -61,11 +62,13 @@ internal static class JobCrashRecovery
     public static async Task RunAsync(
         IJobStore store,
         TimeProvider timeProvider,
+        AuditRecorder audit,
         ILogger logger,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(audit);
         ArgumentNullException.ThrowIfNull(logger);
 
         // 状態ごとに別々の一覧を取る。走査の途中で Job が状態を跨いで動くと
@@ -88,6 +91,8 @@ internal static class JobCrashRecovery
                     continue;
                 }
 
+                DateTimeOffset at = timeProvider.GetUtcNow();
+
                 if (!await store.UpdateAsync(job, cancellationToken))
                 {
                     // ここへは来ない。復旧が走るのは HTTP の受付が始まる前で、エンジンも
@@ -104,8 +109,30 @@ internal static class JobCrashRecovery
                         + "この Job は非終端のまま残ります。",
                         job.Id.Value);
 
+                    // 閉じられなかったことも監査に残す。この Job は誰にも動かされないまま
+                    // 残るので、「復旧は走ったのに閉じなかった」が読めないと原因へ辿り着けない。
+                    await audit.WriteAsync(
+                        new AuditLog(
+                            AuditActor.System,
+                            at,
+                            $"前回の異常終了として、{status} だった Job を閉じようとした",
+                            job.Id,
+                            "読み出しから書き込みまでの間に他の書き手が変更したため、閉じられませんでした。"),
+                        cancellationToken);
+
                     continue;
                 }
+
+                // 監査は Job ごとに 1 件。復旧そのものは 1 回の走査だが、閉じた相手ごとに
+                // 誰が読んでも分かる形で残したいので、ここだけ「1 アクション 1 ログ」から外す。
+                await audit.WriteAsync(
+                    new AuditLog(
+                        AuditActor.System,
+                        at,
+                        $"前回の異常終了を検出し、{status} だった Job を {job.Status} で閉じた",
+                        job.Id,
+                        job.FailureMessage),
+                    cancellationToken);
 
                 logger.LogWarning(
                     "Job {JobId} を前回プロセスの異常終了として {Status} にしました。",

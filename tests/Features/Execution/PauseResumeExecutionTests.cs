@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Netsoft.Jobs.Domain;
+using Netsoft.Jobs.Features.Audit;
 using Netsoft.Jobs.Features.CancelJob;
 using Netsoft.Jobs.Features.Execution;
 using Netsoft.Jobs.Features.PauseJob;
@@ -220,6 +221,7 @@ public sealed class PauseResumeExecutionTests : IDisposable
             new JobQueueSignal(),
             _time,
             _instrumentation,
+            new AuditRecorder(new RecordingAuditLogStore(), NullLogger<AuditRecorder>.Instance),
             NullLogger<JobExecutionEngine>.Instance,
             CancellationToken.None);
 

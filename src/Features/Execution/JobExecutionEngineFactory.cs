@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 
 using Netsoft.Jobs.Domain;
+using Netsoft.Jobs.Features.Audit;
 
 namespace Netsoft.Jobs.Features.Execution;
 
@@ -29,6 +30,7 @@ public sealed class JobExecutionEngineFactory
     private readonly JobQueueSignal _signal;
     private readonly TimeProvider _timeProvider;
     private readonly JobExecutionInstrumentation _instrumentation;
+    private readonly AuditRecorder _audit;
     private readonly ILogger<JobExecutionEngine> _logger;
 
     public JobExecutionEngineFactory(
@@ -37,6 +39,7 @@ public sealed class JobExecutionEngineFactory
         JobQueueSignal signal,
         TimeProvider timeProvider,
         JobExecutionInstrumentation instrumentation,
+        AuditRecorder audit,
         ILogger<JobExecutionEngine> logger)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -44,6 +47,7 @@ public sealed class JobExecutionEngineFactory
         ArgumentNullException.ThrowIfNull(signal);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(instrumentation);
+        ArgumentNullException.ThrowIfNull(audit);
         ArgumentNullException.ThrowIfNull(logger);
 
         _store = store;
@@ -51,6 +55,7 @@ public sealed class JobExecutionEngineFactory
         _signal = signal;
         _timeProvider = timeProvider;
         _instrumentation = instrumentation;
+        _audit = audit;
         _logger = logger;
     }
 
@@ -68,6 +73,7 @@ public sealed class JobExecutionEngineFactory
             _signal,
             _timeProvider,
             _instrumentation,
+            _audit,
             _logger,
             cancellationToken);
 }

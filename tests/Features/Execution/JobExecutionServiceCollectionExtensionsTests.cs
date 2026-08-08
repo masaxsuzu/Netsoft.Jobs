@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 using Netsoft.Jobs.Domain;
+using Netsoft.Jobs.Features.Audit;
 using Netsoft.Jobs.Features.Execution;
 using Netsoft.Jobs.Features.Tests.Fakes;
 
@@ -98,6 +99,11 @@ public sealed class JobExecutionServiceCollectionExtensionsTests : IDisposable
         services.AddLogging();
         services.AddSingleton<IJobStore>(_store);
         services.AddSingleton<ISubTaskStore>(_subTaskStore);
+
+        // エンジンは監査ログを書く（実行の開始・結末・起動時復旧）。置き場は AddJobExecution が
+        // 持たないので、ここで入れる ── 入れ忘れたホストが組み立ての時点で落ちる形にしてある。
+        services.AddSingleton<IAuditLogStore>(new RecordingAuditLogStore());
+        services.AddSingleton<AuditRecorder>();
 
         services.AddJobExecution();
 
