@@ -200,11 +200,22 @@ public sealed class SqliteJobStore : IJobStore
         // 動的に組み立てる形も試したが、2 状態のために static を 3 つ置くのは割に合わなかった。
         // 書き写しが IsWaiting とずれると Job が黙って滞留する（エラーはどこにも出ない）ので、
         // ずれを SqliteJobStoreTests の「IsWaiting が true の状態をすべて拾う」が捕まえる。
+        //
+        // 並びの第 1 キーが CreatedAt ではなく状態なのが肝。再開した Job は登録時刻を
+        // 持ったまま待ち行列へ戻るので、CreatedAt だけで並べると必ず先頭に来て、
+        // その間ずっと待っていた Job を追い越す。順番待ちの列に戻るときは最後尾へ、が
+        // 利用者の決めたところ。
+        //
+        // 追い越さないことは「Registered をすべて先に出す」で表す。再開した時刻を
+        // 持てば列の途中へ入れられるが、それを持つ列が Jobs に無く、この repo には
+        // スキーマを足す仕組み（migration）も無い。列を足す判断のほうが、
+        // 順番の決め方より大きい決定なので、頼まれていないここでは踏み込まない。
+        // 代償は、登録が途切れない限り再開した Job が動き出さないこと。
         command.CommandText =
             $"""
             SELECT {Columns} FROM Jobs
             WHERE Status IN ($registered, $resumed)
-            ORDER BY CreatedAt ASC, Id ASC
+            ORDER BY CASE Status WHEN $registered THEN 0 ELSE 1 END, CreatedAt ASC, Id ASC
             LIMIT 1;
             """;
         command.Parameters.AddWithValue("$registered", JobStatusText.ToText(JobStatus.Registered));
