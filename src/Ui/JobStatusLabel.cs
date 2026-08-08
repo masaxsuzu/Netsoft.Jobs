@@ -40,4 +40,30 @@ public static class JobStatusLabel
         "Failed" => "失敗",
         _ => status,
     };
+
+    /// <summary>状態の文字列表現を、バッジの色を決める CSS クラスにする。</summary>
+    /// <remarks>
+    /// <para>
+    /// 10 個の状態を 5 色に畳んである。<b>色で見分けたいのは「今どうなっているか」の大分類</b>で、
+    /// 保留要求中と保留中を別の色にしても、一覧を眺める人が得るものが無い。
+    /// 細かい違いは <see cref="From"/> の文言が持つ。
+    /// </para>
+    /// <para>
+    /// 判定を <c>.razor</c> へ書かない。カバレッジが <c>**/*.razor</c> を除外していて、
+    /// あちらに置いた分岐には床が一切かからない（<c>JobBoard</c> が Razor の外に居るのと同じ理由）。
+    /// </para>
+    /// <para>
+    /// 知らない値は既定の色。<see cref="From"/> が名前をそのまま出すので、
+    /// 色が付いていないこと自体が「写像を足し忘れた」の印になる。
+    /// </para>
+    /// </remarks>
+    public static string ClassFor(string status) => status switch
+    {
+        "InProgress" or "Resuming" or "Resumed" => "badge-running",
+        "Pausing" or "Paused" => "badge-paused",
+        "Completed" => "badge-completed",
+        "Failed" => "badge-failed",
+        "Cancelling" or "Cancelled" => "badge-cancelled",
+        _ => "badge-registered",
+    };
 }

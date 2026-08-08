@@ -436,13 +436,43 @@ public sealed class JobBoardTests : IDisposable
         Assert.Equal("2/3", JobBoard.ProgressFor(Row(completed: 2, total: 3)));
     }
 
+    /// <summary>
+    /// 一覧の時刻は年を落とす。3 列を 1 行に収めるためで、年まで要る人のために
+    /// 完全な値を別に返す（画面は列の title に載せている）。
+    /// </summary>
     [Fact]
-    public void 時刻は無ければハイフン()
+    public void 時刻は年を落として出し完全な値は別に返す()
+    {
+        DateTimeOffset at = new(2026, 8, 5, 9, 0, 0, TimeSpan.Zero);
+
+        Assert.Equal(at.ToLocalTime().ToString("MM-dd HH:mm:ss"), JobBoard.Format(at));
+        Assert.Equal(at.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"), JobBoard.FormatFull(at));
+    }
+
+    /// <summary>
+    /// 持っていない時刻は、一覧では「-」。title は空にする ── 空の吹き出しは出ない。
+    /// </summary>
+    [Fact]
+    public void 時刻は無ければハイフンでtitleは空()
     {
         Assert.Equal("-", JobBoard.Format(null));
+        Assert.Equal(string.Empty, JobBoard.FormatFull(null));
+    }
 
-        DateTimeOffset at = new(2026, 8, 5, 9, 0, 0, TimeSpan.Zero);
-        Assert.Equal(at.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"), JobBoard.Format(at));
+    /// <summary>
+    /// 帯の幅。行がまだ無い（登録直後で分割されていない）のは 0% で、
+    /// 画面はそもそも帯を出さない（0% の帯と「まだ分割されていない」は別のこと）。
+    /// </summary>
+    [Fact]
+    public void 進捗の帯は完了の割合で行が無ければゼロ()
+    {
+        Assert.Equal(0, JobBoard.ProgressPercent(Row(completed: 0, total: 0)));
+        Assert.Equal(0, JobBoard.ProgressPercent(Row(completed: 0, total: 4)));
+        Assert.Equal(50, JobBoard.ProgressPercent(Row(completed: 2, total: 4)));
+        Assert.Equal(100, JobBoard.ProgressPercent(Row(completed: 4, total: 4)));
+
+        // 割り切れないときは切り捨て。帯が満杯に見えるのは本当に終わったときだけにする。
+        Assert.Equal(66, JobBoard.ProgressPercent(Row(completed: 2, total: 3)));
     }
 
     [Fact]

@@ -336,9 +336,34 @@ public sealed class JobBoard
         return job.TotalSubTasks == 0 ? "-" : $"{job.CompletedSubTasks}/{job.TotalSubTasks}";
     }
 
-    /// <summary>時刻の表示。持っていなければ「-」。</summary>
+    /// <summary>進捗の帯の幅（%）。行がまだ無ければ 0。</summary>
+    /// <remarks>
+    /// 数字（<see cref="ProgressFor"/>）と帯を両方出す。帯だけだと 3/4 と 30/40 が同じに見え、
+    /// 数字だけだと一覧を眺めたときに進み具合が比べられない。
+    /// <para>
+    /// 計算を <c>.razor</c> に書かないのは <see cref="JobStatusLabel.ClassFor"/> と同じ理由。
+    /// </para>
+    /// </remarks>
+    public static int ProgressPercent(JobListItemDto job)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+
+        return job.TotalSubTasks == 0 ? 0 : job.CompletedSubTasks * 100 / job.TotalSubTasks;
+    }
+
+    /// <summary>一覧に出す時刻。持っていなければ「-」。</summary>
+    /// <remarks>
+    /// 年を落としてある。作成・開始・終了の 3 列を 1 行に収めるためで、落とさないと
+    /// 列が折り返して 1 行が 2 段になる（それが元の画面で起きていた）。
+    /// 年まで要る場面のために、完全な値は <see cref="FormatFull"/> が返し、
+    /// 画面は列の <c>title</c> に載せている。
+    /// </remarks>
     public static string Format(DateTimeOffset? value) =>
-        value is { } present ? present.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") : "-";
+        value is { } present ? present.ToLocalTime().ToString("MM-dd HH:mm:ss") : "-";
+
+    /// <summary>年を含む完全な時刻。持っていなければ空。</summary>
+    public static string FormatFull(DateTimeOffset? value) =>
+        value is { } present ? present.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") : string.Empty;
 
     /// <summary>
     /// 手元の一覧に取り直した一覧を重ね、行ごとに版の新しい方を残す。

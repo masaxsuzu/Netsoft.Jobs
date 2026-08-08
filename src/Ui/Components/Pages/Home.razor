@@ -13,10 +13,10 @@
 @* プリレンダリング中（回路が繋がる前）の操作は失われる。@onsubmit は動かず素の
    フォーム送信になって入力ごと消えるし、押さなくても入力は回路の最初の描画で
    サーバ状態に巻き戻る。だから回路が繋がるまで入力とボタンを disabled にしておく。 *@
-<section>
+<section class="panel">
     <h2>Job の登録</h2>
-    <form @onsubmit="RegisterAsync">
-        <div>
+    <form class="register" @onsubmit="RegisterAsync">
+        <div class="field">
             <label for="job-name">名前</label>
             <input id="job-name" disabled="@(!_interactive)" @bind="Board.Name" />
             @foreach (string message in Board.ErrorsFor("name"))
@@ -24,7 +24,7 @@
                 <p class="error">@message</p>
             }
         </div>
-        <div>
+        <div class="field">
             <label for="job-type">種類</label>
             @* 選択肢はサーバ（登録済みのハンドラ）から来る。ここに種類名を並べると、
                ハンドラを足し引きしたときに実行できる種類とずれる。 *@
@@ -46,7 +46,7 @@
                 <p class="error">@message</p>
             }
         </div>
-        <div>
+        <div class="field">
             <label for="job-parameters">パラメータ</label>
             @* 欄はテキスト 1 つのまま（Parameters はハンドラだけが解釈する不透明な文字列）。
                何を入れるのかの説明だけを、UI 側の対応表から選んだ種類に応じて出す。 *@
@@ -57,11 +57,12 @@
                 <p class="error">@message</p>
             }
         </div>
-        <button type="submit" disabled="@(!_interactive || !Board.CanRegister || Board.IsBusy)">登録</button>
+        <button type="submit" class="primary"
+                disabled="@(!_interactive || !Board.CanRegister || Board.IsBusy)">登録</button>
     </form>
 </section>
 
-<section>
+<section class="panel">
     <h2>Job の一覧</h2>
     @if (Board.Notice is not null)
     {
@@ -75,17 +76,19 @@
     {
         <table>
             <thead>
+                @* 見出しは短く。「作成日時」は列が時刻しか持たないので「作成」で足りる。
+                   最後の列を空にしない ── 空の見出しは、そこに何が並ぶのかを読み手に推測させる。 *@
                 <tr>
                     <th>名前</th>
                     <th>種類</th>
                     <th>状態</th>
                     <th>進捗</th>
-                    <th>作成日時</th>
-                    <th>開始日時</th>
-                    <th>終了日時</th>
+                    <th>作成</th>
+                    <th>開始</th>
+                    <th>終了</th>
                     <th>失敗理由</th>
                     <th>パラメータ</th>
-                    <th></th>
+                    <th>操作</th>
                 </tr>
             </thead>
             <tbody>
@@ -97,17 +100,26 @@
                 @foreach (JobListItemDto job in Board.Jobs)
                 {
                     <tr @key="job.Id">
-                        <td>@job.Name</td>
-                        <td>@job.JobType</td>
-                        <td>@JobStatusLabel.From(job.Status)</td>
-                        @* サブタスクの進捗（完了 / 総数）。行がまだ無い（登録直後）は「-」。
-                           個々の状態まで並べるほどの幅は無いので、数字だけを出す。 *@
-                        <td class="progress">@JobBoard.ProgressFor(job)</td>
-                        <td>@JobBoard.Format(job.CreatedAt)</td>
-                        <td>@JobBoard.Format(job.StartedAt)</td>
-                        <td>@JobBoard.Format(job.FinishedAt)</td>
+                        <td class="col-name">@job.Name</td>
+                        <td class="col-type">@job.JobType</td>
+                        <td><span class="badge @JobStatusLabel.ClassFor(job.Status)">@JobStatusLabel.From(job.Status)</span></td>
+                        @* 帯と数字を両方出す。帯だけだと 3/4 と 30/40 が同じに見え、
+                           数字だけだと一覧を眺めたときに進み具合を比べられない。 *@
+                        <td class="progress">
+                            @* 行がまだ無い Job に空の帯を出さない。0% の帯と「まだ分割されていない」は
+                               別のことなので、同じ見た目にすると読み手が取り違える。 *@
+                            @if (job.TotalSubTasks > 0)
+                            {
+                                <span class="bar"><span class="bar-fill" style="width:@(JobBoard.ProgressPercent(job))%"></span></span>
+                            }
+                            <span class="bar-text">@JobBoard.ProgressFor(job)</span>
+                        </td>
+                        @* 年は title に逃がす。3 列を 1 行に収めるために表示からは落としている。 *@
+                        <td class="col-time" title="@JobBoard.FormatFull(job.CreatedAt)">@JobBoard.Format(job.CreatedAt)</td>
+                        <td class="col-time" title="@JobBoard.FormatFull(job.StartedAt)">@JobBoard.Format(job.StartedAt)</td>
+                        <td class="col-time" title="@JobBoard.FormatFull(job.FinishedAt)">@JobBoard.Format(job.FinishedAt)</td>
                         <td>@job.FailureMessage</td>
-                        <td>
+                        <td class="col-params">
                             @* 実行中でも編集できる（反映はサブタスクの境界）。入力中の値は
                                通知の再読み込みで消えないよう、行の再描画から独立に保持する。
                                get を辞書の indexer にしない。描画は変更通知や回路接続の合図で
@@ -123,7 +135,7 @@
                                 保存
                             </button>
                         </td>
-                        <td>
+                        <td class="col-actions">
                             @* 押せるかどうかはサーバが行に載せてくる。ここで状態名を並べて
                                判定すると、状態が増えたときに直し忘れたボタンができるし、
                                判定に要る規則は Domain のもので、画面は Domain を参照しない。
@@ -140,7 +152,7 @@
                                     @onclick="() => Board.ResumeAsync(job.Id, CancellationToken.None)">
                                 再開
                             </button>
-                            <button type="button"
+                            <button type="button" class="danger"
                                     disabled="@(!_interactive || !job.CanCancel || Board.IsBusy)"
                                     @onclick="() => Board.CancelAsync(job.Id, CancellationToken.None)">
                                 キャンセル

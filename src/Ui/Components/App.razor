@@ -1,4 +1,5 @@
-@* HTML の外枠。CSS はフレームワークを持ち込まず、この範囲で素朴に済ませる。 *@
+@* HTML の外枠。CSS はフレームワークを持ち込まず、この範囲に収める。
+   1 ファイルで済むのは画面が 1 枚しか無いからで、増えたら分けること。 *@
 <!DOCTYPE html>
 <html lang="ja">
 
@@ -8,45 +9,143 @@
     <base href="/" />
     <title>Netsoft.Jobs</title>
     <style>
+        /* 色は 1 か所にまとめる。散らすと「この灰色はどの灰色か」が分からなくなる。 */
+        :root {
+            --ink: #1f2933;
+            --sub: #6b7784;
+            --line: #d9e0e7;
+            --bg: #f6f8fa;
+            --head: #2f3b47;
+            --accent: #2563eb;
+            --danger: #b42318;
+        }
+
+        * { box-sizing: border-box; }
+
         body {
-            font-family: sans-serif;
-            margin: 1.5rem;
-            color: #222;
+            margin: 0;
+            padding: 1.5rem 2rem;
+            background: var(--bg);
+            color: var(--ink);
+            font: 14px/1.55 "Helvetica Neue", Arial, "Hiragino Sans", "Noto Sans JP", sans-serif;
         }
 
-        table {
-            border-collapse: collapse;
-            width: 100%;
+        h1 { font-size: 1.25rem; letter-spacing: .02em; margin: 0 0 1.25rem; }
+
+        h2 {
+            font-size: .8rem;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            color: var(--sub);
+            margin: 0 0 .75rem;
         }
 
-        th, td {
-            border: 1px solid #ccc;
-            padding: 0.4rem 0.6rem;
-            text-align: left;
-            vertical-align: top;
+        .panel {
+            background: #fff;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 1.25rem;
         }
+
+        /* 登録欄は横に並べる。1 項目 1 行にすると、3 項目のために縦を 3 行使う。 */
+        .register { display: flex; align-items: flex-end; gap: .75rem; flex-wrap: wrap; }
+        .field { display: flex; flex-direction: column; gap: .25rem; }
+        .field label { font-size: .75rem; color: var(--sub); }
+
+        input, select {
+            font: inherit;
+            padding: .35rem .5rem;
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            background: #fff;
+            color: inherit;
+        }
+
+        input:focus, select:focus { outline: none; border-color: var(--accent); }
+        #job-parameters { min-width: 22rem; }
+
+        button {
+            font: inherit;
+            font-size: .8rem;
+            padding: .3rem .6rem;
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            background: #fff;
+            color: var(--ink);
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        button:disabled { opacity: .4; cursor: default; }
+        button.primary { background: var(--accent); border-color: var(--accent); color: #fff; padding: .4rem 1rem; }
+        button.danger { color: var(--danger); }
+
+        table { border-collapse: collapse; width: 100%; }
 
         th {
-            background: #f2f2f2;
+            background: var(--head);
+            color: #fff;
+            font-size: .72rem;
+            font-weight: 600;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            text-align: left;
+            padding: .5rem .7rem;
         }
 
-        form div {
-            margin-bottom: 0.6rem;
-        }
+        td { border-bottom: 1px solid var(--line); padding: .45rem .7rem; vertical-align: middle; }
+        tbody tr:nth-child(even) { background: #fafbfc; }
+        tbody tr:hover { background: #eef4ff; }
 
-        label {
+        /* 折り返さないことが、この表の見た目をほぼ決めている。指定が無いと
+           「登録済/み」「終了日/時」のように日本語が語の途中で割れ、1 行が 2 段になる。
+           名前だけは長くなりうるので、そこにも nowrap を掛けて幅は表に決めさせる。 */
+        th, td { white-space: nowrap; }
+
+        .col-name { font-weight: 600; }
+        .col-type { color: var(--sub); }
+
+        /* 時刻と数字は等幅。桁が揃わないと、並べたときに比べられない。 */
+        .col-time { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .78rem; color: var(--sub); }
+
+        .badge {
             display: inline-block;
-            min-width: 8rem;
+            padding: .1rem .5rem;
+            border-radius: 999px;
+            font-size: .72rem;
+            font-weight: 600;
         }
 
-        .error {
-            color: #b00020;
-            margin: 0.1rem 0 0 8rem;
+        .badge-running { background: #dbeafe; color: #1d4ed8; }
+        .badge-paused { background: #fef3c7; color: #92400e; }
+        .badge-registered { background: #e5e7eb; color: #4b5563; }
+        .badge-completed { background: #d1fae5; color: #047857; }
+        .badge-failed { background: #fee2e2; color: var(--danger); }
+        .badge-cancelled { background: #e5e7eb; color: #6b7280; }
+
+        .bar {
+            display: inline-block;
+            width: 4.5rem;
+            height: 6px;
+            background: #e5e7eb;
+            border-radius: 3px;
+            overflow: hidden;
+            vertical-align: middle;
         }
 
-        .notice {
-            color: #b00020;
-        }
+        .bar-fill { display: block; height: 100%; background: var(--accent); }
+        .bar-text { font-family: ui-monospace, monospace; font-size: .75rem; color: var(--sub); margin-left: .4rem; }
+
+        .col-params input { width: 6rem; font-family: ui-monospace, monospace; font-size: .78rem; }
+        .col-params button { margin-left: .3rem; }
+
+        /* 操作は右端に寄せる。左に寄せると、行ごとにボタンの位置がずれて狙いにくい。 */
+        .col-actions { text-align: right; }
+        .col-actions button + button { margin-left: .3rem; }
+
+        .error { color: var(--danger); font-size: .78rem; }
+        .notice { color: var(--danger); }
 
         /* 操作の失敗・拒否を出すダイアログ。非モーダル（open 属性だけで開く）の dialog は
            既定で一覧の上に重なって置かれるので、位置を右上へ寄せて行を隠さないようにする。
@@ -60,15 +159,15 @@
             left: auto;
             margin: 0;
             max-width: 24rem;
-            color: #b00020;
-            border: 1px solid #b00020;
-            background: #fff4f4;
-            padding: 0.7rem 1rem;
+            background: #fff;
+            border: 1px solid #fca5a5;
+            border-left: 4px solid #dc2626;
+            border-radius: 6px;
+            padding: .75rem 1rem;
+            box-shadow: 0 8px 24px rgba(16, 24, 40, .12);
         }
 
-        .operation-dialog p {
-            margin: 0 0 0.6rem 0;
-        }
+        .operation-dialog p { margin: 0 0 .5rem; color: var(--danger); font-size: .85rem; }
 
         /* 回路（WebSocket）が死んだときに Blazor がこの要素を表示する。無いと
            何も出ず、画面は無言で凍る（操作しても反応しないだけになる）。
@@ -80,9 +179,9 @@
             left: 0;
             right: 0;
             background: #ffe0e0;
-            border-top: 2px solid #b00020;
-            color: #b00020;
-            padding: 0.7rem 1rem;
+            border-top: 2px solid var(--danger);
+            color: var(--danger);
+            padding: .7rem 1rem;
         }
     </style>
     <HeadOutlet @rendermode="InteractiveServer" />

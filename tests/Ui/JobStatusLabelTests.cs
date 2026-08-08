@@ -56,4 +56,43 @@ public sealed class JobStatusLabelTests
     {
         Assert.Equal(status, JobStatusLabel.From(status));
     }
+
+    /// <summary>
+    /// バッジの色。10 個の状態を 5 つに畳んであるので、写像の穴は
+    /// 「文言はあるのに既定の色が付く」という形で出る。
+    /// </summary>
+    [Theory]
+    [InlineData("InProgress", "badge-running")]
+    [InlineData("Resuming", "badge-running")]
+    [InlineData("Resumed", "badge-running")]
+    [InlineData("Pausing", "badge-paused")]
+    [InlineData("Paused", "badge-paused")]
+    [InlineData("Completed", "badge-completed")]
+    [InlineData("Failed", "badge-failed")]
+    [InlineData("Cancelling", "badge-cancelled")]
+    [InlineData("Cancelled", "badge-cancelled")]
+    [InlineData("Registered", "badge-registered")]
+    public void 状態はバッジの色に写る(string status, string expected)
+    {
+        Assert.Equal(expected, JobStatusLabel.ClassFor(status));
+    }
+
+    /// <summary>
+    /// 色の付いていない状態は無い。状態を足して写像を忘れると、ここが気づく。
+    /// </summary>
+    [Fact]
+    public void 全ての状態に色がある()
+    {
+        foreach (JobStatus status in Enum.GetValues<JobStatus>())
+        {
+            Assert.StartsWith("badge-", JobStatusLabel.ClassFor(JobStatusText.ToText(status)), StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>写像に無い値は既定の色。文言がそのまま出る（From）ので、印としては十分。</summary>
+    [Fact]
+    public void 未知の状態は既定の色になる()
+    {
+        Assert.Equal("badge-registered", JobStatusLabel.ClassFor("Unknown"));
+    }
 }
