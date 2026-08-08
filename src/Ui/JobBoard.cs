@@ -321,6 +321,61 @@ public sealed class JobBoard
     /// </remarks>
     public void CloseOperationDialog() => OperationError = null;
 
+    /// <summary>詳細を開いている失敗理由の全文。開いていなければ null。</summary>
+    /// <remarks>
+    /// <para>
+    /// 一覧の失敗理由の列は幅を固定して切る（例外の <c>Message</c> がそのまま入るので、
+    /// 長さに上限が無い）。切った先を読む手段がこれ。
+    /// </para>
+    /// <para>
+    /// <b>Job の参照ではなく、押した瞬間の文字列を控える。</b>参照を持つと、背景の
+    /// 取り直しが行を差し替えた（<see cref="Merge"/> は行ごと作り直す）あとも古い
+    /// インスタンスを掴んだままになる。失敗理由は終端で確定してもう動かないので、
+    /// 文字列を控えても古くならない。<see cref="OperationError"/> と別に持つのは、
+    /// これが操作の結果ではなく行の中身であり、次の操作で消えてはいけないため。
+    /// </para>
+    /// </remarks>
+    public string? FailureDetail { get; private set; }
+
+    /// <summary>詳細を開いている失敗理由が、どの Job のものか。開いていなければ null。</summary>
+    public string? FailureDetailName { get; private set; }
+
+    /// <summary>失敗理由の詳細が開いているか。</summary>
+    public bool IsFailureDialogOpen => FailureDetail is not null;
+
+    /// <summary>失敗理由の全文を開く。</summary>
+    public void ShowFailure(JobListItemDto job)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+
+        FailureDetailName = job.Name;
+        FailureDetail = job.FailureMessage;
+    }
+
+    /// <summary>失敗理由の詳細を閉じる。</summary>
+    /// <remarks>
+    /// 2 つまとめて消す。<see cref="FailureDetailName"/> だけ残ると、次に開いた
+    /// ダイアログの見出しが前の Job の名前のまま出る瞬間ができる。
+    /// </remarks>
+    public void CloseFailureDialog()
+    {
+        FailureDetail = null;
+        FailureDetailName = null;
+    }
+
+    /// <summary>失敗理由を持っているか（＝失敗理由の列を押せるか）。</summary>
+    /// <remarks>
+    /// 空白だけの理由も「無い」と見なす。押せる見た目で開いて空のダイアログが出るより、
+    /// 押せないほうが読み手を騙さない。判定を <c>.razor</c> に書かないのは
+    /// <see cref="JobStatusLabel.ClassFor"/> と同じ理由。
+    /// </remarks>
+    public static bool HasFailure(JobListItemDto job)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+
+        return !string.IsNullOrWhiteSpace(job.FailureMessage);
+    }
+
     /// <summary>登録の入力エラーのうち、指定した項目のもの。</summary>
     public IEnumerable<string> ErrorsFor(string field) =>
         RegistrationErrors.TryGetValue(field, out string[]? messages) ? messages : [];
@@ -329,6 +384,11 @@ public sealed class JobBoard
     /// サブタスクの進捗（完了 / 総数）。行がまだ無い（登録直後で分割されていない）のは
     /// 進捗ゼロとは違うので、0/0 とは出さない。
     /// </summary>
+    /// <remarks>
+    /// <b>一覧の文字としては出さない。</b>帯の隣に置いていたが、10 列を 1 画面に
+    /// 収める余地が無くなり、操作の列が画面外へ出ていた。数字そのものは
+    /// 帯の <c>title</c> と読み上げ名に載せてあるので、消えてはいない。
+    /// </remarks>
     public static string ProgressFor(JobListItemDto job)
     {
         ArgumentNullException.ThrowIfNull(job);
@@ -338,8 +398,12 @@ public sealed class JobBoard
 
     /// <summary>進捗の帯の幅（%）。行がまだ無ければ 0。</summary>
     /// <remarks>
-    /// 数字（<see cref="ProgressFor"/>）と帯を両方出す。帯だけだと 3/4 と 30/40 が同じに見え、
-    /// 数字だけだと一覧を眺めたときに進み具合が比べられない。
+    /// <para>
+    /// 帯だけだと 3/4 と 30/40 が同じに見える。それでも一覧に出すのは帯だけにしてある ──
+    /// 一覧を上から眺めるときに要るのは進み具合の比較で、そこは帯のほうが速い。
+    /// 分母が要る場面のために、数（<see cref="ProgressFor"/>）は帯の <c>title</c> と
+    /// 読み上げ名に載せている。
+    /// </para>
     /// <para>
     /// 計算を <c>.razor</c> に書かないのは <see cref="JobStatusLabel.ClassFor"/> と同じ理由。
     /// </para>

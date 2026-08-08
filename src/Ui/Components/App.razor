@@ -81,6 +81,20 @@
         button.primary { background: var(--accent); border-color: var(--accent); color: #fff; padding: .4rem 1rem; }
         button.danger { color: var(--danger); }
 
+        /* 絵柄のボタン。中身が 1 個の svg なので、行の高さを作るのは padding だけ。
+           line-height を 0 にしないと、svg の下に行box の余白が残って縦に伸びる。 */
+        button.icon { padding: .3rem; line-height: 0; }
+        button.icon:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+        button.icon.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+
+        /* 絵柄は currentColor で塗る。ボタンの色（既定・danger・hover）を 1 か所で決めたいので、
+           svg 側に色を書かない。 */
+        .glyph { width: .95rem; height: .95rem; fill: currentColor; display: block; }
+
+        /* 定義そのものは描かない。1 度だけ置いて各行が use で参照する
+           （行ごとに path を展開すると、100 行で同じ図形が 400 個 DOM に載る）。 */
+        .glyph-sprite { display: none; }
+
         /* 折り返さないと決めた以上、幅は必ず足りなくなりうる（名前が長い Job が 1 つあればよい）。
            表だけを横に流す。パネルごと流すと見出しまで一緒に動いて、何の表か分からなくなる。 */
         .table-scroll { overflow-x: auto; }
@@ -113,14 +127,34 @@
         .col-type { color: var(--sub); }
 
         /* 失敗理由だけは長さの上限を持たない（例外の Message がそのまま入る）。
-           nowrap のまま伸ばすと表が横に破裂するので、ここで切って全文は title に出す。 */
-        .col-failure {
-            max-width: 8rem;
-            overflow: hidden;
-            text-overflow: ellipsis;
+           max-width ではなく width で固定するのは、失敗が 1 件も無いときに列が
+           潰れないようにするため ── 幅が動くと、失敗が出た瞬間に表全体の列がずれる。 */
+        .col-failure { width: 9rem; }
+
+        /* 中身は押せるので button。見た目は本文の続きにする（枠と背景を消す）。
+           block にしないと ellipsis が効かない ── inline のボタンは中身の幅に広がる。
+           幅は max-width ではなく width で持つ。table-layout は auto なので、
+           セル側の width は当てにできず（中身が長ければ列がそのぶん広がる）、
+           実際に列を押し広げていた。切る幅は中の要素が決める。 */
+        .failure-link {
+            display: block;
+            width: 9rem;
+            padding: 0;
+            border: none;
+            background: none;
             color: var(--danger);
             font-size: .78rem;
+            text-align: left;
+            text-decoration: underline dotted;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
+
+        .failure-link:hover:not(:disabled) { text-decoration: underline; }
+
+        /* 帯の列も幅を固定する。中身（帯）は固定幅だが、見出しの「進捗」のほうが広いので
+           指定が無いと列が見出しの幅になり、隣の列を押し出す。 */
+        .col-progress { width: 4.5rem; }
 
         /* 時刻と数字は等幅。桁が揃わないと、並べたときに比べられない。 */
         .col-time { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .78rem; color: var(--sub); }
@@ -151,7 +185,6 @@
         }
 
         .bar-fill { display: block; height: 100%; background: var(--accent); }
-        .bar-text { font-family: ui-monospace, monospace; font-size: .75rem; color: var(--sub); margin-left: .35rem; }
 
         .col-params input { width: 4.5rem; font-family: ui-monospace, monospace; font-size: .78rem; }
         .col-params button { margin-left: .3rem; }
@@ -185,6 +218,38 @@
 
         .operation-dialog p { margin: 0 0 .5rem; color: var(--danger); font-size: .85rem; }
 
+        /* 切った失敗理由の全文。操作ダイアログ（右上）と重ならないよう中央に置く。
+           こちらは全文を読ませるのが目的なので、幅を広く取り、折り返しと選択を許す
+           （表の中の nowrap をそのまま持ち込むと、読むために横スクロールさせることになる）。 */
+        .detail-dialog {
+            position: fixed;
+            top: 20vh;
+            left: 50%;
+            transform: translateX(-50%);
+            margin: 0;
+            width: min(40rem, calc(100vw - 4rem));
+            max-height: 60vh;
+            overflow-y: auto;
+            background: #fff;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            padding: 1rem 1.25rem;
+            box-shadow: 0 12px 32px rgba(16, 24, 40, .18);
+        }
+
+        .detail-dialog h2 { margin: 0 0 .5rem; }
+
+        /* 例外の Message は改行を持つことがある。pre-wrap にしないと 1 行に潰れて、
+           スタックの区切りが読めなくなる。 */
+        .detail-dialog p {
+            margin: 0 0 .75rem;
+            color: var(--ink);
+            font-family: ui-monospace, Menlo, Consolas, monospace;
+            font-size: .8rem;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
         /* 回路（WebSocket）が死んだときに Blazor がこの要素を表示する。無いと
            何も出ず、画面は無言で凍る（操作しても反応しないだけになる）。
            表示のさせ方は Blazor の JS が id で見つけて display を切り替える仕組み。 */
@@ -204,6 +269,31 @@
 </head>
 
 <body>
+    @* 絵柄の定義。ここに 1 度だけ置き、各ボタンは use で参照する。
+       外部のアイコンフォントや CDN を持ち込まないのは、この画面が CSS も含めて
+       持ち込みゼロで動くことを保てなくなるため（1 ファイルに収める話と同じ）。
+       静的な描画の側に置いてあるので、回路が繋がる前から絵柄は出る。 *@
+    <svg class="glyph-sprite" aria-hidden="true" focusable="false"
+         xmlns="http://www.w3.org/2000/svg">
+        <symbol id="glyph-pause" viewBox="0 0 24 24">
+            <rect x="6.5" y="5" width="4" height="14" rx="1" />
+            <rect x="13.5" y="5" width="4" height="14" rx="1" />
+        </symbol>
+        <symbol id="glyph-resume" viewBox="0 0 24 24">
+            <path d="M8 5.2v13.6a1 1 0 0 0 1.5.87l11.2-6.8a1 1 0 0 0 0-1.74L9.5 4.33A1 1 0 0 0 8 5.2z" />
+        </symbol>
+        @* キャンセルは × にする。停止（■）は一時停止と同じ「実行の制御」に見えるが、
+           これは終端へ落とす取り消しで、押したら戻せない。 *@
+        <symbol id="glyph-cancel" viewBox="0 0 24 24">
+            <path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6z" />
+        </symbol>
+        @* 保存はフロッピーではなくチェック。欄の隣で「打った値を確定する」の意味なので、
+           行内編集の確定に使われている形に合わせる。 *@
+        <symbol id="glyph-save" viewBox="0 0 24 24">
+            <path d="M9.6 16.2 5.4 12 4 13.4l5.6 5.6L20 8.6 18.6 7.2z" />
+        </symbol>
+    </svg>
+
     <Routes @rendermode="InteractiveServer" />
     <div id="blazor-error-ui">
         画面とサーバの接続が切れました。実行中の Job は動き続けています。

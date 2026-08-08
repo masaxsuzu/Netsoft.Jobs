@@ -488,11 +488,70 @@ public sealed class JobBoardTests : IDisposable
         Assert.Equal("登録できる Job の種類がありません。", board.JobTypesNotice);
     }
 
+    /// <summary>
+    /// 失敗理由を持たない行は押せない。押せる見た目で開いて空のダイアログが出るより、
+    /// 押せないほうがよい。空白だけの理由も「無い」に倒す。
+    /// </summary>
+    [Fact]
+    public void 失敗理由は中身があるときだけ押せる()
+    {
+        Assert.False(JobBoard.HasFailure(FailedRow(null)));
+        Assert.False(JobBoard.HasFailure(FailedRow(string.Empty)));
+        Assert.False(JobBoard.HasFailure(FailedRow("   ")));
+        Assert.True(JobBoard.HasFailure(FailedRow("読めない値です。")));
+    }
+
+    /// <summary>
+    /// 一覧では幅を固定して切るので、全文を読む道が要る。開いた中身は
+    /// 押した瞬間の文字列で、行が差し替わっても動かない。
+    /// </summary>
+    [Fact]
+    public void 失敗理由は全文と対象の名前つきで開いて閉じられる()
+    {
+        Assert.False(_board.IsFailureDialogOpen);
+
+        _board.ShowFailure(FailedRow("パラメータを読めませんでした: 読めない値"));
+
+        Assert.True(_board.IsFailureDialogOpen);
+        Assert.Equal("パラメータを読めませんでした: 読めない値", _board.FailureDetail);
+        Assert.Equal("失敗した Job", _board.FailureDetailName);
+
+        _board.CloseFailureDialog();
+
+        Assert.False(_board.IsFailureDialogOpen);
+        Assert.Null(_board.FailureDetail);
+
+        // 名前も一緒に消す。残ると、次に開いたときの見出しが前の Job のままになる瞬間ができる。
+        Assert.Null(_board.FailureDetailName);
+    }
+
+    /// <summary>
+    /// 失敗理由は行の中身であって操作の結果ではない。次の操作を始めても閉じない
+    /// （<c>OperationError</c> はそこで消える。消える条件が違うので別に持っている）。
+    /// </summary>
+    [Fact]
+    public async Task 失敗理由の詳細は次の操作を始めても開いたまま()
+    {
+        await _board.InitializeAsync(None);
+        _board.ShowFailure(FailedRow("読めない値です。"));
+
+        await _board.CancelAsync("does-not-exist", None);
+
+        Assert.True(_board.IsFailureDialogOpen);
+        Assert.Equal("読めない値です。", _board.FailureDetail);
+    }
+
     // 進捗の表示だけを見る行。可否は Registered の Job が持つ値
     // （どれを入れても表示は変わらないが、ありえない組み合わせを置かない）。
     private static JobListItemDto Row(int completed, int total) =>
         new("job-1", "行", "subtasks", "3 1", "Registered", DateTimeOffset.UtcNow, null, null, null, completed, total,
             CanCancel: true, CanRequestPause: true, CanRequestResume: false, CanEdit: true, Version: 1);
+
+    // 失敗して終わった行。終端なので操作はどれも押せない。
+    private static JobListItemDto FailedRow(string? failureMessage) =>
+        new("job-2", "失敗した Job", "subtasks", "3 1", "Failed", DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, failureMessage, 1, 3,
+            CanCancel: false, CanRequestPause: false, CanRequestResume: false, CanEdit: false, Version: 3);
 
     private static JobBoard BrokenBoard(Exception? failure = null) =>
         new(new JobsApiClient(new HttpClient(new ThrowingHandler(failure))
