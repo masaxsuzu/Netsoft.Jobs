@@ -36,17 +36,18 @@ public sealed class PauseResumeHandlerTests : IDisposable
     /// <summary>
     /// 一時停止要求の状態ごとの結末。要求済み・停止済みへの再要求は
     /// ボタンを 2 回押しただけなので成功として写る（キャンセルと同じ判断）。
-    /// 待機中（Registered / Resumed）は受理を待つ相手がいないので、2 段を踏まず直接 Paused。
+    /// 待機中（Registered / Resumed / Resuming）は走っていないので止める対象が無く、拒否する。
     /// </summary>
     [Theory]
     [InlineData(nameof(JobStatus.InProgress), true, nameof(JobStatus.Pausing))]
     [InlineData(nameof(JobStatus.Pausing), true, nameof(JobStatus.Pausing))]
     [InlineData(nameof(JobStatus.Paused), true, nameof(JobStatus.Paused))]
-    [InlineData(nameof(JobStatus.Registered), true, nameof(JobStatus.Paused))]
-    [InlineData(nameof(JobStatus.Resumed), true, nameof(JobStatus.Paused))]
+    [InlineData(nameof(JobStatus.Registered), false, nameof(JobStatus.Registered))]
+    [InlineData(nameof(JobStatus.Resumed), false, nameof(JobStatus.Resumed))]
+    [InlineData(nameof(JobStatus.Resuming), false, nameof(JobStatus.Resuming))]
     [InlineData(nameof(JobStatus.Cancelling), false, nameof(JobStatus.Cancelling))]
     [InlineData(nameof(JobStatus.Completed), false, nameof(JobStatus.Completed))]
-    public async Task 一時停止要求は実行中と待機中を受理し要求済みには冪等に成功する(
+    public async Task 一時停止要求は実行中だけを受理し待機中は拒否する(
         string current, bool success, string expected)
     {
         await AddAsync(JobAt("job-1", current));
@@ -89,29 +90,11 @@ public sealed class PauseResumeHandlerTests : IDisposable
     /// 確定まで 1 回の書き込みで済ませると、押した事実が変更通知に流れない。画面から見ると
     /// 「押したのに何も起きていない」と区別が付かず、利用者は同じボタンをもう一度押す。
     /// 結末だけを見るテストではこの 1 回を消しても気づけないので、書き込みの列で固定する。
+    /// <para>
+    /// 保留側にも同じ形のテストがあったが、待機中から保留できなくなって相手が居なくなった
+    /// （保留の入口は実行中だけで、そこにはハンドラが居る）。残っているのは再開だけ。
+    /// </para>
     /// </remarks>
-    [Theory]
-    [InlineData(nameof(JobStatus.Registered), nameof(JobStatus.Pausing), nameof(JobStatus.Paused))]
-    [InlineData(nameof(JobStatus.Resumed), nameof(JobStatus.Pausing), nameof(JobStatus.Paused))]
-    public async Task 待機中の保留は確定待ちを一度保存してから落とす(
-        string current, string settling, string settled)
-    {
-        CancelJobCallLog log = new();
-        PauseJobHandler pause = new(
-            new CallLoggingJobStore(_store, log),
-            new FixedTimeProvider(Requested),
-            NullLogger<PauseJobHandler>.Instance);
-
-        await AddAsync(JobAt("job-1", current));
-
-        JobControlResult result = await pause.HandleAsync("job-1", CancellationToken.None);
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal(settled, result.Job?.Status);
-        Assert.Equal([$"update:job-1:{settling}", $"update:job-1:{settled}"], log.Entries);
-    }
-
-    /// <summary>再開も同じ形。<see cref="待機中の保留は確定待ちを一度保存してから落とす"/> を参照。</summary>
     [Fact]
     public async Task 停止中の再開は確定待ちを一度保存してから落とす()
     {

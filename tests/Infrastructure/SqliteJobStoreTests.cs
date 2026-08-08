@@ -173,6 +173,127 @@ public sealed class SqliteJobStoreTests
         }
     }
 
+    /// <summary>
+    /// 再開した Job は列の最後尾。登録の古い順だけで選ぶと必ず先頭に来てしまう
+    /// ── 停止と再開では CreatedAt が動かないので、待ち行列に戻った時点で、
+    /// その間ずっと待っていた Job より古いことになるため。
+    /// </summary>
+    [Fact]
+    public async Task FindOldestWaitingAsyncは再開したJobより後から登録したJobを先に返す()
+    {
+        using TemporaryDatabase database = new();
+        SqliteJobStore store = await database.OpenStoreAsync();
+
+        // 再開した側が「一番古い」。CreatedAt だけで並べるとこれが選ばれる。
+        await store.AddAsync(
+            Job.Rehydrate(
+                JobId.From("resumed-最古"),
+                "止めて再開した Job",
+                "Demo",
+                string.Empty,
+                JobStatus.Resumed,
+                BaseTime,
+                startedAt: BaseTime.AddMinutes(1),
+                finishedAt: null,
+                failureMessage: null),
+            None);
+
+        await store.AddAsync(JobAt("registered-新", BaseTime.AddHours(1)), None);
+
+        Job? next = await store.FindOldestWaitingAsync(None);
+
+        Assert.Equal("registered-新", next?.Id.Value);
+    }
+
+    /// <summary>
+    /// 追い越されるのは待っている相手が居る間だけ。Registered が捌けたら、
+    /// 再開した Job がそのまま次になる（順番を落とすのではなく、後ろへ回すだけ）。
+    /// </summary>
+    [Fact]
+    public async Task FindOldestWaitingAsyncは再開したJobしか無ければそれを返す()
+    {
+        using TemporaryDatabase database = new();
+        SqliteJobStore store = await database.OpenStoreAsync();
+
+        await store.AddAsync(
+            Job.Rehydrate(
+                JobId.From("resumed"),
+                "止めて再開した Job",
+                "Demo",
+                string.Empty,
+                JobStatus.Resumed,
+                BaseTime,
+                startedAt: BaseTime.AddMinutes(1),
+                finishedAt: null,
+                failureMessage: null),
+            None);
+
+        Job running = JobAt("running", BaseTime);
+        running.Apply(JobTrigger.Start, BaseTime);
+        await store.AddAsync(running, None);
+
+        Assert.Equal("resumed", (await store.FindOldestWaitingAsync(None))?.Id.Value);
+    }
+
+    /// <summary>
+    /// 保留中が 1 件でもあれば、待機中が居ても次は無い。保留中の再開を待つ。
+    /// </summary>
+    /// <remarks>
+    /// この 1 行が無いと、止めた本人の意図（いま流さない）に反して次が走り出す。
+    /// 実行が止まったままになりうることは承知のうえで、利用者が決めた規則。
+    /// </remarks>
+    [Fact]
+    public async Task FindOldestWaitingAsyncは保留中があれば待機中が居てもnullを返す()
+    {
+        using TemporaryDatabase database = new();
+        SqliteJobStore store = await database.OpenStoreAsync();
+
+        await store.AddAsync(JobAt("registered", BaseTime.AddHours(1)), None);
+        Assert.NotNull(await store.FindOldestWaitingAsync(None));
+
+        await store.AddAsync(
+            Job.Rehydrate(
+                JobId.From("paused"),
+                "止まっている Job",
+                "Demo",
+                string.Empty,
+                JobStatus.Paused,
+                BaseTime,
+                startedAt: BaseTime.AddMinutes(1),
+                finishedAt: null,
+                failureMessage: null),
+            None);
+
+        Assert.Null(await store.FindOldestWaitingAsync(None));
+    }
+
+    /// <summary>
+    /// 待つのは保留中（Paused）だけ。受理待ち（Pausing）はまだ走っているので、
+    /// ここで止めると「実行中が 1 件あるだけで次が出ない」という別の規則になってしまう。
+    /// </summary>
+    [Fact]
+    public async Task FindOldestWaitingAsyncは受理待ちの保留では止まらない()
+    {
+        using TemporaryDatabase database = new();
+        SqliteJobStore store = await database.OpenStoreAsync();
+
+        await store.AddAsync(JobAt("registered", BaseTime.AddHours(1)), None);
+        await store.AddAsync(
+            Job.Rehydrate(
+                JobId.From("pausing"),
+                "止まりかけの Job",
+                "Demo",
+                string.Empty,
+                JobStatus.Pausing,
+                BaseTime,
+                startedAt: BaseTime.AddMinutes(1),
+                finishedAt: null,
+                failureMessage: null),
+            None);
+
+        Assert.Equal("registered", (await store.FindOldestWaitingAsync(None))?.Id.Value);
+    }
+
     [Fact]
     public async Task FindOldestWaitingAsyncは待機中が無ければnullを返す()
     {

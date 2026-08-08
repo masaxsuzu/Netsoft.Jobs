@@ -66,34 +66,49 @@ public sealed class JobStateMachineTests
     }
 
     /// <summary>
-    /// 待ち行列の 2 状態は 1 手ではすべての契機で同じ結果になるが、
-    /// <b>一時停止と再開の往復は Registered だけ元に戻らない</b>。
+    /// <b>一時停止が掛かるのは走っているものだけ。</b>待ち行列に居る Job は
+    /// まだ始まっていないので、止める対象が無い。
     /// </summary>
     /// <remarks>
-    /// 「Registered と Resumed はできることが同じ」は 1 手の話に限る。往復まで見ると
-    /// 保留は Registered にとって片道で、走っていない Job も Resumed になる。
-    /// Paused が 1 つしか無い以上、戻り先はどちらか一方にしか決められない
-    /// （戻り先を StartedAt で分けるには状態機械が Job の中身を見る必要があり、
-    /// 遷移の判断が状態と契機だけで決まるという形が壊れる）。
-    /// この非対称は承知のうえで受け入れているので、忘れないようここで固定する。
+    /// かつては待ち行列（Registered / Resumed / Resuming）からも掛かり、待ち行列から
+    /// 降ろす操作を兼ねていた。降ろす手段をキャンセルに寄せたので入口が 1 つになっている。
+    /// 総当たりにしてあるのは、状態を足したときに「そこからも止められる」を
+    /// 黙って通さないため。
     /// </remarks>
     [Fact]
-    public void 保留と再開の往復で戻るのはResumedだけ()
+    public void 一時停止できるのは実行中だけ()
     {
-        foreach (JobStatus waiting in JobTransitionTable.AllStatuses.Where(status => status.IsWaiting()))
+        foreach (JobStatus status in JobTransitionTable.AllStatuses)
         {
-            JobTransitionResult pausing = JobStateMachine.Evaluate(waiting, JobTrigger.RequestPause);
-            Assert.Equal(JobStatus.Pausing, pausing.Status);
+            JobTransitionResult result = JobStateMachine.Evaluate(status, JobTrigger.RequestPause);
 
-            JobTransitionResult paused = JobStateMachine.Evaluate(pausing.Status, JobTrigger.ConfirmPaused);
-            Assert.Equal(JobStatus.Paused, paused.Status);
-
-            JobTransitionResult resuming = JobStateMachine.Evaluate(paused.Status, JobTrigger.Resume);
-            Assert.Equal(JobStatus.Resuming, resuming.Status);
-
-            JobTransitionResult back = JobStateMachine.Evaluate(resuming.Status, JobTrigger.ConfirmResumed);
-            Assert.Equal(JobStatus.Resumed, back.Status);
+            Assert.Equal(status == JobStatus.InProgress, result.IsAllowed);
         }
+    }
+
+    /// <summary>
+    /// 走っている Job を止めて再開すると、待ち行列には <see cref="JobStatus.Resumed"/> として戻る。
+    /// </summary>
+    /// <remarks>
+    /// 入口が InProgress だけになったので、この往復に非対称は無くなった。かつては
+    /// Registered からも Pausing へ入れたため、そこから再開すると走っていない Job が
+    /// InProgress へ出てしまい、戻り先が Paused 1 つしか無いことと合わせて
+    /// 「Registered だけ往復で戻らない」歪みを抱えていた。
+    /// </remarks>
+    [Fact]
+    public void 停止して再開すると待ち行列にはResumedとして戻る()
+    {
+        JobTransitionResult pausing = JobStateMachine.Evaluate(JobStatus.InProgress, JobTrigger.RequestPause);
+        Assert.Equal(JobStatus.Pausing, pausing.Status);
+
+        JobTransitionResult paused = JobStateMachine.Evaluate(pausing.Status, JobTrigger.ConfirmPaused);
+        Assert.Equal(JobStatus.Paused, paused.Status);
+
+        JobTransitionResult resuming = JobStateMachine.Evaluate(paused.Status, JobTrigger.Resume);
+        Assert.Equal(JobStatus.Resuming, resuming.Status);
+
+        JobTransitionResult back = JobStateMachine.Evaluate(resuming.Status, JobTrigger.ConfirmResumed);
+        Assert.Equal(JobStatus.Resumed, back.Status);
     }
 
     [Fact]

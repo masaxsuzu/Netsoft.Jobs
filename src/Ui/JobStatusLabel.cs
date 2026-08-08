@@ -14,8 +14,10 @@ namespace Netsoft.Jobs.Ui;
 /// 名前から文言への写しだけなので、型に直す意味も無い。
 /// </para>
 /// <para>
-/// "InProgress" だけ英語の "Running" を出す。利用者が読んできた語を内部の改名に合わせて
-/// 変える理由が無いため。<b>ここが状態名と一致していないのは意図的。</b>
+/// <b>全部日本語で出す。</b>"InProgress" だけは英語の "Running" を出していた ── 利用者が
+/// 読んできた語を内部の改名に合わせて変える理由が無い、という理由だった。読んできた語
+/// だからという理由は、利用者本人が「実行中に変える」と言った時点で無くなっている。
+/// 1 つだけ英語が混ざる並びは、書いた側の事情でしかない。
 /// </para>
 /// <para>
 /// 知らない値は、そのまま出す。「不明」などに畳むと、画面を見ている人から見て
@@ -29,7 +31,7 @@ public static class JobStatusLabel
     public static string From(string status) => status switch
     {
         "Registered" => "登録済み",
-        "InProgress" => "Running",
+        "InProgress" => "実行中",
         "Pausing" => "保留要求中",
         "Paused" => "保留中",
         "Resuming" => "再開要求中",
@@ -39,5 +41,31 @@ public static class JobStatusLabel
         "Completed" => "完了",
         "Failed" => "失敗",
         _ => status,
+    };
+
+    /// <summary>状態の文字列表現を、バッジの色を決める CSS クラスにする。</summary>
+    /// <remarks>
+    /// <para>
+    /// 10 個の状態を 5 色に畳んである。<b>色で見分けたいのは「今どうなっているか」の大分類</b>で、
+    /// 保留要求中と保留中を別の色にしても、一覧を眺める人が得るものが無い。
+    /// 細かい違いは <see cref="From"/> の文言が持つ。
+    /// </para>
+    /// <para>
+    /// 判定を <c>.razor</c> へ書かない。カバレッジが <c>**/*.razor</c> を除外していて、
+    /// あちらに置いた分岐には床が一切かからない（<c>JobBoard</c> が Razor の外に居るのと同じ理由）。
+    /// </para>
+    /// <para>
+    /// 知らない値は既定の色。<see cref="From"/> が名前をそのまま出すので、
+    /// 色が付いていないこと自体が「写像を足し忘れた」の印になる。
+    /// </para>
+    /// </remarks>
+    public static string ClassFor(string status) => status switch
+    {
+        "InProgress" or "Resuming" or "Resumed" => "badge-running",
+        "Pausing" or "Paused" => "badge-paused",
+        "Completed" => "badge-completed",
+        "Failed" => "badge-failed",
+        "Cancelling" or "Cancelled" => "badge-cancelled",
+        _ => "badge-registered",
     };
 }

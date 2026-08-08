@@ -13,10 +13,10 @@
 @* プリレンダリング中（回路が繋がる前）の操作は失われる。@onsubmit は動かず素の
    フォーム送信になって入力ごと消えるし、押さなくても入力は回路の最初の描画で
    サーバ状態に巻き戻る。だから回路が繋がるまで入力とボタンを disabled にしておく。 *@
-<section>
+<section class="panel">
     <h2>Job の登録</h2>
-    <form @onsubmit="RegisterAsync">
-        <div>
+    <form class="register" @onsubmit="RegisterAsync">
+        <div class="field">
             <label for="job-name">名前</label>
             <input id="job-name" disabled="@(!_interactive)" @bind="Board.Name" />
             @foreach (string message in Board.ErrorsFor("name"))
@@ -24,7 +24,7 @@
                 <p class="error">@message</p>
             }
         </div>
-        <div>
+        <div class="field">
             <label for="job-type">種類</label>
             @* 選択肢はサーバ（登録済みのハンドラ）から来る。ここに種類名を並べると、
                ハンドラを足し引きしたときに実行できる種類とずれる。 *@
@@ -46,7 +46,7 @@
                 <p class="error">@message</p>
             }
         </div>
-        <div>
+        <div class="field">
             <label for="job-parameters">パラメータ</label>
             @* 欄はテキスト 1 つのまま（Parameters はハンドラだけが解釈する不透明な文字列）。
                何を入れるのかの説明だけを、UI 側の対応表から選んだ種類に応じて出す。 *@
@@ -57,11 +57,12 @@
                 <p class="error">@message</p>
             }
         </div>
-        <button type="submit" disabled="@(!_interactive || !Board.CanRegister || Board.IsBusy)">登録</button>
+        <button type="submit" class="primary"
+                disabled="@(!_interactive || !Board.CanRegister || Board.IsBusy)">登録</button>
     </form>
 </section>
 
-<section>
+<section class="panel">
     <h2>Job の一覧</h2>
     @if (Board.Notice is not null)
     {
@@ -73,19 +74,24 @@
     }
     else
     {
+        <div class="table-scroll">
         <table>
             <thead>
+                @* 見出しは短く。「作成日時」は列が時刻しか持たないので「作成」で足りる。
+                   最後の列を空にしない ── 空の見出しは、そこに何が並ぶのかを読み手に推測させる。 *@
+                @* 失敗理由は進捗の隣に置く。どちらも「どこまで進んで、なぜ止まったか」を
+                   読む列で、間に時刻 3 列を挟むと視線が往復する。 *@
                 <tr>
                     <th>名前</th>
                     <th>種類</th>
                     <th>状態</th>
-                    <th>進捗</th>
-                    <th>作成日時</th>
-                    <th>開始日時</th>
-                    <th>終了日時</th>
-                    <th>失敗理由</th>
+                    <th class="col-progress">進捗</th>
+                    <th class="col-failure">失敗理由</th>
+                    <th>作成</th>
+                    <th>開始</th>
+                    <th>終了</th>
                     <th>パラメータ</th>
-                    <th></th>
+                    <th>操作</th>
                 </tr>
             </thead>
             <tbody>
@@ -97,17 +103,48 @@
                 @foreach (JobListItemDto job in Board.Jobs)
                 {
                     <tr @key="job.Id">
-                        <td>@job.Name</td>
-                        <td>@job.JobType</td>
-                        <td>@JobStatusLabel.From(job.Status)</td>
-                        @* サブタスクの進捗（完了 / 総数）。行がまだ無い（登録直後）は「-」。
-                           個々の状態まで並べるほどの幅は無いので、数字だけを出す。 *@
-                        <td class="progress">@JobBoard.ProgressFor(job)</td>
-                        <td>@JobBoard.Format(job.CreatedAt)</td>
-                        <td>@JobBoard.Format(job.StartedAt)</td>
-                        <td>@JobBoard.Format(job.FinishedAt)</td>
-                        <td>@job.FailureMessage</td>
-                        <td>
+                        <td class="col-name">@job.Name</td>
+                        <td class="col-type">@job.JobType</td>
+                        <td><span class="badge @JobStatusLabel.ClassFor(job.Status)">@JobStatusLabel.From(job.Status)</span></td>
+                        @* 出すのは帯だけ。数（3/20）は title と読み上げ名に載せる。
+                           帯は progressbar として読ませる ── 幅を style で持つだけの span は
+                           読み上げには何も無いのと同じで、値を持たせる先が aria しかない。 *@
+                        <td class="col-progress">
+                            @* 行がまだ無い Job に空の帯を出さない。0% の帯と「まだ分割されていない」は
+                               別のことなので、同じ見た目にすると読み手が取り違える。 *@
+                            @if (job.TotalSubTasks > 0)
+                            {
+                                <span class="bar" title="@JobBoard.ProgressFor(job)"
+                                      role="progressbar"
+                                      aria-label="進捗 @JobBoard.ProgressFor(job)"
+                                      aria-valuemin="0"
+                                      aria-valuemax="@job.TotalSubTasks"
+                                      aria-valuenow="@job.CompletedSubTasks">
+                                    <span class="bar-fill" style="width:@(JobBoard.ProgressPercent(job))%"></span>
+                                </span>
+                            }
+                        </td>
+                        @* 本文は置かず、絵柄 1 つにする。例外の Message は長さに上限が無く、
+                           表の中に本文として置ける形をしていない（切って出しても、切った分は
+                           結局どこかで開くことになる）。押すと全文がダイアログに出る。
+                           読み上げ名は「失敗理由を見る」── ここに Message そのものを載せると、
+                           一覧を読み流している最中に例外の全文を読み上げてしまう。 *@
+                        <td class="col-failure">
+                            @if (JobBoard.HasFailure(job))
+                            {
+                                <button type="button" class="icon failure danger"
+                                        title="失敗理由を見る" aria-label="失敗理由を見る"
+                                        disabled="@(!_interactive)"
+                                        @onclick="() => Board.ShowFailure(job)">
+                                    <svg class="glyph" aria-hidden="true" focusable="false"><use href="#glyph-failure" /></svg>
+                                </button>
+                            }
+                        </td>
+                        @* 年は title に逃がす。3 列を 1 行に収めるために表示からは落としている。 *@
+                        <td class="col-time" title="@JobBoard.FormatFull(job.CreatedAt)">@JobBoard.Format(job.CreatedAt)</td>
+                        <td class="col-time" title="@JobBoard.FormatFull(job.StartedAt)">@JobBoard.Format(job.StartedAt)</td>
+                        <td class="col-time" title="@JobBoard.FormatFull(job.FinishedAt)">@JobBoard.Format(job.FinishedAt)</td>
+                        <td class="col-params">
                             @* 実行中でも編集できる（反映はサブタスクの境界）。入力中の値は
                                通知の再読み込みで消えないよう、行の再描画から独立に保持する。
                                get を辞書の indexer にしない。描画は変更通知や回路接続の合図で
@@ -117,39 +154,43 @@
                                    disabled="@(!_interactive || !job.CanEdit || Board.IsBusy)"
                                    @bind:get="Board.EditValueFor(job)"
                                    @bind:set="value => Board.SetEdit(job.Id, value)" />
-                            <button type="button"
+                            @* 絵柄だけのボタンには読める名前が要る。title は吹き出し（マウス）で、
+                               aria-label は読み上げ。片方だけだと、どちらかの利用者に名前が届かない。
+                               絵柄そのものは aria-hidden で読み上げから外す ── 名前が二重に読まれる。 *@
+                            <button type="button" class="icon" title="保存" aria-label="保存"
                                     disabled="@(!_interactive || !job.CanEdit || Board.IsBusy)"
                                     @onclick="() => Board.EditAsync(job.Id, CancellationToken.None)">
-                                保存
+                                <svg class="glyph" aria-hidden="true" focusable="false"><use href="#glyph-save" /></svg>
                             </button>
                         </td>
-                        <td>
+                        <td class="col-actions">
                             @* 押せるかどうかはサーバが行に載せてくる。ここで状態名を並べて
                                判定すると、状態が増えたときに直し忘れたボタンができるし、
                                判定に要る規則は Domain のもので、画面は Domain を参照しない。
                                載っているのは行を受け取った瞬間の可否なので、押した先で状態が
                                進んでいれば拒否されうる（そのときは応答が現在の Job を返す）。
                                回路が繋がる前はそれ以前の問題として全部押せない（上の説明を参照）。 *@
-                            <button type="button"
+                            <button type="button" class="icon" title="一時停止" aria-label="一時停止"
                                     disabled="@(!_interactive || !job.CanRequestPause || Board.IsBusy)"
                                     @onclick="() => Board.PauseAsync(job.Id, CancellationToken.None)">
-                                一時停止
+                                <svg class="glyph" aria-hidden="true" focusable="false"><use href="#glyph-pause" /></svg>
                             </button>
-                            <button type="button"
+                            <button type="button" class="icon" title="再開" aria-label="再開"
                                     disabled="@(!_interactive || !job.CanRequestResume || Board.IsBusy)"
                                     @onclick="() => Board.ResumeAsync(job.Id, CancellationToken.None)">
-                                再開
+                                <svg class="glyph" aria-hidden="true" focusable="false"><use href="#glyph-resume" /></svg>
                             </button>
-                            <button type="button"
+                            <button type="button" class="icon danger" title="キャンセル" aria-label="キャンセル"
                                     disabled="@(!_interactive || !job.CanCancel || Board.IsBusy)"
                                     @onclick="() => Board.CancelAsync(job.Id, CancellationToken.None)">
-                                キャンセル
+                                <svg class="glyph" aria-hidden="true" focusable="false"><use href="#glyph-cancel" /></svg>
                             </button>
                         </td>
                     </tr>
                 }
             </tbody>
         </table>
+        </div>
     }
 </section>
 
@@ -164,6 +205,20 @@
 <dialog class="operation-dialog" open="@Board.IsOperationDialogOpen">
     <p>@Board.OperationError</p>
     <button type="button" @onclick="Board.CloseOperationDialog">閉じる</button>
+</dialog>
+
+@* 失敗理由の全文。開き方は操作ダイアログと同じ（DOM に置いたまま open だけ切り替える）。
+   別の要素にしてあるのは、出る条件も消える条件も違うため ── こちらは行の中身を読むための
+   ものなので、次の操作を始めても閉じない。位置は画面の中央寄せにして、右上の操作ダイアログと
+   重ならないようにする（失敗した Job をキャンセルしようとして両方出る場面がある）。 *@
+<dialog class="detail-dialog" open="@Board.IsFailureDialogOpen">
+    <h2>失敗理由 — @Board.FailureDetailName</h2>
+    <p>@Board.FailureDetail</p>
+    @* 閉じるは右下。本文を上から読み終えた先に置く ── 左上に置くと、読み終える前に
+       視線が戻る位置に「やめる手」が居ることになる。 *@
+    <div class="detail-actions">
+        <button type="button" @onclick="Board.CloseFailureDialog">閉じる</button>
+    </div>
 </dialog>
 
 @code {

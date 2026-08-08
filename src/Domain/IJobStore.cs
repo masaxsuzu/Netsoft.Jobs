@@ -66,8 +66,30 @@ public interface IJobStore
     Task<IReadOnlyList<Job>> ListAsync(CancellationToken cancellationToken);
 
     /// <summary>
-    /// 最も古い待機中（Registered / Resumed）の Job を 1 件取得する。実行エンジンが次に動かすものを選ぶのに使う。
+    /// 待機中（<see cref="JobStatusExtensions.IsWaiting"/>）の Job のうち、次に動かす 1 件を取得する。
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>選ぶ順は「まだ一度も待ち行列を離れていないもの（<see cref="JobStatus.Registered"/>）が先、
+    /// 再開して戻ってきたもの（<see cref="JobStatus.Resumed"/>）が後」で、その中では登録の古い順。</b>
+    /// </para>
+    /// <para>
+    /// 登録の古い順だけで選ぶと、再開した Job が必ず先頭に来る ── 停止と再開では
+    /// <see cref="Job.CreatedAt"/> が動かないので、待ち行列に戻った時点で、その間ずっと
+    /// 待っていた Job より古いことになるため。<b>再開は列の最後尾に並び直すこと</b>という
+    /// 利用者の決定をここで表している。
+    /// </para>
+    /// <para>
+    /// <b><see cref="JobStatus.Paused"/> の Job が 1 件でもあれば、待機中が居ても null を返す。</b>
+    /// 保留中があるあいだは実行を進めず、その再開（またはキャンセル）を待つ、という
+    /// 利用者の決定による。<b>裏を返すと、再開もキャンセルもされない保留中が 1 件あると、
+    /// 実行は止まったままになる。</b>
+    /// </para>
+    /// <para>
+    /// 次に何を動かすかの判断は、順番も含めてすべてここに寄せてある。実行エンジンは
+    /// 返ってきた 1 件を実行し、null なら合図を待つだけで、並びも保留の規則も知らない。
+    /// </para>
+    /// </remarks>
     Task<Job?> FindOldestWaitingAsync(CancellationToken cancellationToken);
 
     /// <summary>

@@ -321,6 +321,63 @@ public sealed class JobBoard
     /// </remarks>
     public void CloseOperationDialog() => OperationError = null;
 
+    /// <summary>開いている失敗理由の全文。開いていなければ null。</summary>
+    /// <remarks>
+    /// <para>
+    /// 一覧の失敗理由の列は絵柄 1 つしか置かない（例外の <c>Message</c> は長さに上限が無く、
+    /// 表の中に本文として置ける形をしていない）。中身を読む手段がこれ。
+    /// </para>
+    /// <para>
+    /// <b>Job の参照ではなく、押した瞬間の文字列を控える。</b>参照を持つと、背景の
+    /// 取り直しが行を差し替えた（<see cref="Merge"/> は行ごと作り直す）あとも古い
+    /// インスタンスを掴んだままになる。失敗理由は終端で確定してもう動かないので、
+    /// 文字列を控えても古くならない。<see cref="OperationError"/> と別に持つのは、
+    /// これが操作の結果ではなく行の中身であり、次の操作で消えてはいけないため。
+    /// </para>
+    /// </remarks>
+    public string? FailureDetail { get; private set; }
+
+    /// <summary>開いている失敗理由が、どの Job のものか。開いていなければ null。</summary>
+    public string? FailureDetailName { get; private set; }
+
+    /// <summary>失敗理由のダイアログが開いているか。</summary>
+    public bool IsFailureDialogOpen => FailureDetail is not null;
+
+    /// <summary>失敗理由の全文を開く。</summary>
+    public void ShowFailure(JobListItemDto job)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+
+        FailureDetailName = job.Name;
+        FailureDetail = job.FailureMessage;
+    }
+
+    /// <summary>失敗理由のダイアログを閉じる。</summary>
+    /// <remarks>
+    /// 2 つまとめて消す。<see cref="FailureDetailName"/> だけ残ると、次に開いたときの
+    /// 見出しが前の Job の名前のまま出る瞬間ができる。
+    /// 閉じることと中身を捨てることを 1 つの状態にしておく理由は
+    /// <see cref="CloseOperationDialog"/> と同じ。
+    /// </remarks>
+    public void CloseFailureDialog()
+    {
+        FailureDetail = null;
+        FailureDetailName = null;
+    }
+
+    /// <summary>失敗理由を持っているか（＝絵柄を出すか）。</summary>
+    /// <remarks>
+    /// 空白だけの理由も「無い」と見なす。押せる絵柄を出して空のダイアログが開くより、
+    /// 何も出ないほうが読み手を騙さない。判定を <c>.razor</c> に書かないのは
+    /// <see cref="JobStatusLabel.ClassFor"/> と同じ理由。
+    /// </remarks>
+    public static bool HasFailure(JobListItemDto job)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+
+        return !string.IsNullOrWhiteSpace(job.FailureMessage);
+    }
+
     /// <summary>登録の入力エラーのうち、指定した項目のもの。</summary>
     public IEnumerable<string> ErrorsFor(string field) =>
         RegistrationErrors.TryGetValue(field, out string[]? messages) ? messages : [];
@@ -329,6 +386,11 @@ public sealed class JobBoard
     /// サブタスクの進捗（完了 / 総数）。行がまだ無い（登録直後で分割されていない）のは
     /// 進捗ゼロとは違うので、0/0 とは出さない。
     /// </summary>
+    /// <remarks>
+    /// <b>一覧の文字としては出さない。</b>帯の隣に置いていたが、10 列を 1 画面に
+    /// 収める余地が無くなり、操作の列が画面外へ出ていた。数字そのものは
+    /// 帯の <c>title</c> と読み上げ名に載せてあるので、消えてはいない。
+    /// </remarks>
     public static string ProgressFor(JobListItemDto job)
     {
         ArgumentNullException.ThrowIfNull(job);
@@ -336,9 +398,38 @@ public sealed class JobBoard
         return job.TotalSubTasks == 0 ? "-" : $"{job.CompletedSubTasks}/{job.TotalSubTasks}";
     }
 
-    /// <summary>時刻の表示。持っていなければ「-」。</summary>
+    /// <summary>進捗の帯の幅（%）。行がまだ無ければ 0。</summary>
+    /// <remarks>
+    /// <para>
+    /// 帯だけだと 3/4 と 30/40 が同じに見える。それでも一覧に出すのは帯だけにしてある ──
+    /// 一覧を上から眺めるときに要るのは進み具合の比較で、そこは帯のほうが速い。
+    /// 分母が要る場面のために、数（<see cref="ProgressFor"/>）は帯の <c>title</c> と
+    /// 読み上げ名に載せている。
+    /// </para>
+    /// <para>
+    /// 計算を <c>.razor</c> に書かないのは <see cref="JobStatusLabel.ClassFor"/> と同じ理由。
+    /// </para>
+    /// </remarks>
+    public static int ProgressPercent(JobListItemDto job)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+
+        return job.TotalSubTasks == 0 ? 0 : job.CompletedSubTasks * 100 / job.TotalSubTasks;
+    }
+
+    /// <summary>一覧に出す時刻。持っていなければ「-」。</summary>
+    /// <remarks>
+    /// 年を落としてある。作成・開始・終了の 3 列を 1 行に収めるためで、落とさないと
+    /// 列が折り返して 1 行が 2 段になる（それが元の画面で起きていた）。
+    /// 年まで要る場面のために、完全な値は <see cref="FormatFull"/> が返し、
+    /// 画面は列の <c>title</c> に載せている。
+    /// </remarks>
     public static string Format(DateTimeOffset? value) =>
-        value is { } present ? present.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") : "-";
+        value is { } present ? present.ToLocalTime().ToString("MM-dd HH:mm:ss") : "-";
+
+    /// <summary>年を含む完全な時刻。持っていなければ空。</summary>
+    public static string FormatFull(DateTimeOffset? value) =>
+        value is { } present ? present.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") : string.Empty;
 
     /// <summary>
     /// 手元の一覧に取り直した一覧を重ね、行ごとに版の新しい方を残す。

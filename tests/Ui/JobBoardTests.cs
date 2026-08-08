@@ -436,13 +436,43 @@ public sealed class JobBoardTests : IDisposable
         Assert.Equal("2/3", JobBoard.ProgressFor(Row(completed: 2, total: 3)));
     }
 
+    /// <summary>
+    /// 一覧の時刻は年を落とす。3 列を 1 行に収めるためで、年まで要る人のために
+    /// 完全な値を別に返す（画面は列の title に載せている）。
+    /// </summary>
     [Fact]
-    public void 時刻は無ければハイフン()
+    public void 時刻は年を落として出し完全な値は別に返す()
+    {
+        DateTimeOffset at = new(2026, 8, 5, 9, 0, 0, TimeSpan.Zero);
+
+        Assert.Equal(at.ToLocalTime().ToString("MM-dd HH:mm:ss"), JobBoard.Format(at));
+        Assert.Equal(at.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"), JobBoard.FormatFull(at));
+    }
+
+    /// <summary>
+    /// 持っていない時刻は、一覧では「-」。title は空にする ── 空の吹き出しは出ない。
+    /// </summary>
+    [Fact]
+    public void 時刻は無ければハイフンでtitleは空()
     {
         Assert.Equal("-", JobBoard.Format(null));
+        Assert.Equal(string.Empty, JobBoard.FormatFull(null));
+    }
 
-        DateTimeOffset at = new(2026, 8, 5, 9, 0, 0, TimeSpan.Zero);
-        Assert.Equal(at.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"), JobBoard.Format(at));
+    /// <summary>
+    /// 帯の幅。行がまだ無い（登録直後で分割されていない）のは 0% で、
+    /// 画面はそもそも帯を出さない（0% の帯と「まだ分割されていない」は別のこと）。
+    /// </summary>
+    [Fact]
+    public void 進捗の帯は完了の割合で行が無ければゼロ()
+    {
+        Assert.Equal(0, JobBoard.ProgressPercent(Row(completed: 0, total: 0)));
+        Assert.Equal(0, JobBoard.ProgressPercent(Row(completed: 0, total: 4)));
+        Assert.Equal(50, JobBoard.ProgressPercent(Row(completed: 2, total: 4)));
+        Assert.Equal(100, JobBoard.ProgressPercent(Row(completed: 4, total: 4)));
+
+        // 割り切れないときは切り捨て。帯が満杯に見えるのは本当に終わったときだけにする。
+        Assert.Equal(66, JobBoard.ProgressPercent(Row(completed: 2, total: 3)));
     }
 
     [Fact]
@@ -458,11 +488,91 @@ public sealed class JobBoardTests : IDisposable
         Assert.Equal("登録できる Job の種類がありません。", board.JobTypesNotice);
     }
 
+    /// <summary>
+    /// 失敗理由を持たない行には絵柄を出さない。押せて空のダイアログが開くより、
+    /// 何も出ないほうがよい。空白だけの理由も「無い」に倒す。
+    /// </summary>
+    [Fact]
+    public void 失敗理由は中身があるときだけ絵柄が出る()
+    {
+        Assert.False(JobBoard.HasFailure(FailedRow(null)));
+        Assert.False(JobBoard.HasFailure(FailedRow(string.Empty)));
+        Assert.False(JobBoard.HasFailure(FailedRow("   ")));
+        Assert.True(JobBoard.HasFailure(FailedRow("読めない値です。")));
+    }
+
+    /// <summary>
+    /// 一覧には絵柄しか置かないので、全文を読む道が要る。開く中身は
+    /// 押した瞬間の文字列で、行が差し替わっても動かない。
+    /// </summary>
+    [Fact]
+    public void 失敗理由は押すと全文と対象の名前が出て閉じられる()
+    {
+        Assert.False(_board.IsFailureDialogOpen);
+
+        _board.ShowFailure(FailedRow("パラメータを読めませんでした: 読めない値"));
+
+        Assert.True(_board.IsFailureDialogOpen);
+        Assert.Equal("パラメータを読めませんでした: 読めない値", _board.FailureDetail);
+        Assert.Equal("失敗した Job", _board.FailureDetailName);
+
+        _board.CloseFailureDialog();
+
+        Assert.False(_board.IsFailureDialogOpen);
+        Assert.Null(_board.FailureDetail);
+
+        // 名前も一緒に消す。残ると、次に開いたときの見出しが前の Job のままになる瞬間ができる。
+        Assert.Null(_board.FailureDetailName);
+    }
+
+    /// <summary>
+    /// 別の行を押したら、そちらへ差し替わる。前の行の分が残ると、
+    /// 押した行と開いている中身が食い違う。
+    /// </summary>
+    [Fact]
+    public void 続けて別の行を押すと出る中身が差し替わる()
+    {
+        _board.ShowFailure(FailedRow("1 つ目の理由"));
+        _board.ShowFailure(OtherFailedRow("2 つ目の理由"));
+
+        Assert.Equal("2 つ目の理由", _board.FailureDetail);
+        Assert.Equal("もう 1 つの失敗した Job", _board.FailureDetailName);
+    }
+
+    /// <summary>
+    /// 失敗理由は行の中身であって操作の結果ではない。開いている間は、
+    /// 次の操作を始めても閉じない（<c>OperationError</c> はそこで消える。
+    /// 消える条件が違うので別に持っている）。
+    /// </summary>
+    [Fact]
+    public async Task 開いた失敗理由は次の操作を始めても閉じない()
+    {
+        await _board.InitializeAsync(None);
+        _board.ShowFailure(FailedRow("読めない値です。"));
+
+        await _board.CancelAsync("does-not-exist", None);
+
+        Assert.True(_board.IsFailureDialogOpen);
+        Assert.Equal("読めない値です。", _board.FailureDetail);
+    }
+
     // 進捗の表示だけを見る行。可否は Registered の Job が持つ値
     // （どれを入れても表示は変わらないが、ありえない組み合わせを置かない）。
     private static JobListItemDto Row(int completed, int total) =>
         new("job-1", "行", "subtasks", "3 1", "Registered", DateTimeOffset.UtcNow, null, null, null, completed, total,
             CanCancel: true, CanRequestPause: true, CanRequestResume: false, CanEdit: true, Version: 1);
+
+    // 失敗して終わった行。終端なので操作はどれも押せない。
+    private static JobListItemDto FailedRow(string? failureMessage) =>
+        new("job-2", "失敗した Job", "subtasks", "3 1", "Failed", DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, failureMessage, 1, 3,
+            CanCancel: false, CanRequestPause: false, CanRequestResume: false, CanEdit: false, Version: 3);
+
+    // 押す先を移す相手。Id と名前が違えば足りる。
+    private static JobListItemDto OtherFailedRow(string? failureMessage) =>
+        new("job-3", "もう 1 つの失敗した Job", "subtasks", "3 1", "Failed", DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, failureMessage, 2, 3,
+            CanCancel: false, CanRequestPause: false, CanRequestResume: false, CanEdit: false, Version: 3);
 
     private static JobBoard BrokenBoard(Exception? failure = null) =>
         new(new JobsApiClient(new HttpClient(new ThrowingHandler(failure))

@@ -137,33 +137,30 @@ public sealed class JobsApiClientTests : IDisposable
     }
 
     /// <summary>
-    /// 待機中の Job は保留でき、再開すると待ち行列へ戻る。終端の Job への保留は拒否として写る。
+    /// 待機中と終端、どちらへの保留も拒否として写り、応答には現在の Job が載る。
     /// </summary>
     /// <remarks>
-    /// 一時停止は待機中からも効くので、拒否を作るには終端まで進める必要がある。
-    /// エンジンは止まっているので、キャンセルで即座に Cancelled へ落とせる。
+    /// 拒否の理由は 2 つとも違う（待機中は「今の状態では無理」、終端は「もう終わっている」）が、
+    /// 画面から見える形は同じ ── 失敗と、現在の状態。ここで見たいのはその写し方なので、
+    /// 2 つを 1 本で並べてある。エンジンは止まっているので、キャンセルで即座に Cancelled へ落とせる。
     /// </remarks>
     [Fact]
-    public async Task 待機中のJobは保留でき終端への保留は拒否として写る()
+    public async Task 待機中と終端への保留はどちらも拒否として写る()
     {
         RegisterJobResponse registered = await _client.RegisterJobAsync(
             "まだの Job", "subtasks", "3 1", CancellationToken.None);
         Assert.NotNull(registered.Job);
 
-        JobControlResponse paused = await _client.PauseJobAsync(registered.Job.Id, CancellationToken.None);
-        Assert.True(paused.IsSuccess);
-        Assert.Equal("Paused", paused.Job?.Status);
-
-        JobControlResponse resumed = await _client.ResumeJobAsync(registered.Job.Id, CancellationToken.None);
-        Assert.True(resumed.IsSuccess);
-        Assert.Equal("Resumed", resumed.Job?.Status);
+        JobControlResponse waiting = await _client.PauseJobAsync(registered.Job.Id, CancellationToken.None);
+        Assert.False(waiting.IsSuccess);
+        Assert.Equal("Registered", waiting.Job?.Status);
 
         Assert.True((await _client.CancelJobAsync(registered.Job.Id, CancellationToken.None)).IsSuccess);
 
-        JobControlResponse rejected = await _client.PauseJobAsync(registered.Job.Id, CancellationToken.None);
+        JobControlResponse terminal = await _client.PauseJobAsync(registered.Job.Id, CancellationToken.None);
 
-        Assert.False(rejected.IsSuccess);
-        Assert.Equal("Cancelled", rejected.Job?.Status);
+        Assert.False(terminal.IsSuccess);
+        Assert.Equal("Cancelled", terminal.Job?.Status);
     }
 
     [Fact]
