@@ -148,6 +148,10 @@
             text-decoration: underline dotted;
             overflow: hidden;
             text-overflow: ellipsis;
+
+            /* 押すものではなく指すもの。button の既定（pointer）のままだと、
+               クリックで何かが起きると読ませてしまう。 */
+            cursor: help;
         }
 
         .failure-link:hover:not(:disabled) { text-decoration: underline; }
@@ -218,31 +222,38 @@
 
         .operation-dialog p { margin: 0 0 .5rem; color: var(--danger); font-size: .85rem; }
 
-        /* 切った失敗理由の全文。操作ダイアログ（右上）と重ならないよう中央に置く。
-           こちらは全文を読ませるのが目的なので、幅を広く取り、折り返しと選択を許す
+        /* 切った失敗理由の全文。指している間だけ出る。左下に固定する理由は Home.razor の注記。
+           全文を読ませるのが目的なので、幅を広く取り、折り返しを許す
            （表の中の nowrap をそのまま持ち込むと、読むために横スクロールさせることになる）。 */
-        .detail-dialog {
+        .failure-detail {
             position: fixed;
-            top: 20vh;
-            left: 50%;
-            transform: translateX(-50%);
-            margin: 0;
-            width: min(40rem, calc(100vw - 4rem));
-            max-height: 60vh;
+            bottom: 1rem;
+            left: 1rem;
+            width: min(38rem, calc(100vw - 2rem));
+            max-height: 40vh;
             overflow-y: auto;
             background: #fff;
             border: 1px solid var(--line);
+            border-left: 4px solid var(--danger);
             border-radius: 6px;
-            padding: 1rem 1.25rem;
+            padding: .75rem 1rem;
             box-shadow: 0 12px 32px rgba(16, 24, 40, .18);
         }
 
-        .detail-dialog h2 { margin: 0 0 .5rem; }
+        /* 指すたびに出入りするので、出方に間を持たせる。即座に現れると、
+           表の上をマウスが通り過ぎるだけでちらつく。消えるのは即座でよい。 */
+        .failure-detail { animation: failure-detail-in .12s ease-out; }
+
+        @@keyframes failure-detail-in { from { opacity: 0; } to { opacity: 1; } }
+
+        /* 見出しに Job の名前が入るので、h2 の既定の大文字化を解く。
+           掛かったままだと利用者が付けた名前が勝手に別の綴りになる（JOBX と出ていた）。 */
+        .failure-detail h2 { margin: 0 0 .35rem; text-transform: none; }
 
         /* 例外の Message は改行を持つことがある。pre-wrap にしないと 1 行に潰れて、
            スタックの区切りが読めなくなる。 */
-        .detail-dialog p {
-            margin: 0 0 .75rem;
+        .failure-detail p {
+            margin: 0;
             color: var(--ink);
             font-family: ui-monospace, Menlo, Consolas, monospace;
             font-size: .8rem;

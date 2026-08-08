@@ -14,8 +14,10 @@ namespace Netsoft.Jobs.Ui;
 /// 名前から文言への写しだけなので、型に直す意味も無い。
 /// </para>
 /// <para>
-/// "InProgress" だけ英語の "Running" を出す。利用者が読んできた語を内部の改名に合わせて
-/// 変える理由が無いため。<b>ここが状態名と一致していないのは意図的。</b>
+/// <b>全部日本語で出す。</b>"InProgress" だけは英語の "Running" を出していた ── 利用者が
+/// 読んできた語を内部の改名に合わせて変える理由が無い、という理由だった。読んできた語
+/// だからという理由は、利用者本人が「実行中に変える」と言った時点で無くなっている。
+/// 1 つだけ英語が混ざる並びは、書いた側の事情でしかない。
 /// </para>
 /// <para>
 /// 知らない値は、そのまま出す。「不明」などに畳むと、画面を見ている人から見て
@@ -29,7 +31,7 @@ public static class JobStatusLabel
     public static string From(string status) => status switch
     {
         "Registered" => "登録済み",
-        "InProgress" => "Running",
+        "InProgress" => "実行中",
         "Pausing" => "保留要求中",
         "Paused" => "保留中",
         "Resuming" => "再開要求中",

@@ -16,7 +16,7 @@ public sealed class JobStatusLabelTests
 {
     [Theory]
     [InlineData(JobStatus.Registered, "登録済み")]
-    [InlineData(JobStatus.InProgress, "Running")]
+    [InlineData(JobStatus.InProgress, "実行中")]
     [InlineData(JobStatus.Pausing, "保留要求中")]
     [InlineData(JobStatus.Paused, "保留中")]
     [InlineData(JobStatus.Resuming, "再開要求中")]

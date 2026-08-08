@@ -84,7 +84,7 @@ public sealed class HomePageE2ETests
         await page.ClickAsync("button[type=submit]");
 
         ILocator row = RowFor(page, name);
-        await Expect(row).ToContainTextAsync("Running");
+        await Expect(row).ToContainTextAsync("実行中");
 
         ILocator cancelButton = row.GetByRole(AriaRole.Button, new() { Name = "キャンセル" });
         await cancelButton.ClickAsync();
