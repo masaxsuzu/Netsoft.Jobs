@@ -196,10 +196,11 @@ public sealed class SqliteJobStore : IJobStore
         await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
         await using SqliteCommand command = connection.CreateCommand();
 
-        // 待ち行列の状態はここに書き写してある。JobStatusExtensions.IsWaiting から
-        // 動的に組み立てる形も試したが、2 状態のために static を 3 つ置くのは割に合わなかった。
-        // 書き写しが IsWaiting とずれると Job が黙って滞留する（エラーはどこにも出ない）ので、
-        // ずれを SqliteJobStoreTests の「IsWaiting が true の状態をすべて拾う」が捕まえる。
+        // 状態はここに書き写してある。JobStatusExtensions から動的に組み立てる形も試したが、
+        // 2 状態ずつのために static を並べるのは割に合わなかった。
+        // 書き写しがずれると Job が黙って滞留する（エラーはどこにも出ない）ので、
+        // ずれを SqliteJobStoreTests の「IsWaiting が true の状態をすべて拾う」と
+        // 「BlocksQueue が true の状態はすべて列を止める」が捕まえる。
         //
         // 並びは CreatedAt だけで決まる。CreatedAt は登録時に決まって二度と動かないので、
         // これがそのまま「列の中の位置」になる ── 停止して再開した Job は、自分が居た場所へ
@@ -211,21 +212,26 @@ public sealed class SqliteJobStore : IJobStore
         // 重なって「止めた本人が、止めていた間に溜まった列に抜かれる」ことになったこと。
         // どちらも指示のどこにも書かれていない副作用で、利用者の判断で戻している。
         //
-        // NOT EXISTS が「保留中が 1 件でもあれば、次は無い」。待ち行列に居る Job は
-        // そのまま待ち、保留中が再開（またはキャンセル）で居なくなってから動き出す。
+        // NOT EXISTS が「列を止める状態（JobStatusExtensions.BlocksQueue）が 1 件でもあれば、
+        // 次は無い」。待ち行列に居る Job はそのまま待ち、止めている Job が居なくなってから動き出す。
         // 1 本の SELECT に畳んであるのは、別々に問い合わせると
-        // 「保留中を数える → 0 だった → その隙に誰かが止めた → 候補を返す」が起きるため。
+        // 「止めている数を数える → 0 だった → その隙に誰かが止めた → 候補を返す」が起きるため。
+        //
+        // Resuming が入っているのは、再開が 2 回の書き込みに分かれるから。
+        // 1 回目（Paused → Resuming）が変更通知でエンジンを起こすが、その瞬間の Job は
+        // 待ち行列にも居らず Paused でもない。塞がないと、起きたエンジンが後発を先に走らせる。
         command.CommandText =
             $"""
             SELECT {Columns} FROM Jobs
             WHERE Status IN ($registered, $resumed)
-              AND NOT EXISTS (SELECT 1 FROM Jobs WHERE Status = $paused)
+              AND NOT EXISTS (SELECT 1 FROM Jobs WHERE Status IN ($paused, $resuming))
             ORDER BY CreatedAt ASC, Id ASC
             LIMIT 1;
             """;
         command.Parameters.AddWithValue("$registered", JobStatusText.ToText(JobStatus.Registered));
         command.Parameters.AddWithValue("$resumed", JobStatusText.ToText(JobStatus.Resumed));
         command.Parameters.AddWithValue("$paused", JobStatusText.ToText(JobStatus.Paused));
+        command.Parameters.AddWithValue("$resuming", JobStatusText.ToText(JobStatus.Resuming));
 
         return await ReadOneAsync(command, cancellationToken).ConfigureAwait(false);
     }

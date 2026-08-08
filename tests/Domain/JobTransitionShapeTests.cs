@@ -14,6 +14,12 @@ namespace Netsoft.Jobs.Domain.Tests;
 /// API からは引けない。ing は対応する ed へ落ちる。終端へ入れるのは実行の結末と復旧だけ。
 /// 例外は <see cref="ResumeFromPausing"/> の 1 行しか無く、名指しで許してある。
 /// </para>
+/// <para>
+/// もう 1 つ、行き先ではなく<b>状態が持つ役割</b>を見る規則がある
+/// （<see cref="列を止めている間は待ち行列へ戻るまで止め続ける"/>）。列を止めている Job が
+/// 待ち行列へ戻るまでの途中で席を空けない、という不変条件で、これを破る行が入ると
+/// 追い越しが起きる。
+/// </para>
 /// </remarks>
 public sealed class JobTransitionShapeTests
 {
@@ -122,6 +128,65 @@ public sealed class JobTransitionShapeTests
                     or JobTrigger.ConfirmCancelled or JobTrigger.RecoverAfterCrash,
                 $"({current}, {trigger}) が終端 {next} へ入っています。");
         }
+    }
+
+    /// <summary>
+    /// 待ち行列を止めている Job が待ち行列へ戻るまで、途中で一度も手を離さない。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>実際に起きた不具合の形をそのまま述語にしてある。</b>再開は Paused → Resuming → Resumed の
+    /// 2 手で、書き込みも 2 回に分かれる。1 回目が変更通知でエンジンを起こすので、Resuming が
+    /// 列を止めていないと<b>そこだけ席が空き、後から登録された Job が先に走る</b>。
+    /// </para>
+    /// <para>
+    /// 捨てる側（Cancelling）は除く。二度と待ち行列へ戻らない Job に席を押さえさせる理由が無い。
+    /// 除外を名指しにせず「待ち行列へ戻れるか」で判定しているのは、状態が増えたときに
+    /// 除外リストの更新漏れで穴が開かないようにするため。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void 列を止めている間は待ち行列へ戻るまで止め続ける()
+    {
+        foreach (((JobStatus current, JobTrigger trigger), JobStatus next) in JobTransitionTable.Allowed)
+        {
+            if (!current.BlocksQueue() || !CanReachWaiting(next))
+            {
+                continue;
+            }
+
+            Assert.True(
+                next.BlocksQueue() || next.IsWaiting(),
+                $"({current}, {trigger}) の行き先 {next} が列を止めていません。"
+                + "待ち行列へ戻るまでの途中で席が空くと、後から登録された Job に追い越されます。");
+        }
+    }
+
+    /// <summary>その状態から、遷移をいくつか重ねて待ち行列へ戻れるか。</summary>
+    private static bool CanReachWaiting(JobStatus from)
+    {
+        HashSet<JobStatus> seen = [from];
+        Queue<JobStatus> pending = new([from]);
+
+        while (pending.TryDequeue(out JobStatus status))
+        {
+            if (status.IsWaiting())
+            {
+                return true;
+            }
+
+            foreach (JobStatus next in JobTransitionTable.Allowed
+                .Where(entry => entry.Key.Current == status)
+                .Select(entry => entry.Value))
+            {
+                if (seen.Add(next))
+                {
+                    pending.Enqueue(next);
+                }
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
