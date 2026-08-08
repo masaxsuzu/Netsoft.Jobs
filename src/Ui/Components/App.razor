@@ -68,7 +68,7 @@
         button {
             font: inherit;
             font-size: .8rem;
-            padding: .3rem .6rem;
+            padding: .3rem .5rem;
             border: 1px solid var(--line);
             border-radius: 4px;
             background: #fff;
@@ -81,7 +81,13 @@
         button.primary { background: var(--accent); border-color: var(--accent); color: #fff; padding: .4rem 1rem; }
         button.danger { color: var(--danger); }
 
-        table { border-collapse: collapse; width: 100%; }
+        /* 折り返さないと決めた以上、幅は必ず足りなくなりうる（名前が長い Job が 1 つあればよい）。
+           表だけを横に流す。パネルごと流すと見出しまで一緒に動いて、何の表か分からなくなる。 */
+        .table-scroll { overflow-x: auto; }
+
+        /* 表だけ 1 段小さく。1280px に 10 列を収める最後の一押しで、
+           これを戻すと操作の列が画面外へ出る（横スクロールは残してあるので壊れはしない）。 */
+        table { border-collapse: collapse; width: 100%; font-size: 13px; }
 
         th {
             background: var(--head);
@@ -91,10 +97,10 @@
             letter-spacing: .06em;
             text-transform: uppercase;
             text-align: left;
-            padding: .5rem .7rem;
+            padding: .5rem .6rem;
         }
 
-        td { border-bottom: 1px solid var(--line); padding: .45rem .7rem; vertical-align: middle; }
+        td { border-bottom: 1px solid var(--line); padding: .45rem .6rem; vertical-align: middle; }
         tbody tr:nth-child(even) { background: #fafbfc; }
         tbody tr:hover { background: #eef4ff; }
 
@@ -105,6 +111,16 @@
 
         .col-name { font-weight: 600; }
         .col-type { color: var(--sub); }
+
+        /* 失敗理由だけは長さの上限を持たない（例外の Message がそのまま入る）。
+           nowrap のまま伸ばすと表が横に破裂するので、ここで切って全文は title に出す。 */
+        .col-failure {
+            max-width: 8rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--danger);
+            font-size: .78rem;
+        }
 
         /* 時刻と数字は等幅。桁が揃わないと、並べたときに比べられない。 */
         .col-time { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .78rem; color: var(--sub); }
@@ -126,7 +142,7 @@
 
         .bar {
             display: inline-block;
-            width: 4.5rem;
+            width: 3.5rem;
             height: 6px;
             background: #e5e7eb;
             border-radius: 3px;
@@ -135,9 +151,9 @@
         }
 
         .bar-fill { display: block; height: 100%; background: var(--accent); }
-        .bar-text { font-family: ui-monospace, monospace; font-size: .75rem; color: var(--sub); margin-left: .4rem; }
+        .bar-text { font-family: ui-monospace, monospace; font-size: .75rem; color: var(--sub); margin-left: .35rem; }
 
-        .col-params input { width: 6rem; font-family: ui-monospace, monospace; font-size: .78rem; }
+        .col-params input { width: 4.5rem; font-family: ui-monospace, monospace; font-size: .78rem; }
         .col-params button { margin-left: .3rem; }
 
         /* 操作は右端に寄せる。左に寄せると、行ごとにボタンの位置がずれて狙いにくい。 */

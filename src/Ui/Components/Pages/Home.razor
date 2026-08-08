@@ -74,6 +74,7 @@
     }
     else
     {
+        <div class="table-scroll">
         <table>
             <thead>
                 @* 見出しは短く。「作成日時」は列が時刻しか持たないので「作成」で足りる。
@@ -118,7 +119,8 @@
                         <td class="col-time" title="@JobBoard.FormatFull(job.CreatedAt)">@JobBoard.Format(job.CreatedAt)</td>
                         <td class="col-time" title="@JobBoard.FormatFull(job.StartedAt)">@JobBoard.Format(job.StartedAt)</td>
                         <td class="col-time" title="@JobBoard.FormatFull(job.FinishedAt)">@JobBoard.Format(job.FinishedAt)</td>
-                        <td>@job.FailureMessage</td>
+                        @* 全文は title に出す。切った先が読めないと、失敗を見て次の手が決められない。 *@
+                        <td class="col-failure" title="@job.FailureMessage">@job.FailureMessage</td>
                         <td class="col-params">
                             @* 実行中でも編集できる（反映はサブタスクの境界）。入力中の値は
                                通知の再読み込みで消えないよう、行の再描画から独立に保持する。
@@ -162,6 +164,7 @@
                 }
             </tbody>
         </table>
+        </div>
     }
 </section>
 
