@@ -9,9 +9,18 @@ namespace Netsoft.Jobs.Infrastructure;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>並び順の第 2 キーは書いた順（<c>Id</c>）。</b>時刻だけでは決まらない ── 1 回の操作が
-/// 要求と確定の 2 件を続けて書くことがあり、そこは同じミリ秒に収まる。
-/// <c>INTEGER PRIMARY KEY</c> は SQLite の rowid そのもので、INSERT のたびに単調増加する。
+/// <b>並びは実施した時刻が第 1 キーで、書いた順（<c>Id</c>）が第 2 キー。</b>
+/// </para>
+/// <para>
+/// 書いた順だけでは実際に起きた順にならない。利用者の要求は書かれるのがコマンドの
+/// 終わりなのに対し、その書き込みが呼び起こした実行エンジンは先に自分の分を書ける
+/// ── 実測で「実行を開始した」が「再開を要求した」より前に並んだ。
+/// 時刻はどちらも実施した瞬間を持っているので、そちらを先に見れば順序が合う。
+/// </para>
+/// <para>
+/// 時刻だけでも決まらない。1 回のコマンドが要求と確定の 2 件を続けて書く経路があり、
+/// そこは同じミリ秒に収まる。<c>INTEGER PRIMARY KEY</c> は SQLite の rowid そのもので
+/// INSERT のたびに単調増加するので、同時刻の並びはこれで決まる。
 /// </para>
 /// <para>
 /// <c>Id</c> を <see cref="AuditLog"/> へは載せない。並びをここで決められる以上、
@@ -52,9 +61,9 @@ public sealed class SqliteAuditLogStore : IAuditLogStore
 
         await using SqliteCommand index = connection.CreateCommand();
 
-        // 画面が叩くのは Job 単位の読み出しだけ。全件は Id の降順で、
-        // rowid の逆走査で済むのでインデックスは要らない。
-        index.CommandText = "CREATE INDEX IF NOT EXISTS IX_AuditLogs_JobId_Id ON AuditLogs (JobId, Id);";
+        // 画面が叩くのは Job 単位の読み出しだけ。全件は時刻の降順で、件数がそもそも
+        // 表示に耐える規模なのでインデックスは置かない。
+        index.CommandText = "CREATE INDEX IF NOT EXISTS IX_AuditLogs_JobId_At ON AuditLogs (JobId, At, Id);";
 
         await index.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -86,7 +95,8 @@ public sealed class SqliteAuditLogStore : IAuditLogStore
         await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
         await using SqliteCommand command = connection.CreateCommand();
 
-        command.CommandText = $"SELECT {Columns} FROM AuditLogs WHERE JobId = $jobId ORDER BY Id ASC;";
+        command.CommandText =
+            $"SELECT {Columns} FROM AuditLogs WHERE JobId = $jobId ORDER BY At ASC, Id ASC;";
         command.Parameters.AddWithValue("$jobId", jobId.Value);
 
         return await ReadAllAsync(command, cancellationToken).ConfigureAwait(false);
@@ -98,7 +108,7 @@ public sealed class SqliteAuditLogStore : IAuditLogStore
         await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
         await using SqliteCommand command = connection.CreateCommand();
 
-        command.CommandText = $"SELECT {Columns} FROM AuditLogs ORDER BY Id DESC;";
+        command.CommandText = $"SELECT {Columns} FROM AuditLogs ORDER BY At DESC, Id DESC;";
 
         return await ReadAllAsync(command, cancellationToken).ConfigureAwait(false);
     }

@@ -27,8 +27,10 @@ public interface IAuditLogStore
     /// <summary>指定した Job の監査ログを、古い順で取得する。</summary>
     /// <remarks>
     /// 古い順なのは、1 つの Job の記録が「登録した → 実行を開始した → …」という
-    /// 物語として読まれるため。時刻だけでは同一ミリ秒の並びが決まらないので、
-    /// 実装は書いた順を第 2 キーに持つこと。
+    /// 物語として読まれるため。<b>並びの第 1 キーは実施した時刻</b>で、書いた順ではない
+    /// ── 利用者の要求はコマンドの終わりに書かれるのに対し、その書き込みが呼び起こした
+    /// 実行エンジンは先に自分の分を書けるため、書いた順では逆転する。
+    /// 時刻だけでは同一ミリ秒の並びが決まらないので、書いた順を第 2 キーに持つこと。
     /// </remarks>
     Task<IReadOnlyList<AuditLog>> ListByJobAsync(JobId jobId, CancellationToken cancellationToken);
 

@@ -32,4 +32,7 @@ internal static class JobApiRoutes
     /// <summary>指定した Job のパラメータの差し替え（PUT）。</summary>
     public static string ParametersFor(string id) => $"{Jobs}/{Uri.EscapeDataString(id)}/parameters";
 
+    /// <summary>指定した Job の監査ログ（GET）。古い順で返る。</summary>
+    public static string AuditLogsFor(string id) => $"{Jobs}/{Uri.EscapeDataString(id)}/audit-logs";
+
 }

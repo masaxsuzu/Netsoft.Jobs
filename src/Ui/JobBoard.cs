@@ -321,62 +321,85 @@ public sealed class JobBoard
     /// </remarks>
     public void CloseOperationDialog() => OperationError = null;
 
-    /// <summary>開いている失敗理由の全文。開いていなければ null。</summary>
+    /// <summary>開いている監査ログ。開いていなければ null。</summary>
     /// <remarks>
     /// <para>
-    /// 一覧の失敗理由の列は絵柄 1 つしか置かない（例外の <c>Message</c> は長さに上限が無く、
-    /// 表の中に本文として置ける形をしていない）。中身を読む手段がこれ。
+    /// 一覧の監査ログの列は絵柄 1 つしか置かない。中身を読む手段がこれ。
+    /// 失敗理由は「実行に失敗した」行のエラーとして、この中に出る。
     /// </para>
     /// <para>
-    /// <b>Job の参照ではなく、押した瞬間の文字列を控える。</b>参照を持つと、背景の
-    /// 取り直しが行を差し替えた（<see cref="Merge"/> は行ごと作り直す）あとも古い
-    /// インスタンスを掴んだままになる。失敗理由は終端で確定してもう動かないので、
-    /// 文字列を控えても古くならない。<see cref="OperationError"/> と別に持つのは、
-    /// これが操作の結果ではなく行の中身であり、次の操作で消えてはいけないため。
+    /// <b>並べ直さない。</b>監査ログは連番を持たないので、応答の順序そのものが情報で、
+    /// 手元で時刻順に並べ直すと同じ時刻に並ぶ「要求 → 確定」が入れ替わりうる。
+    /// </para>
+    /// <para>
+    /// <see cref="OperationError"/> と別に持つのは、これが操作の結果ではなく行の中身であり、
+    /// 次の操作で消えてはいけないため。
     /// </para>
     /// </remarks>
-    public string? FailureDetail { get; private set; }
+    public IReadOnlyList<AuditLogDto>? AuditLogs { get; private set; }
 
-    /// <summary>開いている失敗理由が、どの Job のものか。開いていなければ null。</summary>
-    public string? FailureDetailName { get; private set; }
+    /// <summary>開いている監査ログが、どの Job のものか。開いていなければ null。</summary>
+    public string? AuditLogJobName { get; private set; }
 
-    /// <summary>失敗理由のダイアログが開いているか。</summary>
-    public bool IsFailureDialogOpen => FailureDetail is not null;
+    /// <summary>監査ログの取得に失敗したことの知らせ。成功していれば null。</summary>
+    /// <remarks>
+    /// 空の一覧と取得の失敗を同じ見た目にしない。何も起きていない Job と、
+    /// 起きたことを読めなかった Job は、読み手にとって別のこと。
+    /// </remarks>
+    public string? AuditLogNotice { get; private set; }
 
-    /// <summary>失敗理由の全文を開く。</summary>
-    public void ShowFailure(JobListItemDto job)
+    /// <summary>監査ログのダイアログが開いているか。</summary>
+    public bool IsAuditLogDialogOpen { get; private set; }
+
+    /// <summary>指定した Job の監査ログを開く。</summary>
+    /// <remarks>
+    /// 開くのは取得の前。<b>押した瞬間に開けないと、遅い応答のあいだ画面が無反応に見える。</b>
+    /// 中身が来るまでは空のまま出る（<see cref="AuditLogs"/> が null）。
+    /// </remarks>
+    public async Task ShowAuditLogsAsync(JobListItemDto job, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(job);
 
-        FailureDetailName = job.Name;
-        FailureDetail = job.FailureMessage;
+        AuditLogJobName = job.Name;
+        AuditLogs = null;
+        AuditLogNotice = null;
+        IsAuditLogDialogOpen = true;
+
+        try
+        {
+            AuditLogs = await _api.ListAuditLogsAsync(job.Id, cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            AuditLogNotice = $"監査ログを取得できませんでした: {Describe(exception)}";
+        }
     }
 
-    /// <summary>失敗理由のダイアログを閉じる。</summary>
+    /// <summary>監査ログのダイアログを閉じる。</summary>
     /// <remarks>
-    /// 2 つまとめて消す。<see cref="FailureDetailName"/> だけ残ると、次に開いたときの
-    /// 見出しが前の Job の名前のまま出る瞬間ができる。
-    /// 閉じることと中身を捨てることを 1 つの状態にしておく理由は
-    /// <see cref="CloseOperationDialog"/> と同じ。
+    /// 開いているかを別のフラグで持つ。中身の有無で判断すると、取得の前
+    /// （<see cref="AuditLogs"/> が null）と閉じている状態が区別できない。
     /// </remarks>
-    public void CloseFailureDialog()
+    public void CloseAuditLogDialog()
     {
-        FailureDetail = null;
-        FailureDetailName = null;
+        IsAuditLogDialogOpen = false;
+        AuditLogs = null;
+        AuditLogJobName = null;
+        AuditLogNotice = null;
     }
 
-    /// <summary>失敗理由を持っているか（＝絵柄を出すか）。</summary>
+    /// <summary>実施者を画面に出す文言にする。</summary>
     /// <remarks>
-    /// 空白だけの理由も「無い」と見なす。押せる絵柄を出して空のダイアログが開くより、
-    /// 何も出ないほうが読み手を騙さない。判定を <c>.razor</c> に書かないのは
-    /// <see cref="JobStatusLabel.ClassFor"/> と同じ理由。
+    /// 契約は enum の名前で運ぶ（Contracts は Domain を参照しない）ので、写すのは画面の側。
+    /// 知らない値はそのまま出す ── 「不明」に畳むと、値が増えたときに何が起きているのか
+    /// 画面から分からなくなる（<see cref="JobStatusLabel.From"/> と同じ判断）。
     /// </remarks>
-    public static bool HasFailure(JobListItemDto job)
+    public static string ActorLabel(string actor) => actor switch
     {
-        ArgumentNullException.ThrowIfNull(job);
-
-        return !string.IsNullOrWhiteSpace(job.FailureMessage);
-    }
+        "User" => "利用者",
+        "System" => "システム",
+        _ => actor,
+    };
 
     /// <summary>登録の入力エラーのうち、指定した項目のもの。</summary>
     public IEnumerable<string> ErrorsFor(string field) =>

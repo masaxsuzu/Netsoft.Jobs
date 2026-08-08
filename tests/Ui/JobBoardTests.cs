@@ -489,40 +489,56 @@ public sealed class JobBoardTests : IDisposable
     }
 
     /// <summary>
-    /// 失敗理由を持たない行には絵柄を出さない。押せて空のダイアログが開くより、
-    /// 何も出ないほうがよい。空白だけの理由も「無い」に倒す。
+    /// 押した瞬間に開く。中身が来るまでは空のまま出る。
     /// </summary>
+    /// <remarks>
+    /// 取得を待ってから開くと、応答が遅い間だけ画面が無反応に見える。押した事実は
+    /// すぐ画面に出て、中身は後から埋まる、が正しい順序。
+    /// </remarks>
     [Fact]
-    public void 失敗理由は中身があるときだけ絵柄が出る()
+    public async Task 監査ログは押すと対象の名前つきで開き閉じられる()
     {
-        Assert.False(JobBoard.HasFailure(FailedRow(null)));
-        Assert.False(JobBoard.HasFailure(FailedRow(string.Empty)));
-        Assert.False(JobBoard.HasFailure(FailedRow("   ")));
-        Assert.True(JobBoard.HasFailure(FailedRow("読めない値です。")));
+        string id = await RegisterViaApiAsync("記録される Job");
+        await _board.InitializeAsync(None);
+
+        Assert.False(_board.IsAuditLogDialogOpen);
+
+        await _board.ShowAuditLogsAsync(_board.Jobs.Single(job => job.Id == id), None);
+
+        Assert.True(_board.IsAuditLogDialogOpen);
+        Assert.Equal("記録される Job", _board.AuditLogJobName);
+        Assert.Null(_board.AuditLogNotice);
+
+        // 登録の 1 件が既に載っている。
+        Assert.NotNull(_board.AuditLogs);
+        Assert.Contains(_board.AuditLogs, log => log.Content.StartsWith("Job を登録した", StringComparison.Ordinal));
+
+        _board.CloseAuditLogDialog();
+
+        Assert.False(_board.IsAuditLogDialogOpen);
+        Assert.Null(_board.AuditLogs);
+
+        // 名前も一緒に消す。残ると、次に開いたときの見出しが前の Job のままになる瞬間ができる。
+        Assert.Null(_board.AuditLogJobName);
     }
 
     /// <summary>
-    /// 一覧には絵柄しか置かないので、全文を読む道が要る。開く中身は
-    /// 押した瞬間の文字列で、行が差し替わっても動かない。
+    /// 取得に失敗しても例外を通さない。通すと回路が落ちて画面全体が凍る。
     /// </summary>
+    /// <remarks>
+    /// 空の一覧と取得の失敗を同じ見た目にしない。何も起きていない Job と、
+    /// 起きたことを読めなかった Job は、読み手にとって別のこと。
+    /// </remarks>
     [Fact]
-    public void 失敗理由は押すと全文と対象の名前が出て閉じられる()
+    public async Task 監査ログの取得が例外になっても知らせに変える()
     {
-        Assert.False(_board.IsFailureDialogOpen);
+        JobBoard board = BrokenBoard();
 
-        _board.ShowFailure(FailedRow("パラメータを読めませんでした: 読めない値"));
+        await board.ShowAuditLogsAsync(FailedRow("読めない値です。"), None);
 
-        Assert.True(_board.IsFailureDialogOpen);
-        Assert.Equal("パラメータを読めませんでした: 読めない値", _board.FailureDetail);
-        Assert.Equal("失敗した Job", _board.FailureDetailName);
-
-        _board.CloseFailureDialog();
-
-        Assert.False(_board.IsFailureDialogOpen);
-        Assert.Null(_board.FailureDetail);
-
-        // 名前も一緒に消す。残ると、次に開いたときの見出しが前の Job のままになる瞬間ができる。
-        Assert.Null(_board.FailureDetailName);
+        Assert.True(board.IsAuditLogDialogOpen);
+        Assert.Null(board.AuditLogs);
+        Assert.Contains("監査ログを取得できませんでした", board.AuditLogNotice);
     }
 
     /// <summary>
@@ -530,30 +546,48 @@ public sealed class JobBoardTests : IDisposable
     /// 押した行と開いている中身が食い違う。
     /// </summary>
     [Fact]
-    public void 続けて別の行を押すと出る中身が差し替わる()
+    public async Task 続けて別の行を押すと開く中身が差し替わる()
     {
-        _board.ShowFailure(FailedRow("1 つ目の理由"));
-        _board.ShowFailure(OtherFailedRow("2 つ目の理由"));
+        string first = await RegisterViaApiAsync("1 つ目の Job");
+        string second = await RegisterViaApiAsync("2 つ目の Job");
+        await _board.InitializeAsync(None);
 
-        Assert.Equal("2 つ目の理由", _board.FailureDetail);
-        Assert.Equal("もう 1 つの失敗した Job", _board.FailureDetailName);
+        await _board.ShowAuditLogsAsync(_board.Jobs.Single(job => job.Id == first), None);
+        await _board.ShowAuditLogsAsync(_board.Jobs.Single(job => job.Id == second), None);
+
+        Assert.Equal("2 つ目の Job", _board.AuditLogJobName);
+        Assert.NotNull(_board.AuditLogs);
+        Assert.All(_board.AuditLogs, log => Assert.Equal(second, log.JobId));
     }
 
     /// <summary>
-    /// 失敗理由は行の中身であって操作の結果ではない。開いている間は、
+    /// 監査ログは行の中身であって操作の結果ではない。開いている間は、
     /// 次の操作を始めても閉じない（<c>OperationError</c> はそこで消える。
     /// 消える条件が違うので別に持っている）。
     /// </summary>
     [Fact]
-    public async Task 開いた失敗理由は次の操作を始めても閉じない()
+    public async Task 開いた監査ログは次の操作を始めても閉じない()
     {
+        string id = await RegisterViaApiAsync("記録される Job");
         await _board.InitializeAsync(None);
-        _board.ShowFailure(FailedRow("読めない値です。"));
+        await _board.ShowAuditLogsAsync(_board.Jobs.Single(job => job.Id == id), None);
 
         await _board.CancelAsync("does-not-exist", None);
 
-        Assert.True(_board.IsFailureDialogOpen);
-        Assert.Equal("読めない値です。", _board.FailureDetail);
+        Assert.True(_board.IsAuditLogDialogOpen);
+        Assert.NotNull(_board.AuditLogs);
+    }
+
+    /// <summary>
+    /// 実施者は画面の文言へ写す。知らない値はそのまま出す ── 「不明」に畳むと、
+    /// 値が増えたときに何が起きているのか画面から分からなくなる。
+    /// </summary>
+    [Fact]
+    public void 実施者は日本語に写り知らない値はそのまま出る()
+    {
+        Assert.Equal("利用者", JobBoard.ActorLabel("User"));
+        Assert.Equal("システム", JobBoard.ActorLabel("System"));
+        Assert.Equal("Robot", JobBoard.ActorLabel("Robot"));
     }
 
     // 進捗の表示だけを見る行。可否は Registered の Job が持つ値
@@ -566,12 +600,6 @@ public sealed class JobBoardTests : IDisposable
     private static JobListItemDto FailedRow(string? failureMessage) =>
         new("job-2", "失敗した Job", "subtasks", "3 1", "Failed", DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, failureMessage, 1, 3,
-            CanCancel: false, CanRequestPause: false, CanRequestResume: false, CanEdit: false, Version: 3);
-
-    // 押す先を移す相手。Id と名前が違えば足りる。
-    private static JobListItemDto OtherFailedRow(string? failureMessage) =>
-        new("job-3", "もう 1 つの失敗した Job", "subtasks", "3 1", "Failed", DateTimeOffset.UtcNow,
-            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, failureMessage, 2, 3,
             CanCancel: false, CanRequestPause: false, CanRequestResume: false, CanEdit: false, Version: 3);
 
     private static JobBoard BrokenBoard(Exception? failure = null) =>

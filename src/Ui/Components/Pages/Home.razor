@@ -79,14 +79,14 @@
             <thead>
                 @* 見出しは短く。「作成日時」は列が時刻しか持たないので「作成」で足りる。
                    最後の列を空にしない ── 空の見出しは、そこに何が並ぶのかを読み手に推測させる。 *@
-                @* 失敗理由は進捗の隣に置く。どちらも「どこまで進んで、なぜ止まったか」を
+                @* 監査ログは進捗の隣に置く。どちらも「どこまで進んで、何が起きたか」を
                    読む列で、間に時刻 3 列を挟むと視線が往復する。 *@
                 <tr>
                     <th>名前</th>
                     <th>種類</th>
                     <th>状態</th>
                     <th class="col-progress">進捗</th>
-                    <th class="col-failure">失敗理由</th>
+                    <th class="col-audit">監査ログ</th>
                     <th>作成</th>
                     <th>開始</th>
                     <th>終了</th>
@@ -124,21 +124,17 @@
                                 </span>
                             }
                         </td>
-                        @* 本文は置かず、絵柄 1 つにする。例外の Message は長さに上限が無く、
-                           表の中に本文として置ける形をしていない（切って出しても、切った分は
-                           結局どこかで開くことになる）。押すと全文がダイアログに出る。
-                           読み上げ名は「失敗理由を見る」── ここに Message そのものを載せると、
-                           一覧を読み流している最中に例外の全文を読み上げてしまう。 *@
-                        <td class="col-failure">
-                            @if (JobBoard.HasFailure(job))
-                            {
-                                <button type="button" class="icon failure danger"
-                                        title="失敗理由を見る" aria-label="失敗理由を見る"
-                                        disabled="@(!_interactive)"
-                                        @onclick="() => Board.ShowFailure(job)">
-                                    <svg class="glyph" aria-hidden="true" focusable="false"><use href="#glyph-failure" /></svg>
-                                </button>
-                            }
+                        @* 絵柄 1 つ。押すとその Job の監査ログがダイアログに出る。
+                           失敗理由はここから消えたのではなく、「実行に失敗した」行のエラーとして
+                           監査ログの中に居る（起きたことの 1 つとして、時系列の中で読める）。
+                           全行に出す ── 失敗していなくても、登録も実行も記録は残っている。 *@
+                        <td class="col-audit">
+                            <button type="button" class="icon audit"
+                                    title="監査ログを見る" aria-label="監査ログを見る"
+                                    disabled="@(!_interactive)"
+                                    @onclick="() => Board.ShowAuditLogsAsync(job, CancellationToken.None)">
+                                <svg class="glyph" aria-hidden="true" focusable="false"><use href="#glyph-audit" /></svg>
+                            </button>
                         </td>
                         @* 年は title に逃がす。3 列を 1 行に収めるために表示からは落としている。 *@
                         <td class="col-time" title="@JobBoard.FormatFull(job.CreatedAt)">@JobBoard.Format(job.CreatedAt)</td>
@@ -207,17 +203,55 @@
     <button type="button" @onclick="Board.CloseOperationDialog">閉じる</button>
 </dialog>
 
-@* 失敗理由の全文。開き方は操作ダイアログと同じ（DOM に置いたまま open だけ切り替える）。
+@* 監査ログ。開き方は操作ダイアログと同じ（DOM に置いたまま open だけ切り替える）。
    別の要素にしてあるのは、出る条件も消える条件も違うため ── こちらは行の中身を読むための
    ものなので、次の操作を始めても閉じない。位置は画面の中央寄せにして、右上の操作ダイアログと
    重ならないようにする（失敗した Job をキャンセルしようとして両方出る場面がある）。 *@
-<dialog class="detail-dialog" open="@Board.IsFailureDialogOpen">
-    <h2>失敗理由 — @Board.FailureDetailName</h2>
-    <p>@Board.FailureDetail</p>
+<dialog class="detail-dialog" open="@Board.IsAuditLogDialogOpen">
+    <h2>監査ログ — @Board.AuditLogJobName</h2>
+    @if (Board.AuditLogNotice is not null)
+    {
+        <p class="notice">@Board.AuditLogNotice</p>
+    }
+    else if (Board.AuditLogs is null)
+    {
+        @* 取得の前。押した瞬間に開くので、中身が来るまでここが出る。 *@
+        <p class="muted">読み込んでいます…</p>
+    }
+    else if (Board.AuditLogs.Count == 0)
+    {
+        <p class="muted">この Job の監査ログはまだありません。</p>
+    }
+    else
+    {
+        @* 並べ直さない。監査ログは連番を持たないので、サーバが返した順序そのものが情報。
+           時刻で並べ直すと、同じ時刻に並ぶ「要求 → 確定」が入れ替わりうる。 *@
+        <table class="audit">
+            <thead>
+                <tr>
+                    <th>日時</th>
+                    <th>実施者</th>
+                    <th>実施内容</th>
+                    <th>エラー</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (AuditLogDto log in Board.AuditLogs)
+                {
+                    <tr>
+                        <td class="col-time">@JobBoard.FormatFull(log.At)</td>
+                        <td class="col-actor">@JobBoard.ActorLabel(log.Actor)</td>
+                        <td>@log.Content</td>
+                        <td class="col-error">@log.Error</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
     @* 閉じるは右下。本文を上から読み終えた先に置く ── 左上に置くと、読み終える前に
        視線が戻る位置に「やめる手」が居ることになる。 *@
     <div class="detail-actions">
-        <button type="button" @onclick="Board.CloseFailureDialog">閉じる</button>
+        <button type="button" @onclick="Board.CloseAuditLogDialog">閉じる</button>
     </div>
 </dialog>
 
