@@ -36,6 +36,12 @@ builder.Services.AddSingleton<ISubTaskStore>(provider => new NotifyingSubTaskSto
     provider.GetRequiredService<SqliteSubTaskStore>(),
     provider.GetRequiredService<JobChangeFeed>()));
 
+// 監査ログも同じ DB ファイル。デコレータは掛けない ── 変更通知は「Job が変わった」を
+// 運ぶもので、監査ログが増えても画面の一覧は変わらないため。
+builder.Services.AddSingleton(new SqliteAuditLogStore(databasePath));
+builder.Services.AddSingleton<IAuditLogStore>(
+    provider => provider.GetRequiredService<SqliteAuditLogStore>());
+
 builder.Services.AddSingleton(new SqliteJobTraceContextStore(databasePath));
 builder.Services.AddSingleton<IJobTraceContextStore>(
     provider => new JobTraceContextStoreAdapter(provider.GetRequiredService<SqliteJobTraceContextStore>()));
@@ -63,6 +69,7 @@ app.MapJobEvents();
 await app.Services.GetRequiredService<SqliteJobStore>().InitializeAsync(CancellationToken.None);
 await app.Services.GetRequiredService<SqliteSubTaskStore>().InitializeAsync(CancellationToken.None);
 await app.Services.GetRequiredService<SqliteJobTraceContextStore>().InitializeAsync(CancellationToken.None);
+await app.Services.GetRequiredService<SqliteAuditLogStore>().InitializeAsync(CancellationToken.None);
 
 await app.RunAsync();
 

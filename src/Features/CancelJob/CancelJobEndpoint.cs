@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Netsoft.Jobs.Contracts;
+using Netsoft.Jobs.Features.Audit;
 
 namespace Netsoft.Jobs.Features.CancelJob;
 
@@ -27,9 +28,13 @@ public static class CancelJobEndpoint
             async Task<Results<Ok<JobDto>, NotFound, Conflict<JobDto>>> (
                 string id,
                 CancelJobHandler handler,
+                AuditRecorder recorder,
                 CancellationToken cancellationToken) =>
         {
-            CancelJobResult result = await handler.HandleAsync(id, cancellationToken);
+            // 監査ログを書くのは recorder だけ（AuditRecorder の注記）。ハンドラの戻り値は
+            // Audited<T> なので、ここを通さずに結果を取り出す形は書けるが書かない。
+            CancelJobResult result = await recorder.RecordAsync(
+                await handler.HandleAsync(id, cancellationToken), cancellationToken);
 
             JobDto? job = result.Job;
             if (job is null)

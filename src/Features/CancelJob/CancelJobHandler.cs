@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 
 using Netsoft.Jobs.Contracts;
 using Netsoft.Jobs.Domain;
+using Netsoft.Jobs.Features.Audit;
 using Netsoft.Jobs.Features.Execution;
 
 namespace Netsoft.Jobs.Features.CancelJob;
@@ -50,12 +51,14 @@ public sealed class CancelJobHandler
     /// （やり直しの回数が編集の回数だけ増えるが、それは利用者の操作の回数で頭打ちになる）。
     /// </para>
     /// </remarks>
-    public async Task<CancelJobResult> HandleAsync(string id, CancellationToken cancellationToken)
+    public async Task<Audited<CancelJobResult>> HandleAsync(string id, CancellationToken cancellationToken)
     {
+        DateTimeOffset at = _timeProvider.GetUtcNow();
+
         // 識別子の形にならない値は何も指し示していない。読み出しと同じく「無い」として扱う。
         if (!JobId.TryFrom(id, out JobId jobId))
         {
-            return CancelJobResult.NotFound();
+            return NotFound(at);
         }
 
         while (true)
@@ -63,7 +66,7 @@ public sealed class CancelJobHandler
             Job? job = await _store.FindAsync(jobId, cancellationToken);
             if (job is null)
             {
-                return CancelJobResult.NotFound();
+                return NotFound(at);
             }
 
             JobTransitionResult transition = job.Apply(JobTrigger.RequestCancel, _timeProvider.GetUtcNow());
@@ -84,7 +87,18 @@ public sealed class CancelJobHandler
                     rejection,
                     job.Status);
 
-                return CancelJobResult.Rejected(job.ToDto(), rejection);
+                CancelJobResult rejected = CancelJobResult.Rejected(job.ToDto(), rejection);
+
+                // AlreadyInEffect は成功として扱う（結果型の注記）。2 回押しただけの操作を
+                // エラーとして残すと、本当の拒否が埋もれる。
+                return new Audited<CancelJobResult>(
+                    rejected,
+                    new AuditLog(
+                        AuditActor.User,
+                        at,
+                        Content,
+                        jobId,
+                        rejected.IsSuccess ? null : $"現在の状態（{job.Status}）ではキャンセルできません。"));
             }
 
             // 保存が伝達そのもの。ハンドラは Cancelling を読んで抜けるので、書けた時点で
@@ -112,9 +126,19 @@ public sealed class CancelJobHandler
                 ? job
                 : await SettleAsync(job, cancellationToken);
 
-            return CancelJobResult.Accepted(settled.ToDto());
+            return new Audited<CancelJobResult>(
+                CancelJobResult.Accepted(settled.ToDto()),
+                new AuditLog(AuditActor.User, at, Content, jobId, Error: null));
         }
     }
+
+    /// <summary>実施内容。結末によらず同じ ── 記録するのは「何をしたか」で、結果は Error 側。</summary>
+    private const string Content = "キャンセルを要求した";
+
+    private static Audited<CancelJobResult> NotFound(DateTimeOffset at) =>
+        new(
+            CancelJobResult.NotFound(),
+            new AuditLog(AuditActor.User, at, Content, JobId: null, "対象の Job が見つかりませんでした。"));
 
     /// <summary>
     /// 要求を確定させる。ハンドラが居ない相手にだけ呼ぶ。

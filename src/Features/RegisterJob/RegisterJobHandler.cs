@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 
 using Netsoft.Jobs.Contracts;
 using Netsoft.Jobs.Domain;
+using Netsoft.Jobs.Features.Audit;
 using Netsoft.Jobs.Features.Execution;
 
 namespace Netsoft.Jobs.Features.RegisterJob;
@@ -47,15 +48,28 @@ public sealed class RegisterJobHandler
     /// <summary>
     /// 登録する。入力が不正なら保存せず、項目単位のエラーを返す。
     /// </summary>
-    public async Task<Result<JobDto>> HandleAsync(RegisterJobCommand command, CancellationToken cancellationToken)
+    public async Task<Audited<Result<JobDto>>> HandleAsync(
+        RegisterJobCommand command, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
+
+        DateTimeOffset at = _timeProvider.GetUtcNow();
 
         IReadOnlyList<ValidationError> errors = Validate(command);
         if (errors.Count > 0)
         {
             // 1 件でも不正なら保存へ進まない。中途半端に採番だけ進めても捨てるしかない。
-            return Result<JobDto>.Failure(errors);
+            //
+            // 弾かれた登録も実施なので監査には残す。Job が出来ていないので紐づけ先は無いが、
+            // 「何を入れて通らなかったのか」は記録の対象。
+            return new Audited<Result<JobDto>>(
+                Result<JobDto>.Failure(errors),
+                new AuditLog(
+                    AuditActor.User,
+                    at,
+                    Content(command),
+                    JobId: null,
+                    string.Join(" ", errors.Select(error => error.Message))));
         }
 
         Job job = Job.Create(
@@ -63,7 +77,7 @@ public sealed class RegisterJobHandler
             command.Name,
             command.JobType,
             command.Parameters,
-            _timeProvider.GetUtcNow());
+            at);
 
         await _store.AddAsync(job, cancellationToken);
 
@@ -93,8 +107,22 @@ public sealed class RegisterJobHandler
             }
         }
 
-        return Result<JobDto>.Success(job.ToDto());
+        return new Audited<Result<JobDto>>(
+            Result<JobDto>.Success(job.ToDto()),
+            new AuditLog(AuditActor.User, at, Content(command), job.Id, Error: null));
     }
+
+    /// <summary>
+    /// 実施内容。<b>打たれた値をそのまま書く。</b>検証で弾かれた登録も記録するので、
+    /// 「何を入れて通らなかったのか」が残らないと読む意味が無い。
+    /// </summary>
+    /// <remarks>
+    /// null は「-」にする。空文字にすると「空文字を入れた」と区別が付かない
+    /// （パラメータは空文字を正当な値として受け付ける）。
+    /// </remarks>
+    private static string Content(RegisterJobCommand command) =>
+        $"Job を登録した（名前={command.Name ?? "-"}, 種類={command.JobType ?? "-"}, "
+        + $"パラメータ={command.Parameters ?? "-"}）";
 
     /// <summary>
     /// 入力を検証する。

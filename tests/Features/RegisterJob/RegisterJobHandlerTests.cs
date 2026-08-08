@@ -33,9 +33,9 @@ public sealed class RegisterJobHandlerTests : IDisposable
     {
         RegisterJobHandler handler = CreateHandler("job-1");
 
-        Result<JobDto> result = await handler.HandleAsync(
+        Result<JobDto> result = (await handler.HandleAsync(
             new RegisterJobCommand("毎晩の集計", "Demo", "これは JSON ではない"),
-            CancellationToken.None);
+            CancellationToken.None)).Value;
 
         Assert.True(result.IsSuccess);
 
@@ -74,9 +74,9 @@ public sealed class RegisterJobHandlerTests : IDisposable
         // 引数を取らない Job があるので、空文字は不正ではない。null だけを弾く。
         RegisterJobHandler handler = CreateHandler("job-1");
 
-        Result<JobDto> result = await handler.HandleAsync(
+        Result<JobDto> result = (await handler.HandleAsync(
             new RegisterJobCommand("毎晩の集計", "Demo", string.Empty),
-            CancellationToken.None);
+            CancellationToken.None)).Value;
 
         Assert.True(result.IsSuccess);
         Job saved = Assert.Single(await ListAsync());
@@ -101,9 +101,9 @@ public sealed class RegisterJobHandlerTests : IDisposable
     {
         RegisterJobHandler handler = CreateHandler("job-1");
 
-        Result<JobDto> result = await handler.HandleAsync(
+        Result<JobDto> result = (await handler.HandleAsync(
             new RegisterJobCommand(name, jobType, parameters!),
-            CancellationToken.None);
+            CancellationToken.None)).Value;
 
         Assert.True(result.IsFailure);
 
@@ -122,9 +122,9 @@ public sealed class RegisterJobHandlerTests : IDisposable
 
         using Activity activity = StartRecordedActivity();
 
-        Result<JobDto> result = await handler.HandleAsync(
+        Result<JobDto> result = (await handler.HandleAsync(
             new RegisterJobCommand("毎晩の集計", "Demo", "{}"),
-            CancellationToken.None);
+            CancellationToken.None)).Value;
 
         Assert.True(result.IsSuccess);
         Assert.Equal(activity.Id, _traceContexts.Saved[JobId.From("job-1")]);
@@ -141,9 +141,9 @@ public sealed class RegisterJobHandlerTests : IDisposable
 
         using Activity activity = new Activity("登録リクエスト").Start();
 
-        Result<JobDto> result = await handler.HandleAsync(
+        Result<JobDto> result = (await handler.HandleAsync(
             new RegisterJobCommand("毎晩の集計", "Demo", "{}"),
-            CancellationToken.None);
+            CancellationToken.None)).Value;
 
         Assert.True(result.IsSuccess);
         Assert.False(activity.Recorded);
@@ -155,9 +155,9 @@ public sealed class RegisterJobHandlerTests : IDisposable
     {
         RegisterJobHandler handler = CreateHandler("job-1");
 
-        Result<JobDto> result = await handler.HandleAsync(
+        Result<JobDto> result = (await handler.HandleAsync(
             new RegisterJobCommand("毎晩の集計", "Demo", "{}"),
-            CancellationToken.None);
+            CancellationToken.None)).Value;
 
         Assert.True(result.IsSuccess);
         Assert.Empty(_traceContexts.Saved);
@@ -173,9 +173,9 @@ public sealed class RegisterJobHandlerTests : IDisposable
 
         using Activity activity = StartRecordedActivity();
 
-        Result<JobDto> result = await handler.HandleAsync(
+        Result<JobDto> result = (await handler.HandleAsync(
             new RegisterJobCommand("毎晩の集計", "Demo", "{}"),
-            CancellationToken.None);
+            CancellationToken.None)).Value;
 
         Assert.True(result.IsSuccess);
         Assert.Single(await ListAsync());

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Netsoft.Jobs.Contracts;
+using Netsoft.Jobs.Features.Audit;
 
 namespace Netsoft.Jobs.Features.EditJob;
 
@@ -33,10 +34,12 @@ public static class EditJobEndpoint
                 string id,
                 EditJobParametersRequest request,
                 EditJobHandler handler,
+                AuditRecorder recorder,
                 CancellationToken cancellationToken) =>
         {
-            EditJobResult result = await handler.HandleAsync(
-                id, request.Parameters ?? string.Empty, cancellationToken);
+            EditJobResult result = await recorder.RecordAsync(
+                await handler.HandleAsync(id, request.Parameters ?? string.Empty, cancellationToken),
+                cancellationToken);
 
             if (result.Errors.Count > 0)
             {

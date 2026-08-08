@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Netsoft.Jobs.Contracts;
+using Netsoft.Jobs.Features.Audit;
 
 namespace Netsoft.Jobs.Features.RegisterJob;
 
@@ -21,9 +22,11 @@ public static class RegisterJobEndpoint
         endpoints.MapPost(JobApiRoutes.Jobs, async Task<Results<Created<JobDto>, ValidationProblem>> (
             RegisterJobCommand command,
             RegisterJobHandler handler,
+            AuditRecorder recorder,
             CancellationToken cancellationToken) =>
         {
-            Result<JobDto> result = await handler.HandleAsync(command, cancellationToken);
+            Result<JobDto> result = await recorder.RecordAsync(
+                await handler.HandleAsync(command, cancellationToken), cancellationToken);
 
             if (result.IsFailure)
             {

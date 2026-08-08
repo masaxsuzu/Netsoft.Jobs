@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 
 using Netsoft.Jobs.Contracts;
 using Netsoft.Jobs.Domain;
+using Netsoft.Jobs.Features.Audit;
 
 namespace Netsoft.Jobs.Features.PauseJob;
 
@@ -33,11 +34,18 @@ public sealed class ResumeJobHandler
     }
 
     /// <summary>再開を要求する。拒否された場合は保存しない。</summary>
-    public async Task<JobControlResult> HandleAsync(string id, CancellationToken cancellationToken)
+    /// <remarks>
+    /// <b>監査ログは 1 件。</b>停止中からの再開は Job 行を 2 回書く（Resuming と Resumed）が、
+    /// 利用者がしたのは「再開を押した」1 回なので、記録も 1 件にする
+    /// （<see cref="AuditLog"/> の注記）。
+    /// </remarks>
+    public async Task<Audited<JobControlResult>> HandleAsync(string id, CancellationToken cancellationToken)
     {
+        DateTimeOffset at = _timeProvider.GetUtcNow();
+
         if (!JobId.TryFrom(id, out JobId jobId))
         {
-            return JobControlResult.NotFound();
+            return NotFound(at);
         }
 
         while (true)
@@ -45,7 +53,7 @@ public sealed class ResumeJobHandler
             Job? job = await _store.FindAsync(jobId, cancellationToken);
             if (job is null)
             {
-                return JobControlResult.NotFound();
+                return NotFound(at);
             }
 
             JobTransitionResult transition = job.Apply(JobTrigger.Resume, _timeProvider.GetUtcNow());
@@ -59,7 +67,16 @@ public sealed class ResumeJobHandler
                     rejection,
                     job.Status);
 
-                return JobControlResult.Rejected(job.ToDto(), rejection);
+                JobControlResult rejected = JobControlResult.Rejected(job.ToDto(), rejection);
+
+                return new Audited<JobControlResult>(
+                    rejected,
+                    new AuditLog(
+                        AuditActor.User,
+                        at,
+                        Content,
+                        jobId,
+                        rejected.IsSuccess ? null : $"現在の状態（{job.Status}）では再開できません。"));
             }
 
             if (!await _store.UpdateAsync(job, cancellationToken))
@@ -77,9 +94,19 @@ public sealed class ResumeJobHandler
                 ? job
                 : await SettleAsync(job, cancellationToken);
 
-            return JobControlResult.Accepted(settled.ToDto());
+            return new Audited<JobControlResult>(
+                JobControlResult.Accepted(settled.ToDto()),
+                new AuditLog(AuditActor.User, at, Content, jobId, Error: null));
         }
     }
+
+    /// <summary>実施内容。結末によらず同じ ── 記録するのは「何をしたか」で、結果は Error 側。</summary>
+    private const string Content = "再開を要求した";
+
+    private static Audited<JobControlResult> NotFound(DateTimeOffset at) =>
+        new(
+            JobControlResult.NotFound(),
+            new AuditLog(AuditActor.User, at, Content, JobId: null, "対象の Job が見つかりませんでした。"));
 
     /// <summary>
     /// 要求を確定させる。ハンドラが居ない相手にだけ呼ぶ。

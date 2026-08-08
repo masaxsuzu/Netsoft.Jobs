@@ -126,7 +126,7 @@ public sealed class JobExecutionLoggingTests : IDisposable
         Task<bool> running = engine.RunOnceAsync(CancellationToken.None);
         await handler.Entered;
 
-        CancelJobResult requested = await cancelHandler.HandleAsync("job-1", CancellationToken.None);
+        CancelJobResult requested = (await cancelHandler.HandleAsync("job-1", CancellationToken.None)).Value;
         Assert.True(requested.IsSuccess);
 
         handler.Release();

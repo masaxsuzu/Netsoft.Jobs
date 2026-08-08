@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Netsoft.Jobs.Features.Audit;
 using Netsoft.Jobs.Features.CancelJob;
 using Netsoft.Jobs.Features.EditJob;
 using Netsoft.Jobs.Features.Execution;
@@ -31,6 +32,10 @@ public static class JobFeaturesServiceCollectionExtensions
 
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IJobIdFactory, GuidV7JobIdFactory>();
+
+        // 監査ログの書き手。コマンドより先に入れておく（依存の向きは Features 内なので
+        // 順序に意味は無いが、読む順を「土台 → 機能」に揃えてある）。
+        services.TryAddSingleton<AuditRecorder>();
 
         services.AddRegisterJob();
         services.AddJobExecution();
