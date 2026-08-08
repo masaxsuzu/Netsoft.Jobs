@@ -23,7 +23,7 @@ public sealed class EditJobHandlerTests : IDisposable
     private readonly EditJobHandler _handler;
 
     public EditJobHandlerTests() =>
-        _handler = new EditJobHandler(_jobs, _subTasks, NullLogger<EditJobHandler>.Instance);
+        _handler = new EditJobHandler(_jobs, _subTasks, TimeProvider.System, NullLogger<EditJobHandler>.Instance);
 
     public void Dispose()
     {
@@ -40,7 +40,7 @@ public sealed class EditJobHandlerTests : IDisposable
     {
         await AddJobAsync(status, "2 1");
 
-        EditJobResult result = await _handler.HandleAsync("job-1", "5 3", CancellationToken.None);
+        EditJobResult result = (await _handler.HandleAsync("job-1", "5 3", CancellationToken.None)).Value;
 
         Assert.True(result.IsSuccess);
         Assert.Equal("5 3", result.Job?.Parameters);
@@ -62,7 +62,7 @@ public sealed class EditJobHandlerTests : IDisposable
     {
         await AddJobAsync(status, "2 1");
 
-        EditJobResult result = await _handler.HandleAsync("job-1", "5 3", CancellationToken.None);
+        EditJobResult result = (await _handler.HandleAsync("job-1", "5 3", CancellationToken.None)).Value;
 
         Assert.False(result.IsSuccess);
         Assert.Equal(expected, result.Rejection);
@@ -78,7 +78,7 @@ public sealed class EditJobHandlerTests : IDisposable
     {
         await AddJobAsync(nameof(JobStatus.InProgress), "2 1");
 
-        EditJobResult result = await _handler.HandleAsync("job-1", parameters, CancellationToken.None);
+        EditJobResult result = (await _handler.HandleAsync("job-1", parameters, CancellationToken.None)).Value;
 
         Assert.False(result.IsSuccess);
         Assert.Equal("parameters", Assert.Single(result.Errors).Field);
@@ -99,14 +99,14 @@ public sealed class EditJobHandlerTests : IDisposable
         await ApplyAsync(first, SubTaskTrigger.Complete);
         await ApplyAsync(second, SubTaskTrigger.Start);
 
-        EditJobResult result = await _handler.HandleAsync("job-1", "1 1", CancellationToken.None);
+        EditJobResult result = (await _handler.HandleAsync("job-1", "1 1", CancellationToken.None)).Value;
 
         Assert.False(result.IsSuccess);
         Assert.Contains("2", Assert.Single(result.Errors).Message);
         Assert.Equal("3 1", (await SavedAsync()).Parameters);
 
         // 着手済みちょうど（N = 2）なら通る。未着手を全部畳む編集。
-        Assert.True((await _handler.HandleAsync("job-1", "2 1", CancellationToken.None)).IsSuccess);
+        Assert.True(((await _handler.HandleAsync("job-1", "2 1", CancellationToken.None)).Value).IsSuccess);
     }
 
     [Theory]
@@ -117,7 +117,7 @@ public sealed class EditJobHandlerTests : IDisposable
     {
         await AddJobAsync(nameof(JobStatus.InProgress), "2 1");
 
-        EditJobResult result = await _handler.HandleAsync(id!, "5 3", CancellationToken.None);
+        EditJobResult result = (await _handler.HandleAsync(id!, "5 3", CancellationToken.None)).Value;
 
         Assert.False(result.IsSuccess);
         Assert.Null(result.Job);
@@ -137,7 +137,7 @@ public sealed class EditJobHandlerTests : IDisposable
         await AddJobAsync(nameof(JobStatus.InProgress), "2 1");
 
         InterferingJobStore interfering = new(_jobs);
-        EditJobHandler handler = new(interfering, _subTasks, NullLogger<EditJobHandler>.Instance);
+        EditJobHandler handler = new(interfering, _subTasks, TimeProvider.System, NullLogger<EditJobHandler>.Instance);
 
         // 書き戻す直前に、状態を動かさない書き込みを差し込む（版だけが進む）。
         interfering.BeforeNextUpdate = async () =>
@@ -147,7 +147,7 @@ public sealed class EditJobHandlerTests : IDisposable
             Assert.True(await _jobs.UpdateAsync(other, CancellationToken.None));
         };
 
-        EditJobResult result = await handler.HandleAsync("job-1", "5 3", CancellationToken.None);
+        EditJobResult result = (await handler.HandleAsync("job-1", "5 3", CancellationToken.None)).Value;
 
         Assert.True(result.IsSuccess);
 

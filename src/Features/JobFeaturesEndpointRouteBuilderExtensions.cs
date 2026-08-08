@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Routing;
+using Netsoft.Jobs.Features.Audit;
 using Netsoft.Jobs.Features.CancelJob;
 using Netsoft.Jobs.Features.EditJob;
 using Netsoft.Jobs.Features.PauseJob;
@@ -26,6 +27,7 @@ public static class JobFeaturesEndpointRouteBuilderExtensions
         endpoints.MapCancelJob();
         endpoints.MapPauseJob();
         endpoints.MapEditJob();
+        endpoints.MapQueryAuditLogs();
 
         return endpoints;
     }

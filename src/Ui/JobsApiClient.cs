@@ -57,6 +57,16 @@ public sealed class JobsApiClient
     public async Task<IReadOnlyList<JobTypeDto>> ListJobTypesAsync(CancellationToken cancellationToken) =>
         await _client.GetFromJsonAsync<IReadOnlyList<JobTypeDto>>(JobApiRoutes.JobTypes, cancellationToken) ?? [];
 
+    /// <summary>指定した Job の監査ログを取得する。並びはサーバが決めた古い順のまま。</summary>
+    /// <remarks>
+    /// 並べ直さない。監査ログは連番を持たないので、<b>応答の順序そのものが情報</b>で、
+    /// 手元で時刻順に並べ直すと同じ時刻に並ぶ「要求 → 確定」が入れ替わりうる。
+    /// </remarks>
+    public async Task<IReadOnlyList<AuditLogDto>> ListAuditLogsAsync(
+        string id, CancellationToken cancellationToken) =>
+        await _client.GetFromJsonAsync<IReadOnlyList<AuditLogDto>>(
+            JobApiRoutes.AuditLogsFor(id), cancellationToken) ?? [];
+
     /// <summary>Job を登録する。検証エラー（400）は結果型の Errors で返す。</summary>
     public async Task<RegisterJobResponse> RegisterJobAsync(
         string name, string jobType, string parameters, CancellationToken cancellationToken)

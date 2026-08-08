@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 
 using Netsoft.Jobs.Contracts;
 using Netsoft.Jobs.Domain;
+using Netsoft.Jobs.Features.Audit;
 using Netsoft.Jobs.Features.Execution;
 
 namespace Netsoft.Jobs.Features.EditJob;
@@ -27,31 +28,45 @@ public sealed class EditJobHandler
 {
     private readonly IJobStore _store;
     private readonly ISubTaskStore _subTasks;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<EditJobHandler> _logger;
 
-    public EditJobHandler(IJobStore store, ISubTaskStore subTasks, ILogger<EditJobHandler> logger)
+    /// <remarks>
+    /// 編集は状態を動かさないので時刻は要らなかったが、監査ログが実施時刻を持つので受け取る。
+    /// 他のコマンドと同じく <see cref="TimeProvider"/> 経由 ── テストが時刻を決められる。
+    /// </remarks>
+    public EditJobHandler(
+        IJobStore store, ISubTaskStore subTasks, TimeProvider timeProvider, ILogger<EditJobHandler> logger)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(subTasks);
+        ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
 
         _store = store;
         _subTasks = subTasks;
+        _timeProvider = timeProvider;
         _logger = logger;
     }
 
     /// <summary>パラメータの編集を要求する。拒否・不正の場合は保存しない。</summary>
-    public async Task<EditJobResult> HandleAsync(string id, string parameters, CancellationToken cancellationToken)
+    public async Task<Audited<EditJobResult>> HandleAsync(
+        string id, string parameters, CancellationToken cancellationToken)
     {
+        DateTimeOffset at = _timeProvider.GetUtcNow();
+
         if (!JobId.TryFrom(id, out JobId jobId))
         {
-            return EditJobResult.NotFound();
+            return NotFound(at, parameters);
         }
 
         if (!SubTaskParameters.TryParse(parameters, out int count, out _))
         {
-            return EditJobResult.Invalid(
-                [new ValidationError("parameters", "「個数 秒数」を空白区切りの正の整数で指定してください（例: 3 5）。")]);
+            return Invalid(
+                at,
+                jobId,
+                parameters,
+                "「個数 秒数」を空白区切りの正の整数で指定してください（例: 3 5）。");
         }
 
         while (true)
@@ -59,7 +74,7 @@ public sealed class EditJobHandler
             Job? job = await _store.FindAsync(jobId, cancellationToken);
             if (job is null)
             {
-                return EditJobResult.NotFound();
+                return NotFound(at, parameters);
             }
 
             if (!job.Status.CanEditParameters())
@@ -76,7 +91,14 @@ public sealed class EditJobHandler
                     rejection,
                     job.Status);
 
-                return EditJobResult.Rejected(job.ToDto(), rejection);
+                return new Audited<EditJobResult>(
+                    EditJobResult.Rejected(job.ToDto(), rejection),
+                    new AuditLog(
+                        AuditActor.User,
+                        at,
+                        Content(job.Parameters, parameters),
+                        jobId,
+                        $"現在の状態（{job.Status}）では編集できません。"));
             }
 
             // 着手済み（Pending でない行）は編集で消せない。定義の変更であって履歴の書き換えではない。
@@ -84,11 +106,16 @@ public sealed class EditJobHandler
                 .Count(subTask => subTask.Status != SubTaskStatus.Pending);
             if (count < started)
             {
-                return EditJobResult.Invalid(
-                    [new ValidationError(
-                        "parameters",
-                        $"サブタスクの個数は着手済みの {started} 個より小さくできません。")]);
+                return Invalid(
+                    at,
+                    jobId,
+                    parameters,
+                    $"サブタスクの個数は着手済みの {started} 個より小さくできません。",
+                    job.Parameters);
             }
+
+            // 変更前の値は書き換える前に控える。ChangeParameters を通した後では読めない。
+            string before = job.Parameters;
 
             job.ChangeParameters(parameters);
 
@@ -105,7 +132,37 @@ public sealed class EditJobHandler
                 jobId.Value,
                 parameters);
 
-            return EditJobResult.Accepted(job.ToDto());
+            return new Audited<EditJobResult>(
+                EditJobResult.Accepted(job.ToDto()),
+                new AuditLog(AuditActor.User, at, Content(before, parameters), jobId, Error: null));
         }
     }
+
+    /// <summary>
+    /// 実施内容。<b>変更前と変更後の両方を書く。</b>後だけだと、監査ログを読む人が
+    /// 「何がどう変わったか」を知るために Job の現在値と突き合わせることになり、
+    /// 2 回目の編集が入った時点でそれもできなくなる。
+    /// </summary>
+    /// <remarks>
+    /// 変更前が分からない経路（Id が読めない・Job が無い）は「-」にする。
+    /// 空文字にすると「空文字へ変えた」と区別が付かない。
+    /// </remarks>
+    private static string Content(string before, string after) =>
+        $"パラメータを変更した（変更前={before}, 変更後={after}）";
+
+    private static Audited<EditJobResult> NotFound(DateTimeOffset at, string parameters) =>
+        new(
+            EditJobResult.NotFound(),
+            new AuditLog(
+                AuditActor.User,
+                at,
+                Content("-", parameters),
+                JobId: null,
+                "対象の Job が見つかりませんでした。"));
+
+    private static Audited<EditJobResult> Invalid(
+        DateTimeOffset at, JobId? jobId, string parameters, string message, string before = "-") =>
+        new(
+            EditJobResult.Invalid([new ValidationError("parameters", message)]),
+            new AuditLog(AuditActor.User, at, Content(before, parameters), jobId, message));
 }

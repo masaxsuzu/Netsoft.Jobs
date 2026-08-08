@@ -52,7 +52,7 @@ public sealed class PauseResumeHandlerTests : IDisposable
     {
         await AddAsync(JobAt("job-1", current));
 
-        JobControlResult result = await _pause.HandleAsync("job-1", CancellationToken.None);
+        JobControlResult result = (await _pause.HandleAsync("job-1", CancellationToken.None)).Value;
 
         Assert.Equal(success, result.IsSuccess);
         Assert.Equal(expected, result.Job?.Status);
@@ -76,7 +76,7 @@ public sealed class PauseResumeHandlerTests : IDisposable
     {
         await AddAsync(JobAt("job-1", current));
 
-        JobControlResult result = await _resume.HandleAsync("job-1", CancellationToken.None);
+        JobControlResult result = (await _resume.HandleAsync("job-1", CancellationToken.None)).Value;
 
         Assert.Equal(success, result.IsSuccess);
         Assert.Equal(expected, result.Job?.Status);
@@ -106,7 +106,7 @@ public sealed class PauseResumeHandlerTests : IDisposable
 
         await AddAsync(JobAt("job-1", nameof(JobStatus.Paused)));
 
-        JobControlResult result = await resume.HandleAsync("job-1", CancellationToken.None);
+        JobControlResult result = (await resume.HandleAsync("job-1", CancellationToken.None)).Value;
 
         Assert.True(result.IsSuccess);
         Assert.Equal(nameof(JobStatus.Resumed), result.Job?.Status);
@@ -127,7 +127,7 @@ public sealed class PauseResumeHandlerTests : IDisposable
 
         await AddAsync(JobAt("job-1", nameof(JobStatus.InProgress)));
 
-        JobControlResult result = await pause.HandleAsync("job-1", CancellationToken.None);
+        JobControlResult result = (await pause.HandleAsync("job-1", CancellationToken.None)).Value;
 
         Assert.True(result.IsSuccess);
         Assert.Equal(nameof(JobStatus.Pausing), result.Job?.Status);
@@ -139,7 +139,7 @@ public sealed class PauseResumeHandlerTests : IDisposable
     {
         await AddAsync(JobAt("job-1", nameof(JobStatus.Paused)));
 
-        JobControlResult result = await _resume.HandleAsync("job-1", CancellationToken.None);
+        JobControlResult result = (await _resume.HandleAsync("job-1", CancellationToken.None)).Value;
 
         Assert.True(result.IsSuccess);
 
@@ -157,8 +157,8 @@ public sealed class PauseResumeHandlerTests : IDisposable
     {
         await AddAsync(JobAt("job-1", nameof(JobStatus.InProgress)));
 
-        JobControlResult paused = await _pause.HandleAsync(id!, CancellationToken.None);
-        JobControlResult resumed = await _resume.HandleAsync(id!, CancellationToken.None);
+        JobControlResult paused = (await _pause.HandleAsync(id!, CancellationToken.None)).Value;
+        JobControlResult resumed = (await _resume.HandleAsync(id!, CancellationToken.None)).Value;
 
         Assert.False(paused.IsSuccess);
         Assert.Null(paused.Job);
@@ -192,7 +192,7 @@ public sealed class PauseResumeHandlerTests : IDisposable
             Assert.True(await _store.UpdateAsync(edited, CancellationToken.None));
         };
 
-        JobControlResult result = await pause.HandleAsync("job-1", CancellationToken.None);
+        JobControlResult result = (await pause.HandleAsync("job-1", CancellationToken.None)).Value;
 
         Assert.True(result.IsSuccess);
         Assert.Equal(nameof(JobStatus.Pausing), result.Job?.Status);
@@ -221,7 +221,7 @@ public sealed class PauseResumeHandlerTests : IDisposable
             Assert.True(await _store.UpdateAsync(edited, CancellationToken.None));
         };
 
-        JobControlResult result = await resume.HandleAsync("job-1", CancellationToken.None);
+        JobControlResult result = (await resume.HandleAsync("job-1", CancellationToken.None)).Value;
 
         Assert.True(result.IsSuccess);
         Assert.Equal(nameof(JobStatus.Resumed), (await SavedAsync("job-1")).Status.ToString());

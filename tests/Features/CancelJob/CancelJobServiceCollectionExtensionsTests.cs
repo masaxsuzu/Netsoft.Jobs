@@ -51,6 +51,12 @@ public sealed class CancelJobServiceCollectionExtensionsTests
         services.AddLogging();
         services.AddSingleton<IJobStore>(store);
         services.AddSingleton<ISubTaskStore>(subTasks);
+
+        // 監査ログの置き場は AddJobFeatures が持たない（既定を置くと、登録し忘れたホストで
+        // 監査が黙って捨てられる）。ここで入れておかないと組み立ての検証で落ちる ──
+        // その落ち方こそが「忘れたら起動できない」という保証になっている。
+        services.AddSingleton<IAuditLogStore>(new RecordingAuditLogStore());
+
         services.AddJobFeatures();
 
         using ServiceProvider provider = services.BuildServiceProvider(new ServiceProviderOptions

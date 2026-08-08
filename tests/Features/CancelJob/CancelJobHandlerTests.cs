@@ -220,7 +220,7 @@ public sealed class CancelJobHandlerTests : IDisposable
     {
         await AddAsync(Registered("job-1"));
 
-        CancelJobResult result = await _handler.HandleAsync(id!, CancellationToken.None);
+        CancelJobResult result = (await _handler.HandleAsync(id!, CancellationToken.None)).Value;
 
         Assert.False(result.IsSuccess);
         Assert.Null(result.Job);
@@ -229,7 +229,8 @@ public sealed class CancelJobHandlerTests : IDisposable
         Assert.Empty(_logger.Entries);
     }
 
-    private Task<CancelJobResult> CancelAsync(string id) => _handler.HandleAsync(id, CancellationToken.None);
+    private async Task<CancelJobResult> CancelAsync(string id) =>
+        (await _handler.HandleAsync(id, CancellationToken.None)).Value;
 
     private Task AddAsync(Job job) => _jobs.AddAsync(job, CancellationToken.None);
 

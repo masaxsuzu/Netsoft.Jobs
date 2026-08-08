@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Netsoft.Jobs.Domain;
+using Netsoft.Jobs.Features.Audit;
 using Netsoft.Jobs.Features.CancelJob;
 using Netsoft.Jobs.Features.Execution;
 using Netsoft.Jobs.Features.PauseJob;
@@ -63,7 +64,7 @@ public sealed class PauseResumeExecutionTests : IDisposable
         // 1 つ目のサブタスクが走り出したところで停止を要求する。
         Task<bool> first = engine.RunOnceAsync(CancellationToken.None);
         await _time.WaitForTimersAsync(1).WaitAsync(WaitLimit);
-        Assert.True((await _pause.HandleAsync("job-1", CancellationToken.None)).IsSuccess);
+        Assert.True(((await _pause.HandleAsync("job-1", CancellationToken.None)).Value).IsSuccess);
 
         // 1 秒進めると 1 つ目が完了し、境界で Pausing が観測されて Paused になる。
         _time.Advance(SubTaskJobHandler.Step);
@@ -80,7 +81,7 @@ public sealed class PauseResumeExecutionTests : IDisposable
         Assert.False(await engine.RunOnceAsync(CancellationToken.None).WaitAsync(WaitLimit));
 
         // 再開すると Resumed へ戻り、既存のディスパッチがそのまま拾う。
-        Assert.True((await _resume.HandleAsync("job-1", CancellationToken.None)).IsSuccess);
+        Assert.True(((await _resume.HandleAsync("job-1", CancellationToken.None)).Value).IsSuccess);
 
         Task<bool> second = engine.RunOnceAsync(CancellationToken.None);
 
@@ -112,12 +113,12 @@ public sealed class PauseResumeExecutionTests : IDisposable
 
         Task<bool> execution = engine.RunOnceAsync(CancellationToken.None);
         await _time.WaitForTimersAsync(1).WaitAsync(WaitLimit);
-        Assert.True((await _pause.HandleAsync("job-1", CancellationToken.None)).IsSuccess);
+        Assert.True(((await _pause.HandleAsync("job-1", CancellationToken.None)).Value).IsSuccess);
 
         // エンジンの次の Job 書き込みは Paused の受理。その直前に再開を割り込ませる。
         // ハンドラは境界で Pausing を見て抜けた後なので、受理と再開が正面衝突する。
         interfering.BeforeNextUpdate = async () =>
-            Assert.True((await _resume.HandleAsync("job-1", CancellationToken.None)).IsSuccess);
+            Assert.True(((await _resume.HandleAsync("job-1", CancellationToken.None)).Value).IsSuccess);
 
         // 1 秒目で 1 つ目が完了 → 境界で Pausing 観測 → 受理が再開に負けて走り直し
         // → 2 つ目が始まる。走り直しの証拠は「Paused を経ずに完走する」こと。
@@ -146,10 +147,10 @@ public sealed class PauseResumeExecutionTests : IDisposable
 
         Task<bool> execution = engine.RunOnceAsync(CancellationToken.None);
         await _time.WaitForTimersAsync(1).WaitAsync(WaitLimit);
-        Assert.True((await _pause.HandleAsync("job-1", CancellationToken.None)).IsSuccess);
+        Assert.True(((await _pause.HandleAsync("job-1", CancellationToken.None)).Value).IsSuccess);
 
         interfering.BeforeNextUpdate = async () =>
-            Assert.True((await _cancel.HandleAsync("job-1", CancellationToken.None)).IsSuccess);
+            Assert.True(((await _cancel.HandleAsync("job-1", CancellationToken.None)).Value).IsSuccess);
 
         _time.Advance(SubTaskJobHandler.Step);
         Assert.True(await execution.WaitAsync(WaitLimit));
@@ -181,7 +182,7 @@ public sealed class PauseResumeExecutionTests : IDisposable
 
         Task<bool> execution = engine.RunOnceAsync(CancellationToken.None);
         await _time.WaitForTimersAsync(1).WaitAsync(WaitLimit);
-        Assert.True((await _pause.HandleAsync("job-1", CancellationToken.None)).IsSuccess);
+        Assert.True(((await _pause.HandleAsync("job-1", CancellationToken.None)).Value).IsSuccess);
 
         // 受理を書き戻す直前に、他所が Cancelling を経て終端まで進めてしまう。
         interfering.BeforeNextUpdate = async () =>
@@ -220,6 +221,7 @@ public sealed class PauseResumeExecutionTests : IDisposable
             new JobQueueSignal(),
             _time,
             _instrumentation,
+            new AuditRecorder(new RecordingAuditLogStore(), NullLogger<AuditRecorder>.Instance),
             NullLogger<JobExecutionEngine>.Instance,
             CancellationToken.None);
 

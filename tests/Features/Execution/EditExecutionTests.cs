@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Netsoft.Jobs.Domain;
+using Netsoft.Jobs.Features.Audit;
 using Netsoft.Jobs.Features.EditJob;
 using Netsoft.Jobs.Features.Execution;
 using Netsoft.Jobs.Features.Tests.Fakes;
@@ -33,7 +34,7 @@ public sealed class EditExecutionTests : IDisposable
         _instrumentation = new JobExecutionInstrumentation(
             _meterFactory, _jobs, _time, new NullJobTraceContextStore(),
             NullLogger<JobExecutionInstrumentation>.Instance);
-        _edit = new EditJobHandler(_jobs, _subTasks, NullLogger<EditJobHandler>.Instance);
+        _edit = new EditJobHandler(_jobs, _subTasks, TimeProvider.System, NullLogger<EditJobHandler>.Instance);
     }
 
     public void Dispose()
@@ -59,7 +60,7 @@ public sealed class EditExecutionTests : IDisposable
         await _time.WaitForTimersAsync(1).WaitAsync(WaitLimit);
 
         // 1 つ目のサブタスクの実行中に 2 個へ増やす。
-        Assert.True((await _edit.HandleAsync("job-1", "2 1", CancellationToken.None)).IsSuccess);
+        Assert.True(((await _edit.HandleAsync("job-1", "2 1", CancellationToken.None)).Value).IsSuccess);
 
         // 1 秒で 1 つ目が完了 → 境界で突き合わせ → 2 つ目の行が生まれて走る。
         _time.Advance(SubTaskJobHandler.Step);
@@ -89,7 +90,7 @@ public sealed class EditExecutionTests : IDisposable
         await _time.WaitForTimersAsync(1).WaitAsync(WaitLimit);
 
         // 1 つ目が実行中（着手済み 1）。2 個へ減らすのは N ≥ 着手済みなので通る。
-        Assert.True((await _edit.HandleAsync("job-1", "2 1", CancellationToken.None)).IsSuccess);
+        Assert.True(((await _edit.HandleAsync("job-1", "2 1", CancellationToken.None)).Value).IsSuccess);
 
         _time.Advance(SubTaskJobHandler.Step);
         await _time.WaitForTimersAsync(2).WaitAsync(WaitLimit);
@@ -116,7 +117,7 @@ public sealed class EditExecutionTests : IDisposable
         await _time.WaitForTimersAsync(1).WaitAsync(WaitLimit);
 
         // 1 つ目（3 秒）の実行中に m=1 へ編集。1 つ目は 3 秒のまま走り切る。
-        Assert.True((await _edit.HandleAsync("job-1", "2 1", CancellationToken.None)).IsSuccess);
+        Assert.True(((await _edit.HandleAsync("job-1", "2 1", CancellationToken.None)).Value).IsSuccess);
 
         for (int i = 1; i <= 3; i++)
         {
@@ -187,7 +188,7 @@ public sealed class EditExecutionTests : IDisposable
 
         // エンジンが候補を読んだ後、InProgress を書き戻す直前に編集を差し込む。
         interfering.BeforeNextUpdate = async () =>
-            Assert.True((await _edit.HandleAsync("job-1", "1 1", CancellationToken.None)).IsSuccess);
+            Assert.True(((await _edit.HandleAsync("job-1", "1 1", CancellationToken.None)).Value).IsSuccess);
 
         Task<bool> execution = engine.RunOnceAsync(CancellationToken.None);
 
@@ -218,6 +219,7 @@ public sealed class EditExecutionTests : IDisposable
             new JobQueueSignal(),
             _time,
             _instrumentation,
+            new AuditRecorder(new RecordingAuditLogStore(), NullLogger<AuditRecorder>.Instance),
             NullLogger<JobExecutionEngine>.Instance,
             CancellationToken.None);
 

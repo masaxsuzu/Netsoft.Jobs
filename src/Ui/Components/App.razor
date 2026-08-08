@@ -126,15 +126,14 @@
         .col-name { font-weight: 600; }
         .col-type { color: var(--sub); }
 
-        /* 失敗理由の列は絵柄 1 つぶん。幅を書いておくのは、失敗が 1 件も無いときに
-           列が見出しだけの幅へ縮まないようにするため ── 幅が動くと、失敗が出た瞬間に
-           表全体の列がずれる。 */
-        .col-failure { width: 4.5rem; }
+        /* 監査ログの列は絵柄 1 つぶん。見出し（監査ログ）のほうが広いので、
+           幅は見出しが決める。 */
+        .col-audit { width: 5rem; }
 
-        /* 失敗理由の絵柄だけは、押せなくても（終端の行でも）薄くしない。
-           他の操作と違って、これは「できること」ではなく「起きたこと」の印。 */
-        .icon.failure { border-color: transparent; background: none; }
-        .icon.failure:hover:not(:disabled) { border-color: var(--danger); }
+        /* 監査ログの絵柄は枠を持たない。操作のボタン（‖ ▶ ✕ ✓）と並べたときに、
+           押すと何かが変わるものと、読むだけのものを見た目で分ける。 */
+        .icon.audit { border-color: transparent; background: none; color: var(--sub); }
+        .icon.audit:hover:not(:disabled) { border-color: var(--line); color: var(--accent); }
 
         /* 帯の列も幅を固定する。中身（帯）は固定幅だが、見出しの「進捗」のほうが広いので
            指定が無いと列が見出しの幅になり、隣の列を押し出す。 */
@@ -202,8 +201,8 @@
 
         .operation-dialog p { margin: 0 0 .5rem; color: var(--danger); font-size: .85rem; }
 
-        /* 失敗理由の全文。操作ダイアログ（右上）と重ならないよう中央に置く。
-           全文を読ませるのが目的なので、幅を広く取り、折り返しを許す
+        /* 監査ログ。操作ダイアログ（右上）と重ならないよう中央に置く。
+           読ませるのが目的なので幅を広く取り、中で折り返しを許す
            （表の中の nowrap をそのまま持ち込むと、読むために横スクロールさせることになる）。 */
         .detail-dialog {
             position: fixed;
@@ -216,7 +215,6 @@
             overflow-y: auto;
             background: #fff;
             border: 1px solid var(--line);
-            border-left: 4px solid var(--danger);
             border-radius: 6px;
             padding: 1rem 1.25rem;
             box-shadow: 0 12px 32px rgba(16, 24, 40, .18);
@@ -231,13 +229,23 @@
         .detail-dialog p {
             margin: 0;
             color: var(--ink);
-            font-family: ui-monospace, Menlo, Consolas, monospace;
-            font-size: .8rem;
+            font-size: .82rem;
             white-space: pre-wrap;
             word-break: break-word;
         }
 
         .detail-actions { margin-top: .9rem; text-align: right; }
+
+        /* ダイアログの中の監査ログ。実施内容だけは折り返す（例外の Message が入る）。
+           表の中の nowrap をそのまま持ち込むと、読むために横スクロールさせることになる。 */
+        table.audit { font-size: .78rem; }
+        table.audit th { font-size: .68rem; padding: .35rem .5rem; }
+        table.audit td { padding: .35rem .5rem; vertical-align: top; }
+        table.audit td:not(.col-time):not(.col-actor) { white-space: normal; word-break: break-word; }
+        table.audit .col-actor { color: var(--sub); }
+        table.audit .col-error { color: var(--danger); }
+
+        .muted { color: var(--sub); }
 
         /* 回路（WebSocket）が死んだときに Blazor がこの要素を表示する。無いと
            何も出ず、画面は無言で凍る（操作しても反応しないだけになる）。
@@ -281,10 +289,11 @@
         <symbol id="glyph-save" viewBox="0 0 24 24">
             <path d="M9.6 16.2 5.4 12 4 13.4l5.6 5.6L20 8.6 18.6 7.2z" />
         </symbol>
-        @* 失敗理由は三角の警告。丸い i（情報）にしない ── ここに出るのは補足ではなく、
-           Job が終われなかった理由そのもので、読まずに済ませてよいものではない。 *@
-        <symbol id="glyph-failure" viewBox="0 0 24 24">
-            <path d="M12 2.8a1.6 1.6 0 0 1 1.39.81l8.4 15.1A1.6 1.6 0 0 1 20.4 21.1H3.6a1.6 1.6 0 0 1-1.39-2.39l8.4-15.1A1.6 1.6 0 0 1 12 2.8zm-1.1 5.6v6h2.2v-6zm0 7.6v2.2h2.2v-2.2z" />
+        @* 監査ログは巻物ではなく「行の並んだ紙」。中身が時系列の記録であることを、
+           絵柄そのものが言う。警告の三角にしない ── 失敗していない Job にも出るので、
+           全行に警告が並ぶことになる。 *@
+        <symbol id="glyph-audit" viewBox="0 0 24 24">
+            <path d="M5 2.5h11.2L21 7.3V21a1.5 1.5 0 0 1-1.5 1.5h-14A1.5 1.5 0 0 1 4 21V4a1.5 1.5 0 0 1 1-1.5zm10.4 2.2v3.4h3.4zM7.5 10.5v1.8h9v-1.8zm0 3.8v1.8h9v-1.8zm0 3.8v1.8h6v-1.8z" />
         </symbol>
     </svg>
 

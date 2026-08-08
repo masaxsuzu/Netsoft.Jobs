@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Netsoft.Jobs.Contracts;
+using Netsoft.Jobs.Features.Audit;
 
 namespace Netsoft.Jobs.Features.PauseJob;
 
@@ -20,16 +21,20 @@ public static class PauseJobEndpoint
             async Task<Results<Ok<JobDto>, NotFound, Conflict<JobDto>>> (
                 string id,
                 PauseJobHandler handler,
+                AuditRecorder recorder,
                 CancellationToken cancellationToken) =>
-                ToHttp(await handler.HandleAsync(id, cancellationToken)))
+                ToHttp(await recorder.RecordAsync(
+                    await handler.HandleAsync(id, cancellationToken), cancellationToken)))
             .WithName("PauseJob");
 
         endpoints.MapPost($"{JobApiRoutes.Jobs}/{{id}}/resume",
             async Task<Results<Ok<JobDto>, NotFound, Conflict<JobDto>>> (
                 string id,
                 ResumeJobHandler handler,
+                AuditRecorder recorder,
                 CancellationToken cancellationToken) =>
-                ToHttp(await handler.HandleAsync(id, cancellationToken)))
+                ToHttp(await recorder.RecordAsync(
+                    await handler.HandleAsync(id, cancellationToken), cancellationToken)))
             .WithName("ResumeJob");
 
         return endpoints;

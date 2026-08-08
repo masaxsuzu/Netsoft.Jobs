@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Netsoft.Jobs.Domain;
+using Netsoft.Jobs.Features.Audit;
 using Netsoft.Jobs.Features.CancelJob;
 using Netsoft.Jobs.Features.Execution;
 using Netsoft.Jobs.Features.Tests.Fakes;
@@ -38,7 +39,7 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
             new FixedTimeProvider(Now),
             NullLogger<CancelJobHandler>.Instance);
 
-        CancelJobResult result = await handler.HandleAsync("job-1", CancellationToken.None).WaitAsync(HangGuard);
+        CancelJobResult result = (await handler.HandleAsync("job-1", CancellationToken.None).WaitAsync(HangGuard)).Value;
 
         // 追い抜かれ続けた末に、状態機械が「もう効いている」か「もう終わっている」で決着させる。
         Assert.NotNull(result.Rejection);
@@ -79,7 +80,7 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
             Assert.True(await _store.UpdateAsync(finishing, CancellationToken.None));
         };
 
-        CancelJobResult result = await handler.HandleAsync("job-1", CancellationToken.None).WaitAsync(HangGuard);
+        CancelJobResult result = (await handler.HandleAsync("job-1", CancellationToken.None).WaitAsync(HangGuard)).Value;
 
         Assert.False(result.IsSuccess);
         Assert.Equal(JobTransitionRejection.JobAlreadyFinished, result.Rejection);
@@ -135,13 +136,14 @@ public sealed class CancelJobHandlerConcurrencyTests : IDisposable
             new JobQueueSignal(),
             new FixedTimeProvider(Now),
             instrumentation,
+            new AuditRecorder(new RecordingAuditLogStore(), NullLogger<AuditRecorder>.Instance),
             NullLogger<JobExecutionEngine>.Instance,
             CancellationToken.None);
 
         // InProgress が保存された瞬間＝画面がキャンセルを受け付けられるようになった瞬間に要求する。
         interfering.AfterNextUpdate = async () =>
         {
-            CancelJobResult result = await cancel.HandleAsync("job-1", CancellationToken.None);
+            CancelJobResult result = (await cancel.HandleAsync("job-1", CancellationToken.None)).Value;
             Assert.True(result.IsSuccess);
 
             // ハンドラを観測点まで進める。行には Cancelling が書けている。

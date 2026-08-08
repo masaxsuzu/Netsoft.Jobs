@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 
 using Netsoft.Jobs.Contracts;
 using Netsoft.Jobs.Domain;
+using Netsoft.Jobs.Features.Audit;
 
 namespace Netsoft.Jobs.Features.PauseJob;
 
@@ -33,11 +34,20 @@ public sealed class ResumeJobHandler
     }
 
     /// <summary>再開を要求する。拒否された場合は保存しない。</summary>
-    public async Task<JobControlResult> HandleAsync(string id, CancellationToken cancellationToken)
+    /// <remarks>
+    /// <b>停止中からの再開は監査ログが 2 件になる。</b>利用者が押したのは 1 回だが、
+    /// このコマンドは要求（Resuming）を書いたあと確定（Resumed）まで自分で済ませる。
+    /// 要求と確定は別の出来事なので分けて記録する ── 畳むと「誰が押したか」と
+    /// 「いつ待ち行列へ戻ったか」のどちらも読めなくなる。
+    /// 受理前の揺り戻し（Pausing → InProgress）は確定を伴わないので 1 件。
+    /// </remarks>
+    public async Task<Audited<JobControlResult>> HandleAsync(string id, CancellationToken cancellationToken)
     {
+        DateTimeOffset at = _timeProvider.GetUtcNow();
+
         if (!JobId.TryFrom(id, out JobId jobId))
         {
-            return JobControlResult.NotFound();
+            return NotFound(at);
         }
 
         while (true)
@@ -45,7 +55,7 @@ public sealed class ResumeJobHandler
             Job? job = await _store.FindAsync(jobId, cancellationToken);
             if (job is null)
             {
-                return JobControlResult.NotFound();
+                return NotFound(at);
             }
 
             JobTransitionResult transition = job.Apply(JobTrigger.Resume, _timeProvider.GetUtcNow());
@@ -59,7 +69,16 @@ public sealed class ResumeJobHandler
                     rejection,
                     job.Status);
 
-                return JobControlResult.Rejected(job.ToDto(), rejection);
+                JobControlResult rejected = JobControlResult.Rejected(job.ToDto(), rejection);
+
+                return new Audited<JobControlResult>(
+                    rejected,
+                    new AuditLog(
+                        AuditActor.User,
+                        at,
+                        Content,
+                        jobId,
+                        rejected.IsSuccess ? null : $"現在の状態（{job.Status}）では再開できません。"));
             }
 
             if (!await _store.UpdateAsync(job, cancellationToken))
@@ -73,13 +92,40 @@ public sealed class ResumeJobHandler
                 jobId.Value,
                 job.Status);
 
-            Job settled = transition.Previous.IsHandlerActive()
-                ? job
-                : await SettleAsync(job, cancellationToken);
+            AuditLog requested = new(AuditActor.User, at, Content, jobId, Error: null);
 
-            return JobControlResult.Accepted(settled.ToDto());
+            // 受理前の揺り戻し（Pausing → InProgress）は確定を伴わない。走っているハンドラの
+            // ところへ戻すだけなので、記録するのは要求 1 件。
+            if (transition.Previous.IsHandlerActive())
+            {
+                return new Audited<JobControlResult>(JobControlResult.Accepted(job.ToDto()), requested);
+            }
+
+            Job settled = await SettleAsync(job, cancellationToken);
+
+            return new Audited<JobControlResult>(
+                JobControlResult.Accepted(settled.ToDto()),
+                [
+                    requested,
+                    new AuditLog(
+                        AuditActor.System,
+                        _timeProvider.GetUtcNow(),
+                        $"再開を{(settled.Status == JobStatus.Resumed ? "確定し、待ち行列へ戻した" : "確定できなかった")}",
+                        jobId,
+                        settled.Status == JobStatus.Resumed
+                            ? null
+                            : $"確定しようとしたときには状態が {settled.Status} になっていました。"),
+                ]);
         }
     }
+
+    /// <summary>実施内容。結末によらず同じ ── 記録するのは「何をしたか」で、結果は Error 側。</summary>
+    private const string Content = "再開を要求した";
+
+    private static Audited<JobControlResult> NotFound(DateTimeOffset at) =>
+        new(
+            JobControlResult.NotFound(),
+            new AuditLog(AuditActor.User, at, Content, JobId: null, "対象の Job が見つかりませんでした。"));
 
     /// <summary>
     /// 要求を確定させる。ハンドラが居ない相手にだけ呼ぶ。

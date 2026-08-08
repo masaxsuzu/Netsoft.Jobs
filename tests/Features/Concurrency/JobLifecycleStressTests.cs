@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Netsoft.Jobs.Domain;
+using Netsoft.Jobs.Features.Audit;
 using Netsoft.Jobs.Features.CancelJob;
 using Netsoft.Jobs.Features.EditJob;
 using Netsoft.Jobs.Features.Execution;
@@ -72,6 +73,7 @@ public sealed class JobLifecycleStressTests : IDisposable
                 new JobQueueSignal(),
                 timeProvider,
                 instrumentation,
+                new AuditRecorder(new RecordingAuditLogStore(), NullLogger<AuditRecorder>.Instance),
                 NullLogger<JobExecutionEngine>.Instance,
                 CancellationToken.None)));
 
@@ -95,7 +97,7 @@ public sealed class JobLifecycleStressTests : IDisposable
         // 画面から届く残りの操作。編集は状態を動かさずに版だけ進めるので、
         // 「読み出しから書き戻しまでの間に版が変わる」窓をエンジンとキャンセルの両方に作る
         // ── 版で守るようにしてから現れた形で、状態だけを見ていたころは素通りしていた。
-        EditJobHandler editing = new(store, _subTasks, NullLogger<EditJobHandler>.Instance);
+        EditJobHandler editing = new(store, _subTasks, timeProvider, NullLogger<EditJobHandler>.Instance);
         PauseJobHandler pausing = new(store, timeProvider, NullLogger<PauseJobHandler>.Instance);
         ResumeJobHandler resuming = new(store, timeProvider, NullLogger<ResumeJobHandler>.Instance);
 
@@ -182,10 +184,10 @@ public sealed class JobLifecycleStressTests : IDisposable
                     //（全部が拒否で終わる回では、この試験は何も見ていないことになる）。
                     bool accepted = random.Next(3) switch
                     {
-                        0 => (await editing.HandleAsync(
-                            id.Value, $"{random.Next(1, 5)} {random.Next(1, 5)}", CancellationToken.None)).IsSuccess,
-                        1 => (await pausing.HandleAsync(id.Value, CancellationToken.None)).IsSuccess,
-                        _ => (await resuming.HandleAsync(id.Value, CancellationToken.None)).IsSuccess,
+                        0 => ((await editing.HandleAsync(
+                            id.Value, $"{random.Next(1, 5)} {random.Next(1, 5)}", CancellationToken.None)).Value).IsSuccess,
+                        1 => ((await pausing.HandleAsync(id.Value, CancellationToken.None)).Value).IsSuccess,
+                        _ => ((await resuming.HandleAsync(id.Value, CancellationToken.None)).Value).IsSuccess,
                     };
 
                     if (accepted)

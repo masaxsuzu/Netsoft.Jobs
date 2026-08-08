@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 
 using Netsoft.Jobs.Contracts;
 using Netsoft.Jobs.Domain;
+using Netsoft.Jobs.Features.Audit;
 
 namespace Netsoft.Jobs.Features.PauseJob;
 
@@ -34,11 +35,25 @@ public sealed class PauseJobHandler
     }
 
     /// <summary>一時停止を要求する。拒否された場合は保存しない。</summary>
-    public async Task<JobControlResult> HandleAsync(string id, CancellationToken cancellationToken)
+    /// <remarks>
+    /// <para>
+    /// 監査ログは結末によらず 1 件。<b>拒否も「利用者が押した」という実施</b>なので、
+    /// 記録しないと画面のボタンを押した事実が後から追えない。
+    /// </para>
+    /// <para>
+    /// 確定（Pausing → Paused）をここで書かない。要求できるのは実行中の Job だけで、
+    /// そこには必ずハンドラが居るので、受理するのはサブタスクの境界まで来たハンドラの側。
+    /// かつては待ち行列からも要求でき、その相手にはここで確定を書いていたが、
+    /// 要求の入口が実行中だけになって呼ばれなくなったので落としてある。
+    /// </para>
+    /// </remarks>
+    public async Task<Audited<JobControlResult>> HandleAsync(string id, CancellationToken cancellationToken)
     {
+        DateTimeOffset at = _timeProvider.GetUtcNow();
+
         if (!JobId.TryFrom(id, out JobId jobId))
         {
-            return JobControlResult.NotFound();
+            return NotFound(at);
         }
 
         while (true)
@@ -46,7 +61,7 @@ public sealed class PauseJobHandler
             Job? job = await _store.FindAsync(jobId, cancellationToken);
             if (job is null)
             {
-                return JobControlResult.NotFound();
+                return NotFound(at);
             }
 
             JobTransitionResult transition = job.Apply(JobTrigger.RequestPause, _timeProvider.GetUtcNow());
@@ -61,7 +76,18 @@ public sealed class PauseJobHandler
                     rejection,
                     job.Status);
 
-                return JobControlResult.Rejected(job.ToDto(), rejection);
+                JobControlResult rejected = JobControlResult.Rejected(job.ToDto(), rejection);
+
+                // AlreadyInEffect は成功として扱う（結果型の注記）。監査でも同じ扱いにする ──
+                // 2 回押しただけの操作をエラーとして残すと、本当の拒否が埋もれる。
+                return new Audited<JobControlResult>(
+                    rejected,
+                    new AuditLog(
+                        AuditActor.User,
+                        at,
+                        Content,
+                        jobId,
+                        rejected.IsSuccess ? null : $"現在の状態（{job.Status}）では一時停止できません。"));
             }
 
             if (!await _store.UpdateAsync(job, cancellationToken))
@@ -75,55 +101,19 @@ public sealed class PauseJobHandler
                 jobId.Value,
                 job.Status);
 
-            Job settled = transition.Previous.IsHandlerActive()
-                ? job
-                : await SettleAsync(job, cancellationToken);
-
-            return JobControlResult.Accepted(settled.ToDto());
+            return new Audited<JobControlResult>(
+                JobControlResult.Accepted(job.ToDto()),
+                new AuditLog(AuditActor.User, at, Content, jobId, Error: null));
         }
     }
 
-    /// <summary>
-    /// 要求を確定させる。ハンドラが居ない相手にだけ呼ぶ。
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// 要求は必ず ing を経由するので（<see cref="JobStateMachine"/>）、待つ相手が居ない相手にも
-    /// 一度は Pausing が書かれる。<b>その 1 回の書き込みを削ってはいけない</b> ── 押した事実が
-    /// 状態に残らなくなり、変更通知にも流れないので、画面は「押したのに何も起きていない」
-    /// 見え方になる。確定まで 1 回の書き込みで済ませる誘惑はここにある。
-    /// </para>
-    /// <para>
-    /// 落とす先は「今の状態」から引く。要求を書いてから読み直すまでの間に別の要求
-    /// （中止など）が重なると、確定すべき ing が入れ替わっているため。書けなかった場合も
-    /// 読み直して同じ判断をやり直す。ing でなくなっていれば誰かが決着させたということなので、
-    /// そのまま返す。
-    /// </para>
-    /// <para>
-    /// 2 回の書き込みの間にプロセスが落ちると ing が静止したまま残るが、
-    /// 起動時復旧が ing を対応する ed へ落とすので、次の起動で必ず閉じる。
-    /// </para>
-    /// </remarks>
-    private async Task<Job> SettleAsync(Job requested, CancellationToken cancellationToken)
-    {
-        while (true)
-        {
-            Job? job = await _store.FindAsync(requested.Id, cancellationToken);
-            if (job is null)
-            {
-                return requested;
-            }
+    /// <summary>実施内容。結末によらず同じ ── 記録するのは「何をしたか」で、結果は Error 側。</summary>
+    private const string Content = "一時停止を要求した";
 
-            if (job.Status.SettlementTrigger() is not { } confirm
-                || !job.Apply(confirm, _timeProvider.GetUtcNow()).IsAllowed)
-            {
-                return job;
-            }
-
-            if (await _store.UpdateAsync(job, cancellationToken))
-            {
-                return job;
-            }
-        }
-    }
+    private static Audited<JobControlResult> NotFound(DateTimeOffset at) =>
+        new(
+            JobControlResult.NotFound(),
+            // Job に紐づけない。存在しない Job の監査ログは誰にも読まれない
+            //（画面が出すのは実在する行の分だけ）。
+            new AuditLog(AuditActor.User, at, Content, JobId: null, "対象の Job が見つかりませんでした。"));
 }

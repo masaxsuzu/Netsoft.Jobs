@@ -48,4 +48,7 @@ public static class JobApiRoutes
     /// "types" という id も現れない）。
     /// </remarks>
     public const string JobTypes = $"{Jobs}/types";
+
+    /// <summary>監査ログの全件。Job 単位は <see cref="Jobs"/> の下（<c>/api/jobs/{id}/audit-logs</c>）。</summary>
+    public const string AuditLogs = "/api/audit-logs";
 }
