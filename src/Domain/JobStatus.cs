@@ -59,10 +59,18 @@ public enum JobStatus
 
     /// <summary>再開要求済み。確定を待っている。</summary>
     /// <remarks>
+    /// <para>
     /// <see cref="Paused"/> から待ち行列（<see cref="Resumed"/>）へは 1 手で行けるので、
     /// この状態は<b>行き先のためではなく、要求を受け付けた事実を残すために在る</b>。
     /// 要求がすべて ing を経由するようになると、押した直後に何が起きているかが
     /// 相手の都合（ハンドラが居るかどうか）で変わらなくなる。
+    /// </para>
+    /// <para>
+    /// ただし<b>役割は 1 つ増えている</b>。この状態は
+    /// <see cref="JobStatusExtensions.BlocksQueue"/> に含まれ、待ち行列を止める
+    /// ── <see cref="Paused"/> から手を離してから <see cref="Resumed"/> を掴むまでの間、
+    /// 席を空けないため。
+    /// </para>
     /// </remarks>
     Resuming,
 }
@@ -138,6 +146,28 @@ public static class JobStatusExtensions
     /// </remarks>
     public static bool IsWaiting(this JobStatus status) =>
         status is JobStatus.Registered or JobStatus.Resumed;
+
+    /// <summary>
+    /// 待ち行列を止める状態か。1 件でもあれば、待機中が居ても次は動かさない。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="JobStatus.Paused"/> は利用者が決めた規則（止めたなら次も流さない）。
+    /// <see cref="JobStatus.Resuming"/> はその<b>取りこぼしを塞ぐため</b>に居る。
+    /// 再開は 2 回の書き込みに分かれていて（Paused → Resuming → Resumed）、
+    /// 1 回目が変更通知でエンジンを起こす。その瞬間、再開する Job は
+    /// <see cref="IsWaiting"/> でも <see cref="JobStatus.Paused"/> でもない
+    /// ── <b>列に並んでもいないし、列を止めてもいない</b>。ここを塞がないと、
+    /// 起きたエンジンが後から登録された Job を先に走らせる。
+    /// </para>
+    /// <para>
+    /// <see cref="JobStatus.Pausing"/> は含めない。あれは <see cref="JobStatus.InProgress"/>
+    /// からしか来ないので、含めると「実行中が 1 件あるだけで次が出ない」という別の規則になる。
+    /// そして実行中はエンジンがハンドラの中に居るので、そもそも塞ぐ窓が無い。
+    /// </para>
+    /// </remarks>
+    public static bool BlocksQueue(this JobStatus status) =>
+        status is JobStatus.Paused or JobStatus.Resuming;
 
     /// <summary>
     /// パラメータを編集できる状態か。

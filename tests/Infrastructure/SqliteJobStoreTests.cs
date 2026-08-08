@@ -265,40 +265,83 @@ public sealed class SqliteJobStoreTests
     }
 
     /// <summary>
-    /// 保留中が 1 件でもあれば、待機中が居ても次は無い。保留中の再開を待つ。
+    /// BlocksQueue が true の状態は、ひとつ残らず待ち行列を止める。
     /// </summary>
     /// <remarks>
-    /// この 1 行が無いと、止めた本人の意図（いま流さない）に反して次が走り出す。
+    /// SQL は止める状態を書き写しているので、状態を足して BlocksQueue だけ直すと
+    /// そこだけ素通りする。IsWaiting の総当たりと対にしてあるのはそのため。
+    /// 止めた本人の意図（いま流さない）に反して次が走り出さないこと、
     /// 実行が止まったままになりうることは承知のうえで、利用者が決めた規則。
     /// </remarks>
     [Fact]
-    public async Task FindOldestWaitingAsyncは保留中があれば待機中が居てもnullを返す()
+    public async Task FindOldestWaitingAsyncはBlocksQueueが真の状態で止まる()
+    {
+        JobStatus[] blocking = [.. Enum.GetValues<JobStatus>().Where(status => status.BlocksQueue())];
+        Assert.NotEmpty(blocking);
+
+        foreach (JobStatus status in blocking)
+        {
+            using TemporaryDatabase database = new();
+            SqliteJobStore store = await database.OpenStoreAsync();
+
+            await store.AddAsync(JobAt("registered", BaseTime.AddHours(1)), None);
+            Assert.NotNull(await store.FindOldestWaitingAsync(None));
+
+            await store.AddAsync(
+                Job.Rehydrate(
+                    JobId.From($"{status}"),
+                    $"{status} の Job",
+                    "Demo",
+                    string.Empty,
+                    status,
+                    BaseTime,
+                    startedAt: BaseTime.AddMinutes(1),
+                    finishedAt: null,
+                    failureMessage: null),
+                None);
+
+            Assert.Null(await store.FindOldestWaitingAsync(None));
+        }
+    }
+
+    /// <summary>
+    /// 再開の 1 回目の書き込みが済んだ瞬間（Resuming）も列は止まったまま。
+    /// 後から登録された Job が、再開しかけの Job を追い越さない。
+    /// </summary>
+    /// <remarks>
+    /// 上の総当たりと重なるが、こちらは<b>実際に起きた追い越しの再現</b>として残す。
+    /// 再開は Paused → Resuming → Resumed の 2 回の書き込みで、1 回目が変更通知で
+    /// エンジンを起こす。その瞬間の Job は待ち行列にも居らず Paused でもない。
+    /// 総当たりが落ちても「どこが困るのか」は読めないので、困る形を別に書いてある。
+    /// </remarks>
+    [Fact]
+    public async Task FindOldestWaitingAsyncは再開の確定を待っている間も止まる()
     {
         using TemporaryDatabase database = new();
         SqliteJobStore store = await database.OpenStoreAsync();
 
-        await store.AddAsync(JobAt("registered", BaseTime.AddHours(1)), None);
-        Assert.NotNull(await store.FindOldestWaitingAsync(None));
-
         await store.AddAsync(
             Job.Rehydrate(
-                JobId.From("paused"),
-                "止まっている Job",
+                JobId.From("resuming-最古"),
+                "再開しかけの Job",
                 "Demo",
                 string.Empty,
-                JobStatus.Paused,
+                JobStatus.Resuming,
                 BaseTime,
                 startedAt: BaseTime.AddMinutes(1),
                 finishedAt: null,
                 failureMessage: null),
             None);
 
+        await store.AddAsync(JobAt("registered-後発", BaseTime.AddHours(1)), None);
+
         Assert.Null(await store.FindOldestWaitingAsync(None));
     }
 
     /// <summary>
-    /// 待つのは保留中（Paused）だけ。受理待ち（Pausing）はまだ走っているので、
-    /// ここで止めると「実行中が 1 件あるだけで次が出ない」という別の規則になってしまう。
+    /// 止めるのは一時停止の側（Paused）と再開の途中（Resuming）だけ。
+    /// 受理待ち（Pausing）はまだ走っているので、ここで止めると
+    /// 「実行中が 1 件あるだけで次が出ない」という別の規則になってしまう。
     /// </summary>
     [Fact]
     public async Task FindOldestWaitingAsyncは受理待ちの保留では止まらない()
